@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#292524</color>
+    <color name="on_primary">#FFFFFF</color>
+    <color name="primary_container">#F5F0EB</color>
+    <color name="paper">#FDFBF7</color>
+    <color name="ink">#333333</color>
+    <color name="stone_50">#FAFAF9</color>
+    <color name="stone_100">#F5F5F4</color>
+    <color name="stone_200">#E7E5E4</color>
+    <color name="stone_300">#D6D3D1</color>
+    <color name="stone_500">#78716C</color>
+    <color name="stone_600">#57534E</color>
+    <color name="stone_700">#44403C</color>
+    <color name="stone_800">#292524</color>
+    <color name="purple_50">#FAF5FF</color>
+    <color name="purple_600">#9333EA</color>
+</resources>

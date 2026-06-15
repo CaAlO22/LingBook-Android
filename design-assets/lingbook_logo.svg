@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- App icon background -->
+  <rect width="1024" height="1024" rx="220" fill="#FDFBF7"/>
+
+  <!-- Book shadow -->
+  <rect x="296" y="272" width="460" height="590" rx="34" fill="#000000" opacity="0.08"/>
+
+  <!-- Book cover -->
+  <rect x="282" y="258" width="460" height="590" rx="34" fill="#292524"/>
+
+  <!-- Page edges -->
+  <rect x="706" y="280" width="7" height="546" rx="4" fill="#F5F2EC"/>
+  <rect x="715" y="280" width="7" height="546" rx="4" fill="#F5F2EC"/>
+  <rect x="724" y="280" width="7" height="546" rx="4" fill="#F5F2EC"/>
+
+  <!-- Bookmark ribbon -->
+  <path d="M 394 248 L 442 248 L 442 432 L 418 458 L 394 432 Z" fill="#9333EA"/>
+
+  <!-- AI sparkle glow -->
+  <circle cx="596" cy="642" r="64" fill="#9333EA" opacity="0.18"/>
+
+  <!-- AI sparkle (8-point star) -->
+  <polygon points="596,596 613,629 646,642 613,655 596,688 583,655 550,642 583,629" fill="#9333EA"/>
+
+  <!-- Sparkle center highlight -->
+  <circle cx="596" cy="642" r="12" fill="#FFFFFF"/>
+</svg>
