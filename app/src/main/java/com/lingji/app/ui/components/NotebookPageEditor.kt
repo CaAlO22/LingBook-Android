@@ -202,8 +202,7 @@ fun NotebookPageEditor(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(contentHeight)
-                .clip(RoundedCornerShape(16.dp))
+                .heightIn(min = contentHeight)
         ) {
             BasicTextField(
                 value = displayContent,
@@ -214,9 +213,8 @@ fun NotebookPageEditor(
                     onUpdate(page.copy(content = updatedContent, updatedAt = System.currentTimeMillis()))
                 },
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 10.dp)
-                    .verticalScroll(rememberScrollState())
                     .focusRequester(contentFocusRequester)
                     .onFocusChanged { if (it.isFocused) onFocus() },
                 textStyle = MaterialTheme.typography.bodyMedium.copy(
