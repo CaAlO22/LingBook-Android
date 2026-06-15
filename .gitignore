@@ -37,3 +37,7 @@ Thumbs.db
 # Keystore files
 *.jks
 *.keystore
+
+# Project private docs
+AGENTS.md
+MIGRATION_PLAN.md
