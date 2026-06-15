@@ -1,5 +1,7 @@
 package com.lingji.app.ui.screens
 
+import android.content.ClipboardManager
+import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -72,6 +75,8 @@ import com.lingji.app.ui.theme.NotoSerifCJKsc
 import com.lingji.app.ui.viewmodel.SubjectViewModel
 import kotlinx.coroutines.launch
 
+private const val CLIPBOARD_SIZE_LIMIT = 1_000_000
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SubjectGalleryScreen(
@@ -83,6 +88,8 @@ fun SubjectGalleryScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     var renameSubjectId by remember { mutableStateOf<String?>(null) }
     var renameDefault by remember { mutableStateOf("") }
+    var showImportDialog by remember { mutableStateOf(false) }
+    var importDialogText by remember { mutableStateOf("") }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -150,6 +157,39 @@ fun SubjectGalleryScreen(
                     }) {
                         Text(stringResource(R.string.import_label))
                     }
+                    TextButton(onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
+                        scope.launch {
+                            val ok = if (text.isNullOrBlank()) {
+                                false
+                            } else {
+                                viewModel.importSubject(text)
+                            }
+                            when {
+                                text.isNullOrBlank() -> {
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.clipboard_empty),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                                ok -> {
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.import_success),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                                else -> {
+                                    importDialogText = text
+                                    showImportDialog = true
+                                }
+                            }
+                        }
+                    }) {
+                        Text(stringResource(R.string.import_from_clipboard))
+                    }
                     TextButton(onClick = onOpenSettings) {
                         Text(stringResource(R.string.settings_title))
                     }
@@ -199,6 +239,27 @@ fun SubjectGalleryScreen(
                                     .takeIf { it.isNotBlank() } ?: "notebook"
                                 exportLauncher.launch("$fileName.ling")
                             },
+                            onCopyExport = {
+                                scope.launch {
+                                    try {
+                                        val encoded = viewModel.exportSubjectToText(subject)
+                                        if (encoded.length > CLIPBOARD_SIZE_LIMIT) {
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(R.string.copy_too_large),
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                        } else {
+                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText(subject.title, encoded))
+                                            Toast.makeText(context, context.getString(R.string.copy_success), Toast.LENGTH_SHORT).show()
+                                        }
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                        Toast.makeText(context, context.getString(R.string.copy_failed), Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            },
                             onMoveToTop = { viewModel.moveSubjectToTop(subject.id) },
                             onMoveUp = { viewModel.moveSubjectUp(subject.id) },
                             onMoveDown = { viewModel.moveSubjectDown(subject.id) },
@@ -244,6 +305,47 @@ fun SubjectGalleryScreen(
             },
             dismissButton = {
                 TextButton(onClick = { renameSubjectId = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    if (showImportDialog) {
+        var text by remember(importDialogText) { mutableStateOf(importDialogText) }
+        AlertDialog(
+            onDismissRequest = { showImportDialog = false },
+            title = { Text(stringResource(R.string.import_from_clipboard_dialog_title)) },
+            text = {
+                GlassOutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text(stringResource(R.string.import_from_clipboard_dialog_label)) },
+                    placeholder = { Text(stringResource(R.string.import_from_clipboard_dialog_hint)) },
+                    minLines = 4,
+                    maxLines = 8
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            val ok = text.isNotBlank() && viewModel.importSubject(text)
+                            Toast.makeText(
+                                context,
+                                if (ok) context.getString(R.string.import_success) else context.getString(R.string.import_failed),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            if (ok) {
+                                showImportDialog = false
+                                importDialogText = ""
+                            }
+                        }
+                    }
+                ) { Text(stringResource(R.string.import_label)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImportDialog = false }) {
                     Text(stringResource(R.string.cancel))
                 }
             }

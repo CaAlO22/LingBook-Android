@@ -14,10 +14,18 @@ object Codec82 {
     private val gson = Gson()
 
     fun encode(obj: Any): String {
-        val json = if (obj is String) obj else gson.toJson(obj)
+        val json = if (obj is String) compactJson(obj) else gson.toJson(obj)
         val gz = gzipCompress(json.toByteArray(Charsets.UTF_8))
         val encoded = base82Encode(gz)
         return LING82_PREFIX + encoded
+    }
+
+    private fun compactJson(text: String): String {
+        return try {
+            gson.toJson(gson.fromJson(text, Any::class.java))
+        } catch (_: Exception) {
+            text
+        }
     }
 
     fun decode(text: String): Any {

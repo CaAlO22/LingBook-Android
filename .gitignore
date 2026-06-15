@@ -41,3 +41,6 @@ Thumbs.db
 # Project private docs
 AGENTS.md
 MIGRATION_PLAN.md
+
+# Temporary working files
+tmp/

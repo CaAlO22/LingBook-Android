@@ -1,5 +1,7 @@
 package com.lingji.app.ui.screens
 
+import android.content.ClipboardManager
+import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -18,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -273,6 +276,34 @@ fun NotebookSubjectScreen(
                             contentDescription = stringResource(R.string.cd_export)
                         )
                     }
+                    IconButton(
+                        onClick = {
+                            scope.launch {
+                                try {
+                                    val encoded = viewModel.exportSubjectToText(liveSubject)
+                                    if (encoded.length > CLIPBOARD_SIZE_LIMIT) {
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.copy_too_large),
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                        return@launch
+                                    }
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText(liveSubject.title, encoded))
+                                    Toast.makeText(context, context.getString(R.string.copy_success), Toast.LENGTH_SHORT).show()
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                    Toast.makeText(context, context.getString(R.string.copy_failed), Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = stringResource(R.string.copy_to_clipboard)
+                        )
+                    }
                     IconButton(onClick = { showSearch = true }) {
                         Icon(Icons.Default.Search, contentDescription = stringResource(R.string.cd_search))
                     }
@@ -453,6 +484,8 @@ fun NotebookSubjectScreen(
         )
     }
 }
+
+private const val CLIPBOARD_SIZE_LIMIT = 1_000_000
 
 @Composable
 private fun EmptyPagesState() {

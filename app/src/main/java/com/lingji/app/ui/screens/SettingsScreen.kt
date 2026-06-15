@@ -1,5 +1,6 @@
 package com.lingji.app.ui.screens
 
+import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -21,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Button
@@ -224,6 +226,34 @@ fun SettingsScreen(
                 ) {
                     Icon(Icons.Default.FileUpload, contentDescription = null)
                     Text(stringResource(R.string.import_ling_json), modifier = Modifier.padding(start = 8.dp))
+                }
+                Button(
+                    onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
+                        scope.launch {
+                            val ok = if (text.isNullOrBlank()) {
+                                false
+                            } else {
+                                viewModel.importSubject(text)
+                            }
+                            Toast.makeText(
+                                context,
+                                when {
+                                    text.isNullOrBlank() -> context.getString(R.string.clipboard_empty)
+                                    ok -> context.getString(R.string.import_success)
+                                    else -> context.getString(R.string.import_failed)
+                                },
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp)
+                ) {
+                    Icon(Icons.Default.ContentPaste, contentDescription = null)
+                    Text(stringResource(R.string.import_from_clipboard), modifier = Modifier.padding(start = 8.dp))
                 }
                 Row(
                     modifier = Modifier

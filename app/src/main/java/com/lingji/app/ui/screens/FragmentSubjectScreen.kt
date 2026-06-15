@@ -1,5 +1,8 @@
 package com.lingji.app.ui.screens
 
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -19,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
@@ -45,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -80,6 +85,7 @@ fun FragmentSubjectScreen(
         uiState.subjects.find { it.id == subject.id } ?: subject
     }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val pagerState = rememberPagerState(pageCount = { 3 })
     var showMenu by remember { mutableStateOf(false) }
     var editingFragment by remember { mutableStateOf<Fragment?>(null) }
@@ -116,6 +122,31 @@ fun FragmentSubjectScreen(
                             text = { Text(stringResource(R.string.rollback)) },
                             onClick = {
                                 viewModel.rollbackAggregatedNote()
+                                showMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.copy_to_clipboard)) },
+                            onClick = {
+                                scope.launch {
+                                    try {
+                                        val encoded = viewModel.exportSubjectToText(liveSubject)
+                                        if (encoded.length > CLIPBOARD_SIZE_LIMIT) {
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(R.string.copy_too_large),
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                        } else {
+                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText(liveSubject.title, encoded))
+                                            Toast.makeText(context, context.getString(R.string.copy_success), Toast.LENGTH_SHORT).show()
+                                        }
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                        Toast.makeText(context, context.getString(R.string.copy_failed), Toast.LENGTH_SHORT).show()
+                                    }
+                                }
                                 showMenu = false
                             }
                         )
@@ -263,6 +294,8 @@ fun FragmentSubjectScreen(
         )
     }
 }
+
+private const val CLIPBOARD_SIZE_LIMIT = 1_000_000
 
 @Composable
 private fun PillTabSwitcher(

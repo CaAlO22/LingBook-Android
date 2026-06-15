@@ -22,11 +22,11 @@ val Primary = Stone800
 val OnPrimary = Color.White
 val PrimaryContainer = Color(0xFFF5F0EB)
 
-// AI accent (purple).
-val Purple50 = Color(0xFFFAF5FF)
-val Purple100 = Color(0xFFF3E8FF)
-val Purple600 = Color(0xFF9333EA)
-val Purple700 = Color(0xFF7E22CE)
+// AI accent (teal).
+val Teal50 = Color(0xFFF0FDFA)
+val Teal100 = Color(0xFFCCFBF1)
+val Teal600 = Color(0xFF0D9488)
+val Teal700 = Color(0xFF0F766E)
 
 // Semantic helpers.
 val ErrorLight = Color(0xFFFEE2E2)

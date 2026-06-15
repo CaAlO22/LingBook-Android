@@ -24,8 +24,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltViewModel
@@ -372,8 +374,18 @@ class SubjectViewModel @Inject constructor(
         return true
     }
 
+    suspend fun importSubject(text: String): Boolean {
+        val imported = fileManager.importSubjectFromText(text) ?: return false
+        importSubject(imported)
+        return true
+    }
+
     suspend fun exportSubject(subject: Subject, uri: Uri) {
         fileManager.exportSubject(subject, uri)
+    }
+
+    suspend fun exportSubjectToText(subject: Subject): String = withContext(Dispatchers.IO) {
+        fileManager.encodeSubject(subject)
     }
 
     private fun setProcessing(loading: Boolean, message: String? = null) {

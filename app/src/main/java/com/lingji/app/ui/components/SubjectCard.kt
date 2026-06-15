@@ -54,6 +54,7 @@ fun SubjectCard(
     onDelete: () -> Unit,
     onRename: () -> Unit,
     onExport: () -> Unit,
+    onCopyExport: () -> Unit,
     onMoveToTop: () -> Unit,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
@@ -144,6 +145,10 @@ fun SubjectCard(
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.export)) },
                     onClick = { onExport(); menuExpanded = false }
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.copy_to_clipboard)) },
+                    onClick = { onCopyExport(); menuExpanded = false }
                 )
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.move_to_top)) },

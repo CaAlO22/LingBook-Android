@@ -89,6 +89,10 @@
     <string name="export_success">导出成功</string>
     <string name="export_failed">导出失败</string>
     <string name="export_subject">导出学科</string>
+    <string name="copy_to_clipboard">复制到剪贴板</string>
+    <string name="copy_success">已复制到剪贴板</string>
+    <string name="copy_failed">复制失败</string>
+    <string name="copy_too_large">内容过大，无法复制到剪贴板，请使用文件导出</string>
 
     <!-- 设置 -->
     <string name="settings_title">设置</string>
@@ -108,6 +112,11 @@
     <string name="test_multimodal_connection">测试多模态连接</string>
     <string name="multimodal_test_pending">正在测试多模态连接…</string>
     <string name="import_ling_json">导入 .ling / JSON</string>
+    <string name="import_from_clipboard">从剪切板导入</string>
+    <string name="import_from_clipboard_dialog_title">从剪切板导入</string>
+    <string name="import_from_clipboard_dialog_label">粘贴 .ling 原文或 LING82 编码</string>
+    <string name="import_from_clipboard_dialog_hint">粘贴内容后点击“导入”</string>
+    <string name="clipboard_empty">剪切板为空或没有文本</string>
     <string name="app_info">灵记 Lingji — 本地优先的 AI 知识管理工具</string>
     <string name="hint_subject_title">学科标题</string>
 </resources>
