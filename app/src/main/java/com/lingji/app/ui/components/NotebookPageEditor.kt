@@ -23,8 +23,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
@@ -65,6 +68,8 @@ private fun stripImageMarkdown(content: String): String {
         .trim()
 }
 
+private data class PageEditState(val title: String, val content: String)
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun NotebookPageEditor(
@@ -74,25 +79,29 @@ fun NotebookPageEditor(
     onDelete: () -> Unit,
     onAddImage: () -> Unit,
     onGenerateIndex: () -> Unit,
+    onEditIndex: () -> Unit,
     onFocus: () -> Unit,
     autoFocusContent: Boolean = false,
     fillHeight: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    var title by remember(page.id) { mutableStateOf(page.title) }
-    var content by remember(page.id) { mutableStateOf(page.content) }
+    val undoManager = remember(page.id) { UndoManager(PageEditState(page.title, page.content)) }
+    val editState = undoManager.value
+    val title = editState.title
+    val content = editState.content
     val images = remember(content) { IndexService.extractImagesFromContent(content) }
     val imageMarkdownBlocks = remember(images) {
         images.joinToString("") { "\n\n![图片]($it)\n\n" }
     }
-    var displayContent by remember(page.id) { mutableStateOf(stripImageMarkdown(content)) }
+    val displayContent = remember(content) { stripImageMarkdown(content) }
     val isDirty = page.indexedAt <= 0 || page.updatedAt > page.indexedAt
     val contentFocusRequester = remember { FocusRequester() }
 
-    LaunchedEffect(page.content) {
-        if (content != page.content) {
-            content = page.content
-            displayContent = stripImageMarkdown(content)
+    // 当外部传入的页面数据与当前编辑状态不一致时（如从其他端同步），重置历史。
+    LaunchedEffect(page.title, page.content) {
+        val current = undoManager.value
+        if (page.title != current.title || page.content != current.content) {
+            undoManager.reset(PageEditState(page.title, page.content))
         }
     }
 
@@ -123,13 +132,40 @@ fun NotebookPageEditor(
             UnderlinedTitleField(
                 value = title,
                 onValueChange = {
-                    title = it
-                    onUpdate(page.copy(title = it, updatedAt = System.currentTimeMillis()))
+                    undoManager.update(PageEditState(it, content))
+                    val updated = undoManager.value
+                    onUpdate(page.copy(title = updated.title, content = updated.content, updatedAt = System.currentTimeMillis()))
                 },
                 onFocus = onFocus,
                 modifier = Modifier.weight(1f)
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(
+                    onClick = {
+                        undoManager.undo()?.let { updated ->
+                            onUpdate(page.copy(title = updated.title, content = updated.content, updatedAt = System.currentTimeMillis()))
+                        }
+                    },
+                    enabled = undoManager.canUndo
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Undo,
+                        contentDescription = stringResource(R.string.cd_undo)
+                    )
+                }
+                IconButton(
+                    onClick = {
+                        undoManager.redo()?.let { updated ->
+                            onUpdate(page.copy(title = updated.title, content = updated.content, updatedAt = System.currentTimeMillis()))
+                        }
+                    },
+                    enabled = undoManager.canRedo
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Redo,
+                        contentDescription = stringResource(R.string.cd_redo)
+                    )
+                }
                 if (isDirty) {
                     Surface(
                         shape = RoundedCornerShape(percent = 50),
@@ -146,6 +182,9 @@ fun NotebookPageEditor(
                 }
                 IconButton(onClick = onAddImage) {
                     Icon(Icons.Default.Image, contentDescription = stringResource(R.string.cd_add_image))
+                }
+                IconButton(onClick = onEditIndex) {
+                    Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.cd_edit_page_index))
                 }
                 IconButton(onClick = onGenerateIndex) {
                     Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.cd_generate_index))
@@ -165,7 +204,7 @@ fun NotebookPageEditor(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 indexEntry?.keywords?.forEach { kw ->
-                    KeywordTag(text = kw)
+                    KeywordTag(text = kw, onClick = onEditIndex)
                 }
             }
             Spacer(modifier = Modifier.height(10.dp))
@@ -183,9 +222,9 @@ fun NotebookPageEditor(
                                 Regex("!\\[.*?\\]\\($escaped\\)"),
                                 ""
                             )
-                            content = cleaned
-                            displayContent = stripImageMarkdown(cleaned)
-                            onUpdate(page.copy(content = cleaned, updatedAt = System.currentTimeMillis()))
+                            undoManager.update(PageEditState(title, cleaned))
+                            val updated = undoManager.value
+                            onUpdate(page.copy(content = updated.content, updatedAt = System.currentTimeMillis()))
                         }
                     )
                 }
@@ -207,10 +246,10 @@ fun NotebookPageEditor(
             BasicTextField(
                 value = displayContent,
                 onValueChange = {
-                    displayContent = it
                     val updatedContent = it + imageMarkdownBlocks
-                    content = updatedContent
-                    onUpdate(page.copy(content = updatedContent, updatedAt = System.currentTimeMillis()))
+                    undoManager.update(PageEditState(title, updatedContent))
+                    val updated = undoManager.value
+                    onUpdate(page.copy(content = updated.content, updatedAt = System.currentTimeMillis()))
                 },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -273,10 +312,11 @@ private fun UnderlinedTitleField(
 }
 
 @Composable
-private fun KeywordTag(text: String) {
+private fun KeywordTag(text: String, onClick: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(6.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        onClick = onClick
     ) {
         Text(
             text = text,

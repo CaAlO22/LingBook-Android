@@ -20,7 +20,7 @@ import com.lingji.app.data.db.entities.SubjectEntity
         NotebookPageEntity::class,
         SettingsEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class LingjiDatabase : RoomDatabase() {
@@ -36,6 +36,12 @@ abstract class LingjiDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE notebook_pages ADD COLUMN indexedAt INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE subjects ADD COLUMN pageIndexJson TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE subjects ADD COLUMN lastOpenedPageId TEXT")
             }
         }
     }

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -22,6 +23,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import com.lingji.app.R
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -78,12 +81,15 @@ fun PageImagePicker(
     }
 
     if (showSourceChooser) {
-        androidx.compose.material3.AlertDialog(
+        LingjiDialog(
             onDismissRequest = onDismiss,
-            title = { Text("添加图片") },
+            title = { Text(stringResource(R.string.add_image_title)) },
             text = {
                 Column {
-                    Text("选择图片来源", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        stringResource(R.string.choose_image_source),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
                     Spacer(modifier = Modifier.height(16.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -103,9 +109,9 @@ fun PageImagePicker(
                             )
                         ) {
                             Icon(Icons.Default.CameraAlt, contentDescription = null)
-                            Text("拍照", modifier = Modifier.padding(start = 8.dp))
+                            Text(stringResource(R.string.camera), modifier = Modifier.padding(start = 8.dp))
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
                         Button(
                             onClick = {
                                 galleryLauncher.launch("image/*")
@@ -114,16 +120,16 @@ fun PageImagePicker(
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(Icons.Default.PhotoLibrary, contentDescription = null)
-                            Text("相册", modifier = Modifier.padding(start = 8.dp))
+                            Text(stringResource(R.string.gallery), modifier = Modifier.padding(start = 8.dp))
                         }
                     }
                 }
             },
-            confirmButton = {},
             dismissButton = {
-                androidx.compose.material3.TextButton(onClick = onDismiss) {
-                    Text("取消")
-                }
+                LingjiDialogDismissButton(
+                    text = stringResource(R.string.cancel),
+                    onClick = onDismiss
+                )
             }
         )
     }

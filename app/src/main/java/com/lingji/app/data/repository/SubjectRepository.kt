@@ -111,6 +111,17 @@ class SubjectRepository @Inject constructor(
         pageDao.delete(NotebookPageEntity(pageId, subjectId, "", "", 0, 0, 0, 0))
     }
 
+    suspend fun movePage(subjectId: String, pageId: String, newIndex: Int) {
+        val pages = pageDao.getPagesBySubjectOnce(subjectId).toMutableList()
+        val currentIndex = pages.indexOfFirst { it.id == pageId }
+        if (currentIndex == -1 || currentIndex == newIndex) return
+        val moved = pages.removeAt(currentIndex)
+        val targetIndex = newIndex.coerceIn(0, pages.size)
+        pages.add(targetIndex, moved)
+        pageDao.deleteBySubject(subjectId)
+        pageDao.insertAll(pages.mapIndexed { idx, p -> p.copy(orderIndex = idx) })
+    }
+
     suspend fun markPagesIndexed(subjectId: String, pageIds: List<String>, indexedAt: Long) {
         for (pageId in pageIds) {
             pageDao.updateIndexedAt(pageId, indexedAt)
@@ -119,6 +130,18 @@ class SubjectRepository @Inject constructor(
 
     suspend fun savePageIndexEntries(subjectId: String, entries: List<PageIndexEntry>) {
         subjectDao.updatePageIndexJson(subjectId, gson.toJson(entries))
+    }
+
+    suspend fun updatePageIndexEntry(subjectId: String, pageId: String, entry: PageIndexEntry) {
+        val current = getSubjectByIdOnce(subjectId)?.pageIndexEntries ?: emptyList()
+        val updated = current.map { if (it.pageId == pageId) entry else it }
+            .let { if (it.none { e -> e.pageId == pageId }) it + entry else it }
+        subjectDao.updatePageIndexJson(subjectId, gson.toJson(updated))
+        pageDao.updateIndexedAt(pageId, System.currentTimeMillis())
+    }
+
+    suspend fun updateLastOpenedPageId(subjectId: String, pageId: String?) {
+        subjectDao.updateLastOpenedPageId(subjectId, pageId)
     }
 
     private suspend fun loadSubject(entity: SubjectEntity): Subject {
@@ -150,7 +173,8 @@ class SubjectRepository @Inject constructor(
             orderIndex = entity.orderIndex,
             pages = if (entity.type.equals("notebook", true)) domainPages else null,
             pageIndex = if (entity.type.equals("notebook", true)) domainPages.mapIndexed { idx, p -> PageIndex(p.id, p.title, idx) } else null,
-            pageIndexEntries = if (entity.type.equals("notebook", true)) pageIndexEntries else null
+            pageIndexEntries = if (entity.type.equals("notebook", true)) pageIndexEntries else null,
+            lastOpenedPageId = entity.lastOpenedPageId
         )
     }
 
@@ -176,7 +200,8 @@ class SubjectRepository @Inject constructor(
         studyPlan = studyPlan,
         createdAt = createdAt,
         orderIndex = orderIndex,
-        pageIndexJson = pageIndexEntries?.let { gson.toJson(it) } ?: ""
+        pageIndexJson = pageIndexEntries?.let { gson.toJson(it) } ?: "",
+        lastOpenedPageId = lastOpenedPageId
     )
 
     private fun Fragment.toEntity(subjectId: String, isUnmerged: Boolean) = FragmentEntity(

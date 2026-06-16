@@ -30,8 +30,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.ContentPaste
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -68,6 +70,9 @@ import com.lingji.app.R
 import com.lingji.app.domain.model.Subject
 import com.lingji.app.domain.model.SubjectType
 import com.lingji.app.ui.components.GlassOutlinedTextField
+import com.lingji.app.ui.components.LingjiDialog
+import com.lingji.app.ui.components.LingjiDialogConfirmButton
+import com.lingji.app.ui.components.LingjiDialogDismissButton
 import com.lingji.app.ui.components.SubjectCard
 import com.lingji.app.ui.components.SubjectCardMinHeight
 import com.lingji.app.ui.components.TimeDisplay
@@ -90,6 +95,7 @@ fun SubjectGalleryScreen(
     var renameDefault by remember { mutableStateOf("") }
     var showImportDialog by remember { mutableStateOf(false) }
     var importDialogText by remember { mutableStateOf("") }
+    var showImportMenu by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -152,43 +158,69 @@ fun SubjectGalleryScreen(
                         modifier = Modifier.padding(end = 8.dp),
                         style = MaterialTheme.typography.bodyMedium
                     )
-                    TextButton(onClick = {
-                        importLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream"))
-                    }) {
-                        Text(stringResource(R.string.import_label))
-                    }
-                    TextButton(onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
-                        scope.launch {
-                            val ok = if (text.isNullOrBlank()) {
-                                false
-                            } else {
-                                viewModel.importSubject(text)
-                            }
-                            when {
-                                text.isNullOrBlank() -> {
-                                    Toast.makeText(
-                                        context,
-                                        context.getString(R.string.clipboard_empty),
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                }
-                                ok -> {
-                                    Toast.makeText(
-                                        context,
-                                        context.getString(R.string.import_success),
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                }
-                                else -> {
-                                    importDialogText = text
-                                    showImportDialog = true
-                                }
-                            }
+                    Box {
+                        TextButton(onClick = { showImportMenu = true }) {
+                            Text(stringResource(R.string.import_label))
                         }
-                    }) {
-                        Text(stringResource(R.string.import_from_clipboard))
+                        DropdownMenu(
+                            expanded = showImportMenu,
+                            onDismissRequest = { showImportMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.import_from_file)) },
+                                onClick = {
+                                    showImportMenu = false
+                                    importLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream"))
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.FileOpen,
+                                        contentDescription = null
+                                    )
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.import_from_clipboard)) },
+                                onClick = {
+                                    showImportMenu = false
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
+                                    scope.launch {
+                                        val ok = if (text.isNullOrBlank()) {
+                                            false
+                                        } else {
+                                            viewModel.importSubject(text)
+                                        }
+                                        when {
+                                            text.isNullOrBlank() -> {
+                                                Toast.makeText(
+                                                    context,
+                                                    context.getString(R.string.clipboard_empty),
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                            ok -> {
+                                                Toast.makeText(
+                                                    context,
+                                                    context.getString(R.string.import_success),
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                            else -> {
+                                                importDialogText = text
+                                                showImportDialog = true
+                                            }
+                                        }
+                                    }
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.ContentPaste,
+                                        contentDescription = null
+                                    )
+                                }
+                            )
+                        }
                     }
                     TextButton(onClick = onOpenSettings) {
                         Text(stringResource(R.string.settings_title))
@@ -284,7 +316,7 @@ fun SubjectGalleryScreen(
 
     renameSubjectId?.let { id ->
         var title by remember(id) { mutableStateOf(renameDefault) }
-        AlertDialog(
+        LingjiDialog(
             onDismissRequest = { renameSubjectId = null },
             title = { Text(stringResource(R.string.rename_subject)) },
             text = {
@@ -296,24 +328,26 @@ fun SubjectGalleryScreen(
                 )
             },
             confirmButton = {
-                TextButton(
+                LingjiDialogConfirmButton(
+                    text = stringResource(R.string.save),
                     onClick = {
                         if (title.isNotBlank()) viewModel.renameSubject(id, title)
                         renameSubjectId = null
                     }
-                ) { Text(stringResource(R.string.save)) }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { renameSubjectId = null }) {
-                    Text(stringResource(R.string.cancel))
-                }
+                LingjiDialogDismissButton(
+                    text = stringResource(R.string.cancel),
+                    onClick = { renameSubjectId = null }
+                )
             }
         )
     }
 
     if (showImportDialog) {
         var text by remember(importDialogText) { mutableStateOf(importDialogText) }
-        AlertDialog(
+        LingjiDialog(
             onDismissRequest = { showImportDialog = false },
             title = { Text(stringResource(R.string.import_from_clipboard_dialog_title)) },
             text = {
@@ -327,7 +361,8 @@ fun SubjectGalleryScreen(
                 )
             },
             confirmButton = {
-                TextButton(
+                LingjiDialogConfirmButton(
+                    text = stringResource(R.string.import_label),
                     onClick = {
                         scope.launch {
                             val ok = text.isNotBlank() && viewModel.importSubject(text)
@@ -342,12 +377,13 @@ fun SubjectGalleryScreen(
                             }
                         }
                     }
-                ) { Text(stringResource(R.string.import_label)) }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { showImportDialog = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
+                LingjiDialogDismissButton(
+                    text = stringResource(R.string.cancel),
+                    onClick = { showImportDialog = false }
+                )
             }
         )
     }
@@ -566,7 +602,7 @@ private fun AddSubjectDialog(
     var title by remember { mutableStateOf("") }
     var isNotebook by remember { mutableStateOf(false) }
 
-    AlertDialog(
+    LingjiDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.add_subject)) },
         text = {
@@ -577,24 +613,30 @@ private fun AddSubjectDialog(
                     label = { Text(stringResource(R.string.hint_subject_title)) },
                     singleLine = true
                 )
-                TextButton(onClick = { isNotebook = !isNotebook }) {
-                    Text(if (isNotebook) "模式：笔记本" else "模式：碎片")
-                }
+                LingjiDialogDismissButton(
+                    text = stringResource(
+                        R.string.mode_format,
+                        stringResource(if (isNotebook) R.string.notebook_mode else R.string.fragment_mode)
+                    ),
+                    onClick = { isNotebook = !isNotebook }
+                )
             }
         },
         confirmButton = {
-            TextButton(
+            LingjiDialogConfirmButton(
+                text = stringResource(R.string.save),
+                enabled = title.isNotBlank(),
                 onClick = {
                     onConfirm(title, if (isNotebook) SubjectType.NOTEBOOK else SubjectType.FRAGMENT)
                     onDismiss()
-                },
-                enabled = title.isNotBlank()
-            ) {
-                Text(stringResource(R.string.save))
-            }
+                }
+            )
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            LingjiDialogDismissButton(
+                text = stringResource(R.string.cancel),
+                onClick = onDismiss
+            )
         }
     )
 }

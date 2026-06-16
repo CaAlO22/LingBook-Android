@@ -12,15 +12,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import com.lingji.app.R
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,20 +40,23 @@ fun IndexSearchPanel(
     var results by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var hasSearched by remember { mutableStateOf(false) }
 
-    AlertDialog(
+    LingjiDialog(
         onDismissRequest = onClose,
-        title = { Text("搜索笔记") },
+        title = { Text(stringResource(R.string.search_notes)) },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
-                    label = { Text("关键词") },
+                    label = { Text(stringResource(R.string.search_keyword_hint)) },
                     modifier = Modifier.fillMaxWidth(),
                     trailingIcon = {
                         if (query.isNotEmpty()) {
                             IconButton(onClick = { query = "" }) {
-                                Icon(Icons.Default.Close, contentDescription = "清除")
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = stringResource(R.string.search_clear)
+                                )
                             }
                         }
                     }
@@ -68,14 +71,14 @@ fun IndexSearchPanel(
                     enabled = query.isNotBlank()
                 ) {
                     Icon(Icons.Default.Search, contentDescription = null)
-                    Text("搜索", modifier = Modifier.padding(start = 8.dp))
+                    Text(stringResource(R.string.search_action), modifier = Modifier.padding(start = 8.dp))
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 LazyColumn(modifier = Modifier.fillMaxWidth().height(300.dp)) {
                     if (hasSearched && results.isEmpty()) {
                         item {
                             Text(
-                                "未找到相关结果",
+                                stringResource(R.string.search_no_results),
                                 modifier = Modifier.padding(16.dp),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -94,11 +97,11 @@ fun IndexSearchPanel(
                 }
             }
         },
-        confirmButton = {},
         dismissButton = {
-            TextButton(onClick = onClose) {
-                Text("关闭")
-            }
+            LingjiDialogDismissButton(
+                text = stringResource(R.string.cancel),
+                onClick = onClose
+            )
         }
     )
 }
@@ -135,13 +138,19 @@ private fun SearchResultItem(
                 }
                 if (result.matchedKeywords.isNotEmpty()) {
                     Text(
-                        text = "匹配: ${result.matchedKeywords.joinToString(", ")}",
+                        text = stringResource(
+                            R.string.search_match_format,
+                            result.matchedKeywords.joinToString(", ")
+                        ),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
             }
-            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "跳转")
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = stringResource(R.string.jump)
+            )
         }
     }
 }

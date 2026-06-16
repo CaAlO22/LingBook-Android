@@ -22,7 +22,11 @@ object AppModule {
             LingjiDatabase::class.java,
             "lingji_database"
         )
-            .addMigrations(LingjiDatabase.MIGRATION_1_2, LingjiDatabase.MIGRATION_2_3)
+            .addMigrations(
+                LingjiDatabase.MIGRATION_1_2,
+                LingjiDatabase.MIGRATION_2_3,
+                LingjiDatabase.MIGRATION_3_4
+            )
             .build()
     }
 

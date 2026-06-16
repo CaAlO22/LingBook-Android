@@ -8,8 +8,9 @@ import com.lingji.app.data.remote.models.ContentPart
 import com.lingji.app.data.remote.models.ImageContentPart
 import com.lingji.app.data.remote.models.ImageUrl
 import com.lingji.app.data.remote.models.TextContentPart
+import com.lingji.app.data.remote.strategy.RequestStrategy
+import com.lingji.app.data.remote.strategy.RequestStrategyRegistry
 import com.lingji.app.domain.model.AISettings
-import com.lingji.app.domain.model.APIProvider
 import com.lingji.app.domain.model.Fragment
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -62,18 +63,13 @@ class LLMService @Inject constructor() {
         withContext(Dispatchers.IO) {
             val endpoint = resolveEndpoint(settings.baseUrl)
             val isResponses = endpoint.endsWith("/responses", true)
-            val body = ChatRequest(
-                model = settings.modelName.ifBlank { "gpt-4o" },
-                messages = listOf(
-                    ChatMessage("system", systemPrompt ?: "你是一个有用的助手。"),
-                    ChatMessage("user", buildUserContent(prompt, images, isResponses))
-                ),
-                temperature = 0.7,
-                thinking = if (settings.provider.name == "XIAOMI") {
-                    mapOf("type" to if (settings.enableThinking) "enabled" else "disabled")
-                } else null
+            val strategy = RequestStrategyRegistry.get(settings.provider)
+            val messages = listOf(
+                ChatMessage("system", systemPrompt ?: "你是一个有用的助手。"),
+                ChatMessage("user", buildUserContent(prompt, images, isResponses))
             )
-            val request = buildRequest(endpoint, body, settings)
+            val body = strategy.buildChatRequestBody(settings, messages, stream = false)
+            val request = buildRequest(endpoint, body, strategy, settings)
 
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
@@ -93,30 +89,25 @@ class LLMService @Inject constructor() {
         settings: AISettings,
         systemPrompt: String? = null,
         onToken: (String) -> Unit,
+        onReasoning: (String) -> Unit = {},
         images: List<String> = emptyList()
     ): String = withContext(Dispatchers.IO) {
         val endpoint = resolveEndpoint(settings.baseUrl)
         val isResponses = endpoint.endsWith("/responses", true)
-        val body = ChatRequest(
-            model = settings.modelName.ifBlank { "gpt-4o" },
-            messages = listOf(
-                ChatMessage("system", systemPrompt ?: "你是一个有用的助手。"),
-                ChatMessage("user", buildUserContent(prompt, images, isResponses))
-            ),
-            temperature = 0.7,
-            stream = true,
-            thinking = if (settings.provider.name == "XIAOMI") {
-                mapOf("type" to if (settings.enableThinking) "enabled" else "disabled")
-            } else null
+        val strategy = RequestStrategyRegistry.get(settings.provider)
+        val messages = listOf(
+            ChatMessage("system", systemPrompt ?: "你是一个有用的助手。"),
+            ChatMessage("user", buildUserContent(prompt, images, isResponses))
         )
-        val request = buildRequest(endpoint, body, settings)
+        val body = strategy.buildChatRequestBody(settings, messages, stream = true)
+        val request = buildRequest(endpoint, body, strategy, settings)
 
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 val text = response.body?.string() ?: ""
                 throw Exception(parseError(text) ?: "请求失败: ${response.code}")
             }
-            val source = response.body!!.source()
+            val source = response.body?.source() ?: throw Exception("AI 响应为空")
             val acc = StringBuilder()
             while (!source.exhausted()) {
                 val line = source.readUtf8Line() ?: break
@@ -125,14 +116,17 @@ class LLMService @Inject constructor() {
                 if (payload == "[DONE]") continue
                 try {
                     val obj = gson.fromJson(payload, com.lingji.app.data.remote.models.ChatResponse::class.java)
-                    val delta = obj.choices?.firstOrNull()?.delta
-                    val reasoning = obj.choices?.firstOrNull()?.reasoning_content
+                    val choice = obj.choices?.firstOrNull()
+                    val delta = choice?.delta
+                    val reasoning = choice?.reasoning_content
+                        ?: delta?.reasoning_content
                     val deltaText = delta?.content?.let { if (it is String) it else "" } ?: ""
-                    val token = reasoning ?: deltaText
-                    if (token.isNotEmpty()) {
-                        onToken(token)
-                        if (deltaText.isNotEmpty()) acc.append(deltaText)
-                        else if (reasoning != null) acc.append(reasoning)
+                    if (reasoning != null && reasoning.isNotEmpty()) {
+                        onReasoning(reasoning)
+                    }
+                    if (deltaText.isNotEmpty()) {
+                        onToken(deltaText)
+                        acc.append(deltaText)
                     }
                 } catch (_: Exception) {
                 }
@@ -167,13 +161,14 @@ class LLMService @Inject constructor() {
         newFragments: List<Fragment>,
         settings: AISettings,
         instruction: String? = null,
-        onToken: (String) -> Unit
+        onToken: (String) -> Unit,
+        onReasoning: (String) -> Unit = {}
     ): String {
         val systemPrompt = "你是一个知识聚合专家。你的任务是将一系列新的信息片段无缝地整合到现有的结构化笔记（Markdown格式）中。保持结构、清晰度和语气。如果新的片段重复了现有信息，则进行合并或丢弃。如果是新的信息，请找到最佳插入位置或创建新部分。不要添加对话式填充，只输出更新后的完整Markdown笔记。并且：对于由“本次新片段”产生或修改的知识点，请在该句子或列表项末尾添加来源标注，格式为【#编号】或【#编号1,#编号2】（编号为下方新片段列表的序号）。不要在无关句子添加标注。"
         val content = newFragments.mapIndexed { i, f -> "碎片 ${i + 1}: ${f.content}" }.joinToString("\n\n---\n\n")
         val userPref = instruction?.let { "\n\n用户整理偏好:\n$it\n" } ?: ""
         val prompt = "现有笔记:\n$currentNote\n\n新的片段（多条，含序号）:\n$content$userPref\n请输出更新后的完整 Markdown 笔记（仅限笔记内容）。注意：对由本次新片段支撑的新增或修改的知识点，按【#编号】在句末标注来源；多个来源用逗号分隔。"
-        return streamGenerate(prompt, settings, systemPrompt, onToken)
+        return streamGenerate(prompt, settings, systemPrompt, onToken, onReasoning)
     }
 
     suspend fun refineNote(
@@ -181,25 +176,27 @@ class LLMService @Inject constructor() {
         currentNote: String,
         settings: AISettings,
         instruction: String? = null,
-        onToken: (String) -> Unit
+        onToken: (String) -> Unit,
+        onReasoning: (String) -> Unit = {}
     ): String {
         val systemPrompt = "你是一个专业的知识架构师。你的任务是基于用户收集的所有原始碎片信息，重新构建一份逻辑严密、结构清晰的完整笔记。并且：为每个知识点或关键句在句末添加来源碎片编号，格式为【#编号】或【#编号1,#编号2】（编号为下方碎片列表的序号）。标题可以不标注。"
         val content = fragments.mapIndexed { i, f -> "碎片 ${i + 1}: ${f.content}" }.joinToString("\n---\n")
         val pref = instruction?.let { "\n6. 用户整理偏好：$it\n" } ?: ""
         val prompt = "以下是该主题下收集的【全部原始碎片流】（带编号）：\n\n$content\n\n----------------\n\n【任务要求】：\n1. 请基于“全部原始碎片流”重新整理这份笔记。\n2. 你可以完全打散旧的结构，根据碎片之间的逻辑关系重新组织大纲。\n3. 合并重复的观点，将零散的信息点串联成通顺的段落。\n4. 使用 Markdown 格式输出（包含一级标题、二级标题、列表等）。\n5. 确保没有遗漏重要的碎片信息。\n6. 在每个知识点或关键句末尾标注来源碎片编号，格式【#编号】或【#编号1,#编号2】。$pref\n请直接输出重构后的 Markdown 内容："
-        return streamGenerate(prompt, settings, systemPrompt, onToken)
+        return streamGenerate(prompt, settings, systemPrompt, onToken, onReasoning)
     }
 
     suspend fun generateStudyPlan(
         noteContent: String,
         settings: AISettings,
         deadline: String? = null,
-        onToken: (String) -> Unit
+        onToken: (String) -> Unit,
+        onReasoning: (String) -> Unit = {}
     ): String {
         val systemPrompt = "你是一个教育规划者。请根据提供的笔记创建一个学习计划。"
         val extra = if (!deadline.isNullOrBlank()) "\n\n【用户约束】\n- 完成时长：${deadline.trim()}\n- 请按该时长拆分为每日/每周任务，标注里程碑与检查点；输出用 Markdown 表格或列表呈现。" else ""
         val prompt = "笔记:\n$noteContent$extra\n\n请根据这些笔记创建一个包含学习目标和复习问题的结构化学习计划。"
-        return streamGenerate(prompt, settings, systemPrompt, onToken)
+        return streamGenerate(prompt, settings, systemPrompt, onToken, onReasoning)
     }
 
     suspend fun chatWithPage(
@@ -207,22 +204,25 @@ class LLMService @Inject constructor() {
         question: String,
         settings: AISettings,
         onToken: (String) -> Unit,
+        onReasoning: (String) -> Unit = {},
         images: List<String> = emptyList()
     ): String {
         val systemPrompt = "你是一个有用的AI导师。请严格根据提供的上下文（包括文字与图片）回答用户的问题。回答要简洁明了。"
         val prompt = "上下文:\n$pageContent\n\n问题:\n$question\n\n回答:"
-        return streamGenerate(prompt, settings, systemPrompt, onToken, images)
+        return streamGenerate(prompt, settings, systemPrompt, onToken, onReasoning, images)
     }
 
-    private fun buildRequest(endpoint: String, body: ChatRequest, settings: AISettings): Request {
+    private fun buildRequest(
+        endpoint: String,
+        body: ChatRequest,
+        strategy: RequestStrategy,
+        settings: AISettings
+    ): Request {
         val builder = Request.Builder()
             .url(endpoint)
             .post(gson.toJson(body).toRequestBody(jsonMediaType))
             .header("Content-Type", "application/json")
-        when (settings.provider) {
-            APIProvider.XIAOMI -> builder.header("api-key", settings.apiKey)
-            else -> builder.header("Authorization", "Bearer ${settings.apiKey}")
-        }
+        strategy.applyHeaders(builder, settings.apiKey)
         return builder.build()
     }
 

@@ -13,5 +13,6 @@ data class SubjectEntity(
     val studyPlan: String,
     val createdAt: Long,
     val orderIndex: Int = 0,
-    val pageIndexJson: String = ""
+    val pageIndexJson: String = "",
+    val lastOpenedPageId: String? = null
 )

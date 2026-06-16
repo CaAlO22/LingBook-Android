@@ -2,39 +2,10 @@ package com.lingji.app.domain.model
 
 import java.util.UUID
 
-enum class APIProvider { OPENAI, DOUBAO, XIAOMI }
+enum class APIProvider { OPENAI, DOUBAO, XIAOMI, BAILIAN, ZHIPU, DEEPSEEK, KIMI }
 enum class SubjectType { FRAGMENT, NOTEBOOK }
 
 fun generateId(): String = UUID.randomUUID().toString().take(8)
-
-data class MimoModel(
-    val id: String,
-    val name: String,
-    val description: String = ""
-)
-
-object MimoPresets {
-    const val PAY_AS_YOU_GO_URL = "https://api.xiaomimimo.com/v1"
-    const val TOKEN_PLAN_URL = "https://token-plan-cn.xiaomimimo.com/v1"
-
-    val MODELS = listOf(
-        MimoModel(
-            id = "mimo-v2.5-pro",
-            name = "MiMo-V2.5-Pro",
-            description = "复杂推理、长文档、深度分析"
-        ),
-        MimoModel(
-            id = "mimo-v2.5",
-            name = "MiMo-V2.5",
-            description = "全模态理解、图文音视频"
-        ),
-        MimoModel(
-            id = "mimo-v2-flash",
-            name = "MiMo-V2-Flash",
-            description = "低成本、快速响应"
-        )
-    )
-}
 
 data class AISettings(
     val provider: APIProvider = APIProvider.OPENAI,
@@ -94,7 +65,8 @@ data class Subject(
     val orderIndex: Int = 0,
     val pages: List<NotebookPage>? = null,
     val pageIndex: List<PageIndex>? = null,
-    val pageIndexEntries: List<PageIndexEntry>? = null
+    val pageIndexEntries: List<PageIndexEntry>? = null,
+    val lastOpenedPageId: String? = null
 ) {
     companion object {
         fun create(title: String, type: SubjectType): Subject = Subject(

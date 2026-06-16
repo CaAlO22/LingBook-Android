@@ -1,0 +1,34 @@
+package com.lingji.app.data.remote.strategy
+
+import com.lingji.app.data.remote.models.ChatMessage
+import com.lingji.app.data.remote.models.ChatRequest
+import com.lingji.app.domain.model.AISettings
+import okhttp3.Request
+
+/**
+ * 适用于 OpenAI 兼容接口的供应商，例如 OpenAI 自身、火山引擎方舟。
+ *
+ * @param supportsThinkingField 是否需要在请求体中发送 thinking 字段。
+ */
+class OpenAICompatibleStrategy(
+    private val supportsThinkingField: Boolean
+) : RequestStrategy {
+
+    override fun applyHeaders(builder: Request.Builder, apiKey: String) {
+        builder.header("Authorization", "Bearer $apiKey")
+    }
+
+    override fun buildChatRequestBody(
+        settings: AISettings,
+        messages: List<ChatMessage>,
+        stream: Boolean
+    ): ChatRequest = ChatRequest(
+        model = settings.modelName.ifBlank { "gpt-4o" },
+        messages = messages,
+        temperature = 0.7,
+        stream = stream,
+        thinking = if (supportsThinkingField) {
+            mapOf("type" to if (settings.enableThinking) "enabled" else "disabled")
+        } else null
+    )
+}

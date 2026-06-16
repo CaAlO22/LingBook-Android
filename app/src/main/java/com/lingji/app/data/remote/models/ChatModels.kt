@@ -22,7 +22,8 @@ data class ImageContentPart(
 
 data class ChatMessage(
     val role: String,
-    val content: Any
+    val content: Any,
+    val reasoning_content: String? = null
 )
 
 data class ChatRequest(
@@ -30,7 +31,9 @@ data class ChatRequest(
     val messages: List<ChatMessage>,
     val temperature: Double = 0.7,
     val stream: Boolean = false,
-    val thinking: Map<String, String>? = null
+    val thinking: Map<String, String>? = null,
+    @SerializedName("enable_thinking") val enableThinking: Boolean? = null,
+    @SerializedName("reasoning_effort") val reasoningEffort: String? = null
 )
 
 data class ChatResponse(

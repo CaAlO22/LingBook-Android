@@ -3,11 +3,13 @@ package com.lingji.app.ui.screens
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,13 +22,16 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -40,6 +45,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,6 +55,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -57,16 +65,17 @@ import androidx.compose.ui.unit.sp
 import com.lingji.app.R
 import com.lingji.app.domain.model.Fragment
 import com.lingji.app.domain.model.Subject
-import com.lingji.app.ui.components.AIActionPanel
 import com.lingji.app.ui.components.FloatingInputContainer
 import com.lingji.app.ui.components.FragmentList
 import com.lingji.app.ui.components.GlassOutlinedTextField
 import com.lingji.app.ui.components.InputCapsule
+import com.lingji.app.ui.components.LingjiDialog
+import com.lingji.app.ui.components.LingjiDialogConfirmButton
+import com.lingji.app.ui.components.LingjiDialogDismissButton
 import com.lingji.app.ui.components.MarkdownView
 import com.lingji.app.ui.components.NoteEditor
 import com.lingji.app.ui.components.PageChatBar
 import com.lingji.app.ui.components.TimeDisplay
-import com.lingji.app.ui.components.ProcessingDialog
 import com.lingji.app.ui.theme.NotoSerifCJKsc
 import com.lingji.app.ui.viewmodel.SubjectViewModel
 import kotlinx.coroutines.launch
@@ -92,6 +101,18 @@ fun FragmentSubjectScreen(
     var deadline by remember { mutableStateOf("") }
     var noteChatAnswer by remember { mutableStateOf("") }
     var isNoteChatLoading by remember { mutableStateOf(false) }
+    var refineHint by remember { mutableStateOf("") }
+    var showRefineDialog by remember { mutableStateOf(false) }
+    var planDialogDeadline by remember { mutableStateOf("") }
+    var showPlanDialog by remember { mutableStateOf(false) }
+    var noteText by remember(liveSubject.aggregatedNote) { mutableStateOf(liveSubject.aggregatedNote) }
+
+    LaunchedEffect(uiState.aiErrorMessage) {
+        uiState.aiErrorMessage?.let { message ->
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            viewModel.clearAiError()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -113,6 +134,47 @@ fun FragmentSubjectScreen(
                     }
                 },
                 actions = {
+                    when (pagerState.currentPage) {
+                        0 -> TopBarActionButton(
+                            label = stringResource(R.string.organize),
+                            icon = Icons.Default.AutoFixHigh,
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                            onClick = { viewModel.organize(liveSubject) },
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                        1 -> TopBarActionButton(
+                            label = stringResource(R.string.refine),
+                            icon = Icons.Default.Brush,
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                            onClick = { showRefineDialog = true },
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                        2 -> TopBarActionButton(
+                            label = stringResource(R.string.plan),
+                            icon = Icons.Default.CalendarToday,
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            borderColor = MaterialTheme.colorScheme.outline,
+                            onClick = {
+                                planDialogDeadline = deadline
+                                showPlanDialog = true
+                            },
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                    }
+                    if (pagerState.currentPage == 1) {
+                        TextButton(
+                            onClick = {
+                                viewModel.updateAggregatedNote(noteText)
+                                Toast.makeText(context, R.string.note_saved, Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.padding(end = 8.dp)
+                        ) {
+                            Text(stringResource(R.string.save))
+                        }
+                    }
                     TimeDisplay(modifier = Modifier.padding(end = 8.dp))
                     IconButton(onClick = { showMenu = true }) {
                         Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.cd_more))
@@ -167,17 +229,9 @@ fun FragmentSubjectScreen(
                 horizontalMargin = 24.dp,
                 bottomOffset = 16.dp,
                 floatingBar = {
-                    // 操作按钮与输入胶囊一起悬浮在内容之上，按钮行本身透明背景，
-                    // 仅按钮可见，从而呈现沉浸式悬浮观感而非整版底栏。
+                    // 输入胶囊悬浮在内容之上，透明背景仅输入框可见，
+                    // 从而呈现沉浸式悬浮观感而非整版底栏。
                     Column(modifier = Modifier.fillMaxWidth()) {
-                        if (pagerState.currentPage != 2) {
-                            AIActionPanel(
-                                onOrganize = { viewModel.organize(liveSubject) },
-                                onRefine = { viewModel.refine(liveSubject) },
-                                onPlan = { viewModel.generatePlan(liveSubject, deadline.takeIf { it.isNotBlank() }) },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
                         if (pagerState.currentPage == 0) {
                             InputCapsule(
                                 hint = stringResource(R.string.hint_enter_fragment),
@@ -232,23 +286,25 @@ fun FragmentSubjectScreen(
                                     onEdit = { editingFragment = it },
                                     onDelete = { viewModel.deleteFragment(liveSubject.id, it.id) },
                                     modifier = Modifier.fillMaxSize(),
-                                    // 预留底部悬浮按钮 + 输入胶囊的高度，使最后一条碎片可滚动到其上方。
-                                    bottomContentPadding = 160.dp
+                                    // 预留底部悬浮输入胶囊的高度，使最后一条碎片可滚动到其上方。
+                                    bottomContentPadding = 100.dp
                                 )
                                 1 -> {
-                                    var noteText by remember(liveSubject.aggregatedNote) { mutableStateOf(liveSubject.aggregatedNote) }
                                     NoteEditor(
                                         value = noteText,
                                         onValueChange = { noteText = it },
                                         modifier = Modifier.fillMaxSize(),
-                                        bottomContentPadding = 140.dp
+                                        bottomContentPadding = 100.dp
                                     )
                                 }
                                 2 -> PlanPage(
                                     plan = liveSubject.studyPlan,
                                     deadline = deadline,
                                     onDeadlineChange = { deadline = it },
-                                    onGenerate = { viewModel.generatePlan(liveSubject, deadline.takeIf { it.isNotBlank() }) }
+                                    onGenerate = {
+                                        planDialogDeadline = deadline
+                                        showPlanDialog = true
+                                    }
                                 )
                             }
                         }
@@ -258,17 +314,72 @@ fun FragmentSubjectScreen(
         }
     }
 
-    if (uiState.isProcessing) {
-        ProcessingDialog(
-            message = uiState.processingMessage ?: "处理中…",
-            streamText = uiState.processingStreamLine,
-            onDismissRequest = { }
+    if (showRefineDialog) {
+        LingjiDialog(
+            onDismissRequest = { showRefineDialog = false },
+            title = { Text(stringResource(R.string.refine_hint_title)) },
+            text = {
+                GlassOutlinedTextField(
+                    value = refineHint,
+                    onValueChange = { refineHint = it },
+                    placeholder = { Text(stringResource(R.string.refine_hint_placeholder)) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                LingjiDialogConfirmButton(
+                    text = stringResource(R.string.confirm),
+                    onClick = {
+                        viewModel.refine(liveSubject, refineHint.takeIf { it.isNotBlank() })
+                        showRefineDialog = false
+                        refineHint = ""
+                    }
+                )
+            },
+            dismissButton = {
+                LingjiDialogDismissButton(
+                    text = stringResource(R.string.cancel),
+                    onClick = { showRefineDialog = false }
+                )
+            }
+        )
+    }
+
+    if (showPlanDialog) {
+        LingjiDialog(
+            onDismissRequest = { showPlanDialog = false },
+            title = { Text(stringResource(R.string.plan_dialog_title)) },
+            text = {
+                GlassOutlinedTextField(
+                    value = planDialogDeadline,
+                    onValueChange = { planDialogDeadline = it },
+                    placeholder = { Text(stringResource(R.string.plan_deadline_hint)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                LingjiDialogConfirmButton(
+                    text = stringResource(R.string.confirm),
+                    onClick = {
+                        deadline = planDialogDeadline
+                        viewModel.generatePlan(liveSubject, planDialogDeadline.takeIf { it.isNotBlank() })
+                        showPlanDialog = false
+                    }
+                )
+            },
+            dismissButton = {
+                LingjiDialogDismissButton(
+                    text = stringResource(R.string.cancel),
+                    onClick = { showPlanDialog = false }
+                )
+            }
         )
     }
 
     editingFragment?.let { fragment ->
         var content by remember(fragment.id) { mutableStateOf(fragment.content) }
-        AlertDialog(
+        LingjiDialog(
             onDismissRequest = { editingFragment = null },
             title = { Text(stringResource(R.string.edit_fragment)) },
             text = {
@@ -279,17 +390,19 @@ fun FragmentSubjectScreen(
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
-                    viewModel.updateFragment(liveSubject.id, fragment.id, content)
-                    editingFragment = null
-                }) {
-                    Text(stringResource(R.string.save))
-                }
+                LingjiDialogConfirmButton(
+                    text = stringResource(R.string.save),
+                    onClick = {
+                        viewModel.updateFragment(liveSubject.id, fragment.id, content)
+                        editingFragment = null
+                    }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { editingFragment = null }) {
-                    Text(stringResource(R.string.cancel))
-                }
+                LingjiDialogDismissButton(
+                    text = stringResource(R.string.cancel),
+                    onClick = { editingFragment = null }
+                )
             }
         )
     }
@@ -400,23 +513,25 @@ private fun PlanPage(
                     modifier = Modifier.weight(1f),
                     singleLine = true
                 )
-                TextButton(
-                    onClick = onGenerate,
-                    modifier = Modifier
-                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
-                        .padding(horizontal = 4.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Text(
-                        text = stringResource(if (plan.isBlank()) R.string.generate_plan else R.string.regenerate_plan),
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(start = 4.dp)
-                    )
+                if (plan.isBlank()) {
+                    TextButton(
+                        onClick = onGenerate,
+                        modifier = Modifier
+                            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
+                            .padding(horizontal = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.generate_plan),
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(start = 4.dp)
+                        )
+                    }
                 }
             }
         }
@@ -445,5 +560,39 @@ private fun PlanPage(
                     .padding(16.dp)
             )
         }
+    }
+}
+
+@Composable
+private fun TopBarActionButton(
+    label: String,
+    icon: ImageVector,
+    containerColor: Color,
+    contentColor: Color,
+    borderColor: Color? = null,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(8.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = containerColor,
+            contentColor = contentColor
+        ),
+        border = borderColor?.let { BorderStroke(1.dp, it) }
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(16.dp)
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.padding(start = 6.dp)
+        )
     }
 }

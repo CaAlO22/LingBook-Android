@@ -16,7 +16,6 @@ import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -174,7 +173,7 @@ fun SubjectCard(
             }
 
             if (showDeleteDialog) {
-                AlertDialog(
+                LingjiDialog(
                     onDismissRequest = { showDeleteDialog = false },
                     title = { Text(stringResource(R.string.delete)) },
                     text = {
@@ -186,19 +185,20 @@ fun SubjectCard(
                         )
                     },
                     confirmButton = {
-                        TextButton(
+                        LingjiDialogConfirmButton(
+                            text = stringResource(R.string.delete),
                             onClick = {
                                 onDelete()
                                 showDeleteDialog = false
-                            }
-                        ) {
-                            Text(stringResource(R.string.delete))
-                        }
+                            },
+                            isDestructive = true
+                        )
                     },
                     dismissButton = {
-                        TextButton(onClick = { showDeleteDialog = false }) {
-                            Text(stringResource(R.string.cancel))
-                        }
+                        LingjiDialogDismissButton(
+                            text = stringResource(R.string.cancel),
+                            onClick = { showDeleteDialog = false }
+                        )
                     }
                 )
             }

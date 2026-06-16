@@ -35,10 +35,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -51,12 +51,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.lingji.app.R
 import com.lingji.app.domain.model.APIProvider
 import com.lingji.app.domain.model.AISettings
-import com.lingji.app.domain.model.MimoModel
-import com.lingji.app.domain.model.MimoPresets
+import com.lingji.app.domain.provider.ProviderRegistry
 import com.lingji.app.ui.components.SettingsOutlinedTextField
+import com.lingji.app.ui.settings.ProviderEndpointSettings
+import com.lingji.app.ui.settings.ProviderModelSettings
+import com.lingji.app.ui.settings.providerDisplayName
+import com.lingji.app.ui.theme.NotoSerifCJKsc
 import com.lingji.app.ui.viewmodel.SubjectViewModel
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
@@ -91,12 +95,39 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.settings_title)) },
+                modifier = Modifier.padding(top = 16.dp),
+                title = {
+                    Text(
+                        text = stringResource(R.string.settings_title),
+                        style = MaterialTheme.typography.headlineLarge.copy(
+                            fontFamily = NotoSerifCJKsc,
+                            fontSize = 40.sp,
+                            letterSpacing = (-0.03).sp
+                        )
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
-                }
+                },
+                actions = {
+                    TextButton(
+                        onClick = {
+                            viewModel.saveSettings(settings)
+                            Toast.makeText(
+                                context,
+                                R.string.settings_saved,
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    ) {
+                        Text(stringResource(R.string.save))
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
             )
         }
     ) { padding ->
@@ -115,7 +146,7 @@ fun SettingsScreen(
                     onExpandedChange = { expanded = it }
                 ) {
                     SettingsOutlinedTextField(
-                        value = settings.provider.name,
+                        value = providerDisplayName(settings.provider),
                         onValueChange = {},
                         readOnly = true,
                         label = { Text(stringResource(R.string.provider)) },
@@ -130,7 +161,7 @@ fun SettingsScreen(
                     ) {
                         APIProvider.entries.forEach { provider ->
                             DropdownMenuItem(
-                                text = { Text(provider.name) },
+                                text = { Text(providerDisplayName(provider)) },
                                 onClick = {
                                     viewModel.saveSettings(
                                         applyProviderPreset(settings, provider)
@@ -141,12 +172,11 @@ fun SettingsScreen(
                         }
                     }
                 }
-                if (settings.provider == APIProvider.XIAOMI) {
-                    MimoUrlPresets(
-                        baseUrl = settings.baseUrl,
-                        onBaseUrlChange = { viewModel.saveSettings(settings.copy(baseUrl = it)) }
-                    )
-                }
+                ProviderEndpointSettings(
+                    provider = settings.provider,
+                    settings = settings,
+                    onSettingsChange = { viewModel.saveSettings(it) }
+                )
                 SettingsTextField(
                     value = settings.baseUrl,
                     onValueChange = { viewModel.saveSettings(settings.copy(baseUrl = it)) },
@@ -157,22 +187,11 @@ fun SettingsScreen(
                     onValueChange = { viewModel.saveSettings(settings.copy(apiKey = it)) },
                     label = stringResource(R.string.api_key)
                 )
-                if (settings.provider == APIProvider.XIAOMI) {
-                    MimoModelDropdown(
-                        selectedModelId = settings.modelName,
-                        onModelSelected = { viewModel.saveSettings(settings.copy(modelName = it)) }
-                    )
-                    ThinkingSwitch(
-                        checked = settings.enableThinking,
-                        onCheckedChange = { viewModel.saveSettings(settings.copy(enableThinking = it)) }
-                    )
-                } else {
-                    SettingsTextField(
-                        value = settings.modelName,
-                        onValueChange = { viewModel.saveSettings(settings.copy(modelName = it)) },
-                        label = stringResource(R.string.model_name)
-                    )
-                }
+                ProviderModelSettings(
+                    provider = settings.provider,
+                    settings = settings,
+                    onSettingsChange = { viewModel.saveSettings(it) }
+                )
                 Button(
                     onClick = {
                         testResult = ""
@@ -325,153 +344,13 @@ private fun SettingsTextField(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun MimoUrlPresets(
-    baseUrl: String,
-    onBaseUrlChange: (String) -> Unit
-) {
-    val selected = when (baseUrl.trimEnd('/')) {
-        MimoPresets.PAY_AS_YOU_GO_URL -> stringResource(R.string.mimo_pay_as_you_go)
-        MimoPresets.TOKEN_PLAN_URL -> stringResource(R.string.mimo_token_plan)
-        else -> stringResource(R.string.mimo_custom_url)
-    }
-    var expanded by remember { mutableStateOf(false) }
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = it }
-    ) {
-        SettingsOutlinedTextField(
-            value = selected,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(stringResource(R.string.mimo_url_preset)) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .menuAnchor()
-        )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.mimo_pay_as_you_go)) },
-                onClick = {
-                    onBaseUrlChange(MimoPresets.PAY_AS_YOU_GO_URL)
-                    expanded = false
-                }
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.mimo_token_plan)) },
-                onClick = {
-                    onBaseUrlChange(MimoPresets.TOKEN_PLAN_URL)
-                    expanded = false
-                }
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.mimo_custom_url)) },
-                onClick = {
-                    onBaseUrlChange("")
-                    expanded = false
-                }
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun MimoModelDropdown(
-    selectedModelId: String,
-    onModelSelected: (String) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val selected = MimoPresets.MODELS.find { it.id == selectedModelId }
-        ?: MimoPresets.MODELS.first()
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = it }
-    ) {
-        SettingsOutlinedTextField(
-            value = selected.name,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(stringResource(R.string.model_name)) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .menuAnchor()
-        )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            MimoPresets.MODELS.forEach { model ->
-                DropdownMenuItem(
-                    text = {
-                        Column {
-                            Text(model.name)
-                            Text(
-                                text = model.description,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    },
-                    onClick = {
-                        onModelSelected(model.id)
-                        expanded = false
-                    }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ThinkingSwitch(
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = stringResource(R.string.enable_thinking),
-                style = MaterialTheme.typography.bodyLarge
-            )
-            Text(
-                text = stringResource(R.string.enable_thinking_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange
-        )
-    }
-}
-
 private fun applyProviderPreset(settings: AISettings, provider: APIProvider): AISettings {
-    val defaults = when (provider) {
-        APIProvider.OPENAI -> "https://api.openai.com/v1" to "gpt-4o"
-        APIProvider.DOUBAO -> "https://ark.cn-beijing.volces.com/api/v3" to "doubao-pro"
-        APIProvider.XIAOMI -> MimoPresets.PAY_AS_YOU_GO_URL to MimoPresets.MODELS.first().id
-    }
+    val config = ProviderRegistry.config(provider)
     return settings.copy(
         provider = provider,
-        baseUrl = defaults.first,
-        modelName = defaults.second,
-        enableThinking = if (provider == APIProvider.XIAOMI) settings.enableThinking else false
+        baseUrl = config.defaultBaseUrl,
+        modelName = config.defaultModelId,
+        enableThinking = if (config.supportsThinking) settings.enableThinking else false
     )
 }
 

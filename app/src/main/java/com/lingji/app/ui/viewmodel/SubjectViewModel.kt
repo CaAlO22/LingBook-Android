@@ -9,6 +9,7 @@ import com.lingji.app.data.remote.LLMService
 import com.lingji.app.data.repository.SettingsRepository
 import com.lingji.app.data.repository.SubjectRepository
 import com.lingji.app.domain.model.AISettings
+import com.lingji.app.ui.viewmodel.AiIslandLine
 import com.lingji.app.domain.model.Fragment
 import com.lingji.app.domain.model.NotebookPage
 import com.lingji.app.domain.model.PageIndex
@@ -59,8 +60,23 @@ class SubjectViewModel @Inject constructor(
 
     fun openSettings() = _uiState.update { it.copy(isSettingsOpen = true) }
     fun closeSettings() = _uiState.update { it.copy(isSettingsOpen = false) }
+    fun clearAiError() = _uiState.update { it.copy(aiErrorMessage = null) }
+
+    private fun ensureAiConfigured(): Boolean {
+        if (_uiState.value.settings.isConfigured()) return true
+        _uiState.update {
+            it.copy(aiErrorMessage = "AI 未配置：请先填写 Base URL、API Key 和模型名称")
+        }
+        return false
+    }
 
     fun setCurrentSubject(id: String?) = _uiState.update { it.copy(currentSubjectId = id) }
+
+    fun saveLastOpenedPageId(subjectId: String, pageId: String?) {
+        viewModelScope.launch {
+            subjectRepository.updateLastOpenedPageId(subjectId, pageId)
+        }
+    }
 
     fun addSubject(title: String, type: SubjectType) {
         viewModelScope.launch {
@@ -163,8 +179,18 @@ class SubjectViewModel @Inject constructor(
         viewModelScope.launch { subjectRepository.deletePage(subjectId, pageId) }
     }
 
+    fun movePage(subjectId: String, pageId: String, newIndex: Int) {
+        viewModelScope.launch { subjectRepository.movePage(subjectId, pageId, newIndex) }
+    }
+
     fun updatePageIndex(subjectId: String, pageIndex: List<PageIndex>) {
         // Reorder handled by updating order in page entities; keep simple here.
+    }
+
+    fun updatePageIndexEntry(subjectId: String, pageId: String, entry: PageIndexEntry) {
+        viewModelScope.launch {
+            subjectRepository.updatePageIndexEntry(subjectId, pageId, entry)
+        }
     }
 
     fun buildPageIndexes(
@@ -182,13 +208,30 @@ class SubjectViewModel @Inject constructor(
                 val (entries, indexedIds) = indexService.batchBuildIndexesForDirtyPages(
                     pages,
                     _uiState.value.settings,
-                    onProgress
+                    onProgress = { done, total, page ->
+                        val title = page.title.takeIf { it.isNotBlank() } ?: "未命名页面"
+                        _uiState.update {
+                            it.copy(
+                                processingStreamLine = "",
+                                aiIslandReasoning = "正在分析页面 $done / $total：$title",
+                                aiIslandLines = buildIslandLines(
+                                    reasoning = "正在分析页面 $done / $total：$title",
+                                    content = ""
+                                ),
+                                processingLastUpdate = System.currentTimeMillis()
+                            )
+                        }
+                        onProgress?.invoke(done, total)
+                    },
+                    onToken = { token -> appendStream(token) },
+                    onReasoning = { token -> appendReasoning(token) }
                 )
                 subjectRepository.markPagesIndexed(subject.id, indexedIds, System.currentTimeMillis())
                 subjectRepository.savePageIndexEntries(subject.id, entries)
                 onComplete(entries, indexedIds)
             } catch (e: Exception) {
                 e.printStackTrace()
+                _uiState.update { it.copy(aiErrorMessage = e.message ?: "构建索引失败") }
                 onError(e.message ?: "构建索引失败")
             } finally {
                 setProcessing(false)
@@ -244,12 +287,17 @@ class SubjectViewModel @Inject constructor(
                     content,
                     question,
                     _uiState.value.settings,
-                    onToken,
+                    onToken = { token ->
+                        appendStream(token)
+                        onToken(token)
+                    },
+                    onReasoning = { token -> appendReasoning(token) },
                     images
                 )
                 onComplete(answer)
             } catch (e: Exception) {
                 e.printStackTrace()
+                _uiState.update { it.copy(aiErrorMessage = e.message ?: "请求失败") }
                 onError(e.message ?: "请求失败")
             } finally {
                 setProcessing(false)
@@ -280,6 +328,7 @@ class SubjectViewModel @Inject constructor(
 
     fun organize(subject: Subject, hint: String? = null) {
         if (_uiState.value.isProcessing) return
+        if (!ensureAiConfigured()) return
         viewModelScope.launch {
             setProcessing(true, if (subject.unmergedFragments.isNotEmpty()) "正在整理并合并新碎片" else "正在基于全量碎片重构笔记")
             try {
@@ -289,8 +338,10 @@ class SubjectViewModel @Inject constructor(
                         subject.aggregatedNote,
                         fragmentsToMerge,
                         _uiState.value.settings,
-                        hint
-                    ) { token -> appendStream(token) }
+                        hint,
+                        onToken = { token -> appendStream(token) },
+                        onReasoning = { token -> appendReasoning(token) }
+                    )
                     subjectRepository.updateAggregatedNote(subject.id, note)
                     subjectRepository.completeBatchMerge(subject.id, fragmentsToMerge.map { it.id })
                     note
@@ -299,12 +350,15 @@ class SubjectViewModel @Inject constructor(
                         subject.fragments,
                         subject.aggregatedNote,
                         _uiState.value.settings,
-                        hint
-                    ) { token -> appendStream(token) }
+                        hint,
+                        onToken = { token -> appendStream(token) },
+                        onReasoning = { token -> appendReasoning(token) }
+                    )
                 }
                 subjectRepository.updateAggregatedNote(subject.id, updated)
             } catch (e: Exception) {
                 e.printStackTrace()
+                _uiState.update { it.copy(aiErrorMessage = e.message ?: "整理失败") }
             } finally {
                 setProcessing(false)
             }
@@ -313,6 +367,7 @@ class SubjectViewModel @Inject constructor(
 
     fun refine(subject: Subject, hint: String? = null) {
         if (_uiState.value.isProcessing) return
+        if (!ensureAiConfigured()) return
         viewModelScope.launch {
             setProcessing(true, "正在基于全量碎片重构笔记")
             try {
@@ -320,11 +375,14 @@ class SubjectViewModel @Inject constructor(
                     subject.fragments,
                     subject.aggregatedNote,
                     _uiState.value.settings,
-                    hint
-                ) { token -> appendStream(token) }
+                    hint,
+                    onToken = { token -> appendStream(token) },
+                    onReasoning = { token -> appendReasoning(token) }
+                )
                 subjectRepository.updateAggregatedNote(subject.id, note)
             } catch (e: Exception) {
                 e.printStackTrace()
+                _uiState.update { it.copy(aiErrorMessage = e.message ?: "重构失败") }
             } finally {
                 setProcessing(false)
             }
@@ -333,17 +391,21 @@ class SubjectViewModel @Inject constructor(
 
     fun generatePlan(subject: Subject, deadline: String? = null) {
         if (_uiState.value.isProcessing) return
+        if (!ensureAiConfigured()) return
         viewModelScope.launch {
             setProcessing(true, "正在为您生成专属学习计划")
             try {
                 val plan = llmService.generateStudyPlan(
                     subject.aggregatedNote,
                     _uiState.value.settings,
-                    deadline
-                ) { token -> appendStream(token) }
+                    deadline,
+                    onToken = { token -> appendStream(token) },
+                    onReasoning = { token -> appendReasoning(token) }
+                )
                 subjectRepository.updateStudyPlan(subject.id, plan)
             } catch (e: Exception) {
                 e.printStackTrace()
+                _uiState.update { it.copy(aiErrorMessage = e.message ?: "生成计划失败") }
             } finally {
                 setProcessing(false)
             }
@@ -355,16 +417,36 @@ class SubjectViewModel @Inject constructor(
     }
 
     fun testConnection(onResult: (Pair<Boolean, String>) -> Unit) {
+        if (_uiState.value.isProcessing) return
         viewModelScope.launch {
-            val result = llmService.testConnection(_uiState.value.settings)
-            onResult(result)
+            setProcessing(true, "正在测试连接…")
+            try {
+                val result = llmService.testConnection(_uiState.value.settings)
+                onResult(result)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _uiState.update { it.copy(aiErrorMessage = e.message ?: "测试失败") }
+                onResult(false to (e.message ?: "测试失败"))
+            } finally {
+                setProcessing(false)
+            }
         }
     }
 
     fun testMultimodalConnection(imageBase64: String, onResult: (Pair<Boolean, String>) -> Unit) {
+        if (_uiState.value.isProcessing) return
         viewModelScope.launch {
-            val result = llmService.testMultimodalConnection(_uiState.value.settings, imageBase64)
-            onResult(result)
+            setProcessing(true, "正在测试多模态连接…")
+            try {
+                val result = llmService.testMultimodalConnection(_uiState.value.settings, imageBase64)
+                onResult(result)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _uiState.update { it.copy(aiErrorMessage = e.message ?: "多模态测试失败") }
+                onResult(false to (e.message ?: "多模态测试失败"))
+            } finally {
+                setProcessing(false)
+            }
         }
     }
 
@@ -394,6 +476,8 @@ class SubjectViewModel @Inject constructor(
                 isProcessing = loading,
                 processingMessage = if (loading) message else null,
                 processingStreamLine = if (loading) "" else it.processingStreamLine,
+                aiIslandReasoning = if (loading) "" else it.aiIslandReasoning,
+                aiIslandLines = if (loading) emptyList() else it.aiIslandLines,
                 processingLastUpdate = if (loading) System.currentTimeMillis() else null
             )
         }
@@ -401,11 +485,49 @@ class SubjectViewModel @Inject constructor(
 
     private fun appendStream(token: String) {
         _uiState.update {
+            val newText = it.processingStreamLine + token
             it.copy(
-                processingStreamLine = it.processingStreamLine + token,
+                processingStreamLine = newText,
+                aiIslandLines = buildIslandLines(
+                    reasoning = it.aiIslandReasoning,
+                    content = newText
+                ),
                 processingLastUpdate = System.currentTimeMillis()
             )
         }
+    }
+
+    private fun appendReasoning(token: String) {
+        _uiState.update {
+            val newText = it.aiIslandReasoning + token
+            it.copy(
+                aiIslandReasoning = newText,
+                aiIslandLines = buildIslandLines(
+                    reasoning = newText,
+                    content = it.processingStreamLine
+                ),
+                processingLastUpdate = System.currentTimeMillis()
+            )
+        }
+    }
+
+    private fun updateIslandProgress(message: String) {
+        _uiState.update {
+            it.copy(
+                processingStreamLine = message,
+                aiIslandLines = buildIslandLines(
+                    reasoning = it.aiIslandReasoning,
+                    content = message
+                ),
+                processingLastUpdate = System.currentTimeMillis()
+            )
+        }
+    }
+
+    private fun buildIslandLines(reasoning: String, content: String): List<AiIslandLine> {
+        val reasoningLines = reasoning.split('\n').map { line -> AiIslandLine(line, isReasoning = true) }
+        val contentLines = content.split('\n').map { line -> AiIslandLine(line, isReasoning = false) }
+        return reasoningLines + contentLines
     }
 
     private fun AISettings.isConfigured(): Boolean {

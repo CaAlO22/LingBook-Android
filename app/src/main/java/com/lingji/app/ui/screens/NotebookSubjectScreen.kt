@@ -21,13 +21,17 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -62,9 +66,13 @@ import com.lingji.app.domain.model.PageIndexEntry
 import com.lingji.app.domain.model.Subject
 import com.lingji.app.ui.components.FloatingInputContainer
 import com.lingji.app.ui.components.IndexSearchPanel
+import com.lingji.app.ui.components.LingjiDialog
+import com.lingji.app.ui.components.LingjiDialogConfirmButton
+import com.lingji.app.ui.components.LingjiDialogDismissButton
 import com.lingji.app.ui.components.NotebookPageEditor
 import com.lingji.app.ui.components.PageChatBar
 import com.lingji.app.ui.components.PageImagePicker
+import com.lingji.app.ui.components.PageIndexEditorDialog
 import com.lingji.app.ui.components.TimeDisplay
 import com.lingji.app.ui.components.rememberImagePickerState
 import com.lingji.app.ui.theme.NotoSerifCJKsc
@@ -84,7 +92,11 @@ fun NotebookSubjectScreen(
     }
     val pages = liveSubject.pages ?: emptyList()
 
-    var currentPageId by remember { mutableStateOf(pages.lastOrNull()?.id) }
+    var currentPageId by remember(subject.id) {
+        val remembered = subject.lastOpenedPageId
+        val initial = if (remembered != null && pages.any { it.id == remembered }) remembered else pages.lastOrNull()?.id
+        mutableStateOf(initial)
+    }
     val currentPageIndex by remember(currentPageId, pages) {
         derivedStateOf { pages.indexOfFirst { it.id == currentPageId } }
     }
@@ -107,14 +119,26 @@ fun NotebookSubjectScreen(
         }
     }
 
+    // 记忆上次打开的页面
+    LaunchedEffect(currentPageId) {
+        if (currentPageId != subject.lastOpenedPageId) {
+            viewModel.saveLastOpenedPageId(liveSubject.id, currentPageId)
+        }
+    }
+
     var showSearch by remember { mutableStateOf(false) }
+    var showMoreMenu by remember { mutableStateOf(false) }
+    var showPagePositionMenu by remember { mutableStateOf(false) }
     var showImagePickerForPage by remember { mutableStateOf<NotebookPage?>(null) }
     var showJumpDialog by remember { mutableStateOf(false) }
     var jumpText by remember { mutableStateOf("") }
+    var showMoveDialog by remember { mutableStateOf(false) }
+    var moveText by remember { mutableStateOf("") }
     var chatAnswer by remember { mutableStateOf("") }
     var isChatLoading by remember { mutableStateOf(false) }
     var deleteConfirmPage by remember { mutableStateOf<NotebookPage?>(null) }
     var lastCreatedPageId by remember { mutableStateOf<String?>(null) }
+    var showIndexEditorPage by remember { mutableStateOf<NotebookPage?>(null) }
 
     val imagePickerState = rememberImagePickerState()
 
@@ -149,6 +173,32 @@ fun NotebookSubjectScreen(
         }
     }
 
+    val triggerBuildIndex = {
+        Toast.makeText(
+            context,
+            context.getString(R.string.building_index_toast),
+            Toast.LENGTH_SHORT
+        ).show()
+        viewModel.buildPageIndexes(
+            subject = liveSubject,
+            onComplete = { _, indexedIds ->
+                val message = if (indexedIds.isEmpty()) {
+                    context.getString(R.string.no_index_needed_toast)
+                } else {
+                    context.getString(R.string.index_built_toast, indexedIds.size)
+                }
+                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            },
+            onError = { error ->
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.index_build_failed_toast, error),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -171,22 +221,43 @@ fun NotebookSubjectScreen(
                 actions = {
                     TimeDisplay(modifier = Modifier.padding(end = 8.dp))
 
+                    currentPage?.let { page ->
+                        TextButton(
+                            onClick = {
+                                viewModel.updatePage(liveSubject.id, page)
+                                Toast.makeText(context, R.string.page_saved, Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.padding(end = 8.dp)
+                        ) {
+                            Text(stringResource(R.string.save))
+                        }
+                    }
+
                     if (dirtyCount > 0) {
                         Surface(
                             shape = RoundedCornerShape(percent = 50),
                             color = MaterialTheme.colorScheme.tertiaryContainer,
-                            modifier = Modifier.padding(end = 8.dp)
+                            modifier = Modifier.padding(end = 8.dp),
+                            onClick = triggerBuildIndex
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Warning,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                    modifier = Modifier.size(14.dp)
-                                )
+                                if (uiState.isProcessing) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(14.dp),
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.Warning,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
                                 Text(
                                     text = "$dirtyCount",
                                     style = MaterialTheme.typography.labelSmall,
@@ -198,31 +269,65 @@ fun NotebookSubjectScreen(
                     }
 
                     if (pages.isNotEmpty()) {
-                        Surface(
-                            shape = RoundedCornerShape(percent = 50),
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier.padding(end = 8.dp),
-                            onClick = { showJumpDialog = true }
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                        Box {
+                            Surface(
+                                shape = RoundedCornerShape(percent = 50),
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                modifier = Modifier.padding(end = 8.dp),
+                                onClick = { showPagePositionMenu = true }
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Book,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(14.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Book,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = stringResource(
+                                            R.string.page_position_format,
+                                            currentPageIndex + 1,
+                                            pages.size
+                                        ),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(start = 4.dp)
+                                    )
+                                }
+                            }
+                            DropdownMenu(
+                                expanded = showPagePositionMenu,
+                                onDismissRequest = { showPagePositionMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.jump_to_page)) },
+                                    onClick = {
+                                        showPagePositionMenu = false
+                                        showJumpDialog = true
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Default.Book,
+                                            contentDescription = null
+                                        )
+                                    }
                                 )
-                                Text(
-                                    text = stringResource(
-                                        R.string.page_position_format,
-                                        currentPageIndex + 1,
-                                        pages.size
-                                    ),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(start = 4.dp)
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.edit_page_position)) },
+                                    onClick = {
+                                        showPagePositionMenu = false
+                                        moveText = (currentPageIndex + 1).toString()
+                                        showMoveDialog = true
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Default.Edit,
+                                            contentDescription = null
+                                        )
+                                    }
                                 )
                             }
                         }
@@ -254,55 +359,78 @@ fun NotebookSubjectScreen(
                         }
                     }
 
-                    IconButton(onClick = {
-                        viewModel.buildPageIndexes(
-                            subject = liveSubject,
-                            onComplete = { _, _ -> },
-                            onError = {}
-                        )
-                    }) {
-                        Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.cd_build_index))
-                    }
-                    IconButton(
-                        onClick = {
-                            val fileName = liveSubject.title
-                                .replace(Regex("[\\\\/:*?\"<>|]"), "_")
-                                .takeIf { it.isNotBlank() } ?: "notebook"
-                            exportLauncher.launch("$fileName.ling")
+                    Box {
+                        IconButton(onClick = { showMoreMenu = true }) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = stringResource(R.string.cd_more)
+                            )
                         }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.FileDownload,
-                            contentDescription = stringResource(R.string.cd_export)
-                        )
-                    }
-                    IconButton(
-                        onClick = {
-                            scope.launch {
-                                try {
-                                    val encoded = viewModel.exportSubjectToText(liveSubject)
-                                    if (encoded.length > CLIPBOARD_SIZE_LIMIT) {
-                                        Toast.makeText(
-                                            context,
-                                            context.getString(R.string.copy_too_large),
-                                            Toast.LENGTH_LONG
-                                        ).show()
-                                        return@launch
-                                    }
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText(liveSubject.title, encoded))
-                                    Toast.makeText(context, context.getString(R.string.copy_success), Toast.LENGTH_SHORT).show()
-                                } catch (e: Exception) {
-                                    e.printStackTrace()
-                                    Toast.makeText(context, context.getString(R.string.copy_failed), Toast.LENGTH_SHORT).show()
+                        DropdownMenu(
+                            expanded = showMoreMenu,
+                            onDismissRequest = { showMoreMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.build_index)) },
+                                onClick = {
+                                    showMoreMenu = false
+                                    triggerBuildIndex()
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.Refresh,
+                                        contentDescription = null
+                                    )
                                 }
-                            }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.export)) },
+                                onClick = {
+                                    showMoreMenu = false
+                                    val fileName = liveSubject.title
+                                        .replace(Regex("[\\\\/:*?\"<>|]"), "_")
+                                        .takeIf { it.isNotBlank() } ?: "notebook"
+                                    exportLauncher.launch("$fileName.ling")
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.FileDownload,
+                                        contentDescription = null
+                                    )
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.copy_to_clipboard)) },
+                                onClick = {
+                                    showMoreMenu = false
+                                    scope.launch {
+                                        try {
+                                            val encoded = viewModel.exportSubjectToText(liveSubject)
+                                            if (encoded.length > CLIPBOARD_SIZE_LIMIT) {
+                                                Toast.makeText(
+                                                    context,
+                                                    context.getString(R.string.copy_too_large),
+                                                    Toast.LENGTH_LONG
+                                                ).show()
+                                                return@launch
+                                            }
+                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText(liveSubject.title, encoded))
+                                            Toast.makeText(context, context.getString(R.string.copy_success), Toast.LENGTH_SHORT).show()
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                            Toast.makeText(context, context.getString(R.string.copy_failed), Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.ContentCopy,
+                                        contentDescription = null
+                                    )
+                                }
+                            )
                         }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ContentCopy,
-                            contentDescription = stringResource(R.string.copy_to_clipboard)
-                        )
                     }
                     IconButton(onClick = { showSearch = true }) {
                         Icon(Icons.Default.Search, contentDescription = stringResource(R.string.cd_search))
@@ -374,13 +502,8 @@ fun NotebookSubjectScreen(
                             },
                             onDelete = { deleteConfirmPage = page },
                             onAddImage = { showImagePickerForPage = page },
-                            onGenerateIndex = {
-                                viewModel.buildPageIndexes(
-                                    subject = liveSubject,
-                                    onComplete = { _, _ -> },
-                                    onError = {}
-                                )
-                            },
+                            onGenerateIndex = triggerBuildIndex,
+                            onEditIndex = { showIndexEditorPage = page },
                             onFocus = { },
                             autoFocusContent = page.id == lastCreatedPageId,
                             fillHeight = true,
@@ -407,7 +530,7 @@ fun NotebookSubjectScreen(
     }
 
     if (showJumpDialog) {
-        AlertDialog(
+        LingjiDialog(
             onDismissRequest = { showJumpDialog = false; jumpText = "" },
             title = { Text(stringResource(R.string.jump_to_page)) },
             text = {
@@ -422,7 +545,8 @@ fun NotebookSubjectScreen(
                 )
             },
             confirmButton = {
-                TextButton(
+                LingjiDialogConfirmButton(
+                    text = stringResource(R.string.jump),
                     onClick = {
                         val number = jumpText.toIntOrNull()
                         val index = number?.minus(1)
@@ -432,14 +556,59 @@ fun NotebookSubjectScreen(
                         showJumpDialog = false
                         jumpText = ""
                     }
-                ) {
-                    Text(stringResource(R.string.jump))
-                }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { showJumpDialog = false; jumpText = "" }) {
-                    Text(stringResource(R.string.cancel))
-                }
+                LingjiDialogDismissButton(
+                    text = stringResource(R.string.cancel),
+                    onClick = { showJumpDialog = false; jumpText = "" }
+                )
+            }
+        )
+    }
+
+    if (showMoveDialog) {
+        LingjiDialog(
+            onDismissRequest = { showMoveDialog = false; moveText = "" },
+            title = { Text(stringResource(R.string.edit_page_position)) },
+            text = {
+                OutlinedTextField(
+                    value = moveText,
+                    onValueChange = { value ->
+                        moveText = value.filter { it.isDigit() }
+                    },
+                    label = {
+                        Text(
+                            stringResource(
+                                R.string.edit_page_position_hint,
+                                pages.size
+                            )
+                        )
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                LingjiDialogConfirmButton(
+                    text = stringResource(R.string.move),
+                    onClick = {
+                        val number = moveText.toIntOrNull()
+                        val index = number?.minus(1)
+                        val page = currentPage
+                        if (page != null && index != null && index in pages.indices && index != currentPageIndex) {
+                            viewModel.movePage(liveSubject.id, page.id, index)
+                        }
+                        showMoveDialog = false
+                        moveText = ""
+                    }
+                )
+            },
+            dismissButton = {
+                LingjiDialogDismissButton(
+                    text = stringResource(R.string.cancel),
+                    onClick = { showMoveDialog = false; moveText = "" }
+                )
             }
         )
     }
@@ -461,25 +630,48 @@ fun NotebookSubjectScreen(
         )
     }
 
+    showIndexEditorPage?.let { page ->
+        val entry = indexEntries[page.id]
+            ?: PageIndexEntry(
+                pageId = page.id,
+                title = page.title,
+                keywords = emptyList(),
+                summary = ""
+            )
+        PageIndexEditorDialog(
+            entry = entry,
+            onDismiss = { showIndexEditorPage = null },
+            onConfirm = { updated ->
+                viewModel.updatePageIndexEntry(liveSubject.id, page.id, updated)
+                showIndexEditorPage = null
+            }
+        )
+    }
+
     deleteConfirmPage?.let { page ->
-        AlertDialog(
+        LingjiDialog(
             onDismissRequest = { deleteConfirmPage = null },
             title = { Text(stringResource(R.string.delete_page)) },
             text = { Text(stringResource(R.string.delete_page_confirm, page.title.takeIf { it.isNotBlank() } ?: stringResource(R.string.unnamed_page))) },
             confirmButton = {
-                TextButton(
+                LingjiDialogConfirmButton(
+                    text = stringResource(R.string.delete),
+                    isDestructive = true,
                     onClick = {
+                        val deletedIndex = pages.indexOfFirst { it.id == page.id }
+                        val nextPage = pages.getOrNull(deletedIndex + 1)
+                            ?: pages.getOrNull(deletedIndex - 1)
+                        currentPageId = nextPage?.id
                         viewModel.deletePage(liveSubject.id, page.id)
                         deleteConfirmPage = null
                     }
-                ) {
-                    Text(stringResource(R.string.delete))
-                }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { deleteConfirmPage = null }) {
-                    Text(stringResource(R.string.cancel))
-                }
+                LingjiDialogDismissButton(
+                    text = stringResource(R.string.cancel),
+                    onClick = { deleteConfirmPage = null }
+                )
             }
         )
     }

@@ -18,6 +18,7 @@
     <string name="new_subject_hint">输入主题名称…</string>
     <string name="fragment_mode">碎片模式</string>
     <string name="notebook_mode">笔记本模式</string>
+    <string name="mode_format">模式：%1$s</string>
     <string name="empty_subjects">还没有学科，点击 + 创建</string>
     <string name="import_success">导入成功</string>
     <string name="import_failed">导入失败</string>
@@ -36,15 +37,22 @@
     <string name="fragments">碎片</string>
     <string name="note">笔记</string>
     <string name="study_plan">学习计划</string>
+    <string name="mode_edit">编辑</string>
+    <string name="mode_preview">预览</string>
     <string name="add_fragment">添加碎片</string>
     <string name="hint_enter_fragment">输入碎片内容…</string>
     <string name="empty_fragments_title">还没有碎片</string>
     <string name="empty_fragments_hint">在下方输入框添加第一条知识碎片</string>
     <string name="edit_fragment">编辑碎片</string>
     <string name="cd_edit">编辑</string>
+    <string name="cd_undo">撤销</string>
+    <string name="cd_redo">重做</string>
     <string name="organize">整理</string>
     <string name="refine">重构</string>
+    <string name="refine_hint_title">重构笔记</string>
+    <string name="refine_hint_placeholder">描述你希望如何重构，例如“更简洁”“突出重点”…</string>
     <string name="plan">计划</string>
+    <string name="plan_dialog_title">生成学习计划</string>
     <string name="rollback">回退</string>
     <string name="plan_deadline_hint">完成时长，如 30天</string>
     <string name="generate_plan">生成计划</string>
@@ -66,8 +74,11 @@
     <string name="page_count_format">%1$d 页</string>
     <string name="page_position_format">%1$d / %2$d</string>
     <string name="jump_to_page">跳转到页面</string>
+    <string name="edit_page_position">调整页面位置</string>
     <string name="page_number_hint">页码</string>
+    <string name="edit_page_position_hint">新位置（1-%1$d）</string>
     <string name="jump">跳转</string>
+    <string name="move">移动</string>
     <string name="cd_prev_page">上一页</string>
     <string name="cd_next_page">下一页</string>
     <string name="dirty_index_hint">待索引</string>
@@ -75,6 +86,10 @@
     <string name="delete_page">删除页面</string>
     <string name="delete_page_confirm">确定要删除“%1$s”吗？此操作不可撤销。</string>
     <string name="cd_add_image">添加图片</string>
+    <string name="add_image_title">添加图片</string>
+    <string name="choose_image_source">选择图片来源</string>
+    <string name="camera">拍照</string>
+    <string name="gallery">相册</string>
     <string name="cd_generate_index">生成索引</string>
     <string name="cd_remove_image">移除图片</string>
     <string name="content_hint">在此输入页面内容…</string>
@@ -84,7 +99,26 @@
     <string name="note_chat_target">笔记：%1$s</string>
     <string name="unnamed_page">未命名页面</string>
     <string name="cd_search">搜索</string>
+    <string name="search_notes">搜索笔记</string>
+    <string name="search_keyword_hint">关键词</string>
+    <string name="search_clear">清除</string>
+    <string name="search_action">搜索</string>
+    <string name="search_no_results">未找到相关结果</string>
+    <string name="search_match_format">匹配: %1$s</string>
     <string name="cd_build_index">构建索引</string>
+    <string name="build_index">构建索引</string>
+    <string name="building_index_toast">正在构建页面索引…</string>
+    <string name="no_index_needed_toast">没有需要构建索引的页面</string>
+    <string name="index_built_toast">已完成 %1$d 页索引</string>
+    <string name="index_build_failed_toast">构建索引失败：%1$s</string>
+    <string name="cd_edit_page_index">编辑页面索引</string>
+    <string name="edit_page_index">编辑页面索引</string>
+    <string name="index_keywords">关键词</string>
+    <string name="add_keyword">添加关键词</string>
+    <string name="add_keyword_hint">输入关键词</string>
+    <string name="remove_keyword">删除关键词</string>
+    <string name="index_summary">摘要</string>
+    <string name="summary_hint">页面摘要</string>
     <string name="cd_export">导出</string>
     <string name="export_success">导出成功</string>
     <string name="export_failed">导出失败</string>
@@ -102,16 +136,53 @@
     <string name="base_url">Base URL</string>
     <string name="api_key">API Key</string>
     <string name="model_name">模型名称</string>
+    <string name="enable_thinking">开启深度思考</string>
+    <string name="enable_thinking_hint">深度思考模式（thinking.type=enabled）</string>
+
+    <!-- 设置：供应商名称 -->
+    <string name="provider_openai">OpenAI</string>
+    <string name="provider_volcano">火山引擎</string>
+    <string name="provider_mimo">MiMo</string>
+    <string name="provider_bailian">阿里云百炼</string>
+    <string name="provider_zhipu">智谱 AI</string>
+    <string name="provider_deepseek">DeepSeek</string>
+    <string name="provider_kimi">Kimi</string>
+
+    <!-- 设置：Zhipu -->
+    <string name="zhipu_url_preset">URL 预设</string>
+    <string name="zhipu_bigmodel_url">智谱 OpenAI 兼容接口</string>
+    <string name="zhipu_custom_url">自定义 URL</string>
+
+    <!-- 设置：DeepSeek -->
+    <string name="deepseek_url_preset">URL 预设</string>
+    <string name="deepseek_official_url">DeepSeek 官方 API</string>
+    <string name="deepseek_custom_url">自定义 URL</string>
+
+    <!-- 设置：Kimi -->
+    <string name="kimi_url_preset">URL 预设</string>
+    <string name="kimi_moonshot_url">Moonshot 官方 API</string>
+    <string name="kimi_custom_url">自定义 URL</string>
+
+    <!-- 设置：Bailian -->
+    <string name="bailian_url_preset">URL 预设</string>
+    <string name="bailian_dashscope_url">DashScope 兼容模式</string>
+    <string name="bailian_custom_url">自定义 URL</string>
+
+    <!-- 设置：MiMo -->
     <string name="mimo_url_preset">URL 预设</string>
     <string name="mimo_pay_as_you_go">按量付费 API</string>
     <string name="mimo_token_plan">Token Plan 订阅</string>
     <string name="mimo_custom_url">自定义 URL</string>
-    <string name="enable_thinking">开启深度思考</string>
-    <string name="enable_thinking_hint">MiMo 思考模式（thinking.type=enabled）</string>
+
+    <!-- 设置：火山引擎 -->
+    <string name="volcano_url_preset">URL 预设</string>
+    <string name="volcano_ark_url">火山方舟 API</string>
+    <string name="volcano_custom_url">自定义 URL</string>
     <string name="test_connection">测试连接</string>
     <string name="test_multimodal_connection">测试多模态连接</string>
     <string name="multimodal_test_pending">正在测试多模态连接…</string>
     <string name="import_ling_json">导入 .ling / JSON</string>
+    <string name="import_from_file">从文件导入</string>
     <string name="import_from_clipboard">从剪切板导入</string>
     <string name="import_from_clipboard_dialog_title">从剪切板导入</string>
     <string name="import_from_clipboard_dialog_label">粘贴 .ling 原文或 LING82 编码</string>
@@ -119,4 +190,7 @@
     <string name="clipboard_empty">剪切板为空或没有文本</string>
     <string name="app_info">灵记 Lingji — 本地优先的 AI 知识管理工具</string>
     <string name="hint_subject_title">学科标题</string>
+    <string name="settings_saved">设置已保存</string>
+    <string name="note_saved">笔记已保存</string>
+    <string name="page_saved">页面已保存</string>
 </resources>
