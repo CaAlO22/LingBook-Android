@@ -22,8 +22,23 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            val localProperties = rootProject.file("local.properties")
+            if (localProperties.exists()) {
+                val props = java.util.Properties()
+                localProperties.inputStream().use { props.load(it) }
+                storeFile = file(props.getProperty("RELEASE_STORE_FILE") ?: "../release.keystore")
+                storePassword = props.getProperty("RELEASE_STORE_PASSWORD")
+                keyAlias = props.getProperty("RELEASE_KEY_ALIAS")
+                keyPassword = props.getProperty("RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
