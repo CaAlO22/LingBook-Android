@@ -3,25 +3,25 @@
   <rect width="1024" height="1024" rx="220" fill="#FDFBF7"/>
 
   <!-- Book shadow -->
-  <rect x="296" y="272" width="460" height="590" rx="34" fill="#000000" opacity="0.08"/>
+  <rect x="302" y="231" width="460" height="590" rx="34" fill="#000000" opacity="0.08"/>
 
   <!-- Book cover -->
-  <rect x="282" y="258" width="460" height="590" rx="34" fill="#292524"/>
+  <rect x="288" y="217" width="460" height="590" rx="34" fill="#E7E5E4"/>
 
   <!-- Page edges -->
-  <rect x="706" y="280" width="7" height="546" rx="4" fill="#F5F2EC"/>
-  <rect x="715" y="280" width="7" height="546" rx="4" fill="#F5F2EC"/>
-  <rect x="724" y="280" width="7" height="546" rx="4" fill="#F5F2EC"/>
+  <rect x="712" y="239" width="7" height="546" rx="4" fill="#A8A29E"/>
+  <rect x="721" y="239" width="7" height="546" rx="4" fill="#A8A29E"/>
+  <rect x="730" y="239" width="7" height="546" rx="4" fill="#A8A29E"/>
 
   <!-- Bookmark ribbon -->
-  <path d="M 394 248 L 442 248 L 442 432 L 418 458 L 394 432 Z" fill="#0D9488"/>
+  <path d="M 400 207 L 448 207 L 448 391 L 424 417 L 400 391 Z" fill="#0D9488"/>
 
   <!-- AI sparkle glow -->
-  <circle cx="596" cy="642" r="64" fill="#0D9488" opacity="0.18"/>
+  <circle cx="602" cy="601" r="64" fill="#0D9488" opacity="0.18"/>
 
   <!-- AI sparkle (8-point star) -->
-  <polygon points="596,596 613,629 646,642 613,655 596,688 583,655 550,642 583,629" fill="#0D9488"/>
+  <polygon points="602,555 619,588 652,601 619,614 602,647 589,614 556,601 589,588" fill="#0D9488"/>
 
   <!-- Sparkle center highlight -->
-  <circle cx="596" cy="642" r="12" fill="#FFFFFF"/>
+  <circle cx="602" cy="601" r="12" fill="#FFFFFF"/>
 </svg>

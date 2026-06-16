@@ -44,3 +44,6 @@ MIGRATION_PLAN.md
 
 # Temporary working files
 tmp/
+
+# Node dependencies for icon generation scripts
+scripts/node_modules/
