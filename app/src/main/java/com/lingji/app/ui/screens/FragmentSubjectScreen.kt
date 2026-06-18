@@ -406,6 +406,20 @@ fun FragmentSubjectScreen(
             }
         )
     }
+
+    uiState.aiWarningMessage?.let { warning ->
+        LingjiDialog(
+            onDismissRequest = { viewModel.clearAiWarning() },
+            title = { Text(stringResource(R.string.vision_warning_title)) },
+            text = { Text(warning) },
+            confirmButton = {
+                LingjiDialogConfirmButton(
+                    text = stringResource(R.string.i_know),
+                    onClick = { viewModel.clearAiWarning() }
+                )
+            }
+        )
+    }
 }
 
 private const val CLIPBOARD_SIZE_LIMIT = 1_000_000

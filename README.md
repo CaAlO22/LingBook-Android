@@ -1,37 +1,55 @@
-# LingBook Android
+# 灵记 Lingji Android
 
-LingBook 的 Android 客户端，一款面向知识碎片、笔记与学习计划的轻量级学习工具。
+这是 **灵记（Lingji）** 的 Android 客户端，一款面向知识碎片、笔记与学习计划的本地优先学习工具。它以「学科」为单位组织内容，支持碎片收集、AI 辅助整理、Markdown 笔记、学习计划生成与全文检索。
+
+本项目是 [LingBook](.) 项目的一部分。
+
+## 功能概述
+
+灵记围绕「学科」管理学习内容，每个学科可以选择以下两种模式之一：
+
+- **碎片模式**：收集零散知识点，由 AI 汇总整理成 Markdown 笔记，并生成学习计划。
+- **笔记本模式**：多页面笔记本，支持 Markdown 编辑与预览、图片插入、页面索引与全文搜索。
+
+主要功能：
+
+- 学科卡片的创建、重命名、删除与排序。
+- 碎片模式：添加碎片、AI 整理、AI 重构、生成学习计划。
+- 笔记本模式：多页面管理、Markdown、图片插入、索引摘要、全文搜索。
+- AI 问答：在碎片或笔记本页面底部直接提问，基于当前上下文回答。
+- 多 LLM 供应商支持：OpenAI、DeepSeek、Kimi、智谱 AI、阿里云百炼、火山引擎、MiMo。
+- 数据导入 / 导出：支持 `.ling` / JSON 格式，可通过文件或剪贴板操作。
+
+---
 
 ## 技术栈
 
 - **语言**：Kotlin 1.9.24
-- **UI 框架**：Jetpack Compose（BOM 2024.10.00，Compose UI 1.7.x）
-- **架构组件**：ViewModel、Navigation、Room
+- **UI 框架**：Jetpack Compose（BOM 2024.10.00）
+- **架构**：MVVM + Repository 模式
 - **依赖注入**：Hilt 2.50
-- **网络与存储**：Retrofit、OkHttp、Room
+- **本地存储**：Room
+- **网络**：OkHttp + Retrofit（LLM 调用直接使用 OkHttp）
 - **Markdown 渲染**：Markwon
-- **底部毛玻璃效果**：Haze 1.0.2
+- **毛玻璃效果**：Haze 1.0.2
 
-## 设计约定
-
-- 强制浅色模式：`MainActivity` 中 `LingjiTheme(darkTheme = false)`。
-- 配色对齐 Web 端：
-  - 暖白纸张背景 `Paper = #FDFBF7`
-  - 主色 `Stone800 = #292524`
-  - AI 强调色 `Teal600 = #0D9488`
-- 标题使用 `FontFamily.Serif`（Noto Serif CJK SC），正文使用默认无衬线字体。
-- 卡片：白底 + 细边框 + 1dp 阴影 + 16dp 圆角。
-- 底部 AI 输入栏采用 **Floating Action Bar** 风格，配合 Haze 实现真正的 backdrop blur 毛玻璃效果。
+---
 
 ## 构建与运行
 
-在 Android 模拟器或真机上运行调试版本：
+### 环境要求
+
+- Android Studio（推荐最新稳定版）
+- JDK 17 或更高
+- Android SDK 33+
+
+### 安装调试版本
 
 ```bash
 ./gradlew :app:installDebug
 ```
 
-安装后手动启动应用，或执行：
+启动应用：
 
 ```bash
 adb shell am start -n com.lingji.app/.MainActivity
@@ -43,20 +61,67 @@ adb shell am start -n com.lingji.app/.MainActivity
 adb devices
 ```
 
+---
+
+## 使用说明
+
+### 1. 配置 AI
+
+首次使用需要配置 LLM：
+
+1. 进入首页后，点击右上角「设置」。
+2. 在「AI 配置」中选择供应商。
+3. 选择 URL 预设或填写自定义 Base URL。
+4. 填入 API Key。
+5. 选择模型（部分供应商提供模型列表）。
+6. 点击「测试连接」验证可用性，然后保存。
+
+### 2. 创建学科
+
+1. 首页点击右下角「+」。
+2. 输入学科名称。
+3. 选择「碎片模式」或「笔记本模式」。
+
+### 3. 碎片模式
+
+- 在底部输入框添加知识碎片。
+- 点击右上角「整理」，AI 会将碎片汇总成 Markdown 笔记。
+- 切换到「笔记」标签查看或编辑。
+- 点击「重构」，输入改写要求（如“更简洁”“突出重点”）。
+- 切换到「学习计划」，输入周期（如 30 天），生成学习计划。
+
+### 4. 笔记本模式
+
+- 创建页面，填写标题与 Markdown 内容。
+- 支持插入图片（相机或相册）。
+- 使用「编辑 / 预览」切换。
+- 点击搜索图标进行全文检索。
+- 底部输入栏可向 AI 询问当前页面或整本笔记。
+
+### 5. 导入 / 导出
+
+- 设置页支持从文件或剪贴板导入 `.ling` / JSON。
+- 学科详情页支持导出当前学科到文件或剪贴板。
+
+---
+
 ## 项目结构
 
 ```
 app/src/main/java/com/lingji/app/
 ├── data/          # 数据层：网络、数据库、Repository
 ├── domain/        # 领域层：模型与业务逻辑
-├── ui/            # UI 层：Screens、Components、Theme、ViewModel
+│   └── provider/  # LLM 供应商配置（插件化解耦）
+├── ui/            # UI 层
+│   ├── screens/   # 页面
+│   ├── components/# 通用组件
+│   ├── settings/  # 设置页及供应商配置 UI
+│   ├── viewmodel/ # ViewModel
+│   └── theme/     # 主题与样式
 └── MainActivity.kt
-
-app/src/main/res/
-├── font/          # 自定义字体
-├── values/        # 字符串、颜色、主题
-└── ...
 ```
+
+---
 
 ## 许可证
 

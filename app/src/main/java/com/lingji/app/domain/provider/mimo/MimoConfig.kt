@@ -21,7 +21,8 @@ object MimoConfig : ProviderConfig {
         ProviderModel(
             id = "mimo-v2.5",
             name = "MiMo-V2.5",
-            description = "全模态理解、图文音视频"
+            description = "全模态理解、图文音视频",
+            supportsVision = true
         ),
         ProviderModel(
             id = "mimo-v2-flash",

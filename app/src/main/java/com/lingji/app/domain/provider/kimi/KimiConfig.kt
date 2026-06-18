@@ -15,7 +15,8 @@ object KimiConfig : ProviderConfig {
         ProviderModel(
             id = "kimi-k2.6",
             name = "Kimi K2.6",
-            description = "最新旗舰，256K 上下文，多模态与 Tool Calling"
+            description = "最新旗舰，256K 上下文，多模态与 Tool Calling",
+            supportsVision = true
         ),
         ProviderModel(
             id = "kimi-k2.5",
@@ -50,17 +51,20 @@ object KimiConfig : ProviderConfig {
         ProviderModel(
             id = "moonshot-v1-8k-vision-preview",
             name = "Moonshot V1 8K Vision",
-            description = "视觉模型，上下文 8K"
+            description = "视觉模型，上下文 8K",
+            supportsVision = true
         ),
         ProviderModel(
             id = "moonshot-v1-32k-vision-preview",
             name = "Moonshot V1 32K Vision",
-            description = "视觉模型，上下文 32K"
+            description = "视觉模型，上下文 32K",
+            supportsVision = true
         ),
         ProviderModel(
             id = "moonshot-v1-128k-vision-preview",
             name = "Moonshot V1 128K Vision",
-            description = "视觉模型，上下文 128K"
+            description = "视觉模型，上下文 128K",
+            supportsVision = true
         )
     )
     override val supportsThinking = true

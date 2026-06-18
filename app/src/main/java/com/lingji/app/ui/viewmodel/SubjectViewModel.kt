@@ -61,6 +61,7 @@ class SubjectViewModel @Inject constructor(
     fun openSettings() = _uiState.update { it.copy(isSettingsOpen = true) }
     fun closeSettings() = _uiState.update { it.copy(isSettingsOpen = false) }
     fun clearAiError() = _uiState.update { it.copy(aiErrorMessage = null) }
+    fun clearAiWarning() = _uiState.update { it.copy(aiWarningMessage = null) }
 
     private fun ensureAiConfigured(): Boolean {
         if (_uiState.value.settings.isConfigured()) return true
@@ -224,7 +225,12 @@ class SubjectViewModel @Inject constructor(
                         onProgress?.invoke(done, total)
                     },
                     onToken = { token -> appendStream(token) },
-                    onReasoning = { token -> appendReasoning(token) }
+                    onReasoning = { token -> appendReasoning(token) },
+                    onWarning = { warning ->
+                        _uiState.update { state ->
+                            if (state.aiWarningMessage == null) state.copy(aiWarningMessage = warning) else state
+                        }
+                    }
                 )
                 subjectRepository.markPagesIndexed(subject.id, indexedIds, System.currentTimeMillis())
                 subjectRepository.savePageIndexEntries(subject.id, entries)
@@ -292,7 +298,12 @@ class SubjectViewModel @Inject constructor(
                         onToken(token)
                     },
                     onReasoning = { token -> appendReasoning(token) },
-                    images
+                    images = images,
+                    onWarning = { warning ->
+                        _uiState.update { state ->
+                            if (state.aiWarningMessage == null) state.copy(aiWarningMessage = warning) else state
+                        }
+                    }
                 )
                 onComplete(answer)
             } catch (e: Exception) {

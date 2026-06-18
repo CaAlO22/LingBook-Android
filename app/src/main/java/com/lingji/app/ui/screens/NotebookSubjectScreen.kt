@@ -149,6 +149,7 @@ fun NotebookSubjectScreen(
     val dirtyCount = pages.count { it.indexedAt <= 0 || it.updatedAt > it.indexedAt }
 
     val context = LocalContext.current
+
     val scope = rememberCoroutineScope()
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("*/*")
@@ -671,6 +672,20 @@ fun NotebookSubjectScreen(
                 LingjiDialogDismissButton(
                     text = stringResource(R.string.cancel),
                     onClick = { deleteConfirmPage = null }
+                )
+            }
+        )
+    }
+
+    uiState.aiWarningMessage?.let { warning ->
+        LingjiDialog(
+            onDismissRequest = { viewModel.clearAiWarning() },
+            title = { Text(stringResource(R.string.vision_warning_title)) },
+            text = { Text(warning) },
+            confirmButton = {
+                LingjiDialogConfirmButton(
+                    text = stringResource(R.string.i_know),
+                    onClick = { viewModel.clearAiWarning() }
                 )
             }
         )

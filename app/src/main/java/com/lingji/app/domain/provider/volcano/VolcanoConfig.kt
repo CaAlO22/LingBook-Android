@@ -35,17 +35,20 @@ object VolcanoConfig : ProviderConfig {
         ProviderModel(
             id = "doubao-seed-2-0-lite-260428",
             name = "Doubao Seed 2.0 Lite (全模态)",
-            description = "轻量全模态，支持文本/图片/语音/视频"
+            description = "轻量全模态，支持文本/图片/语音/视频",
+            supportsVision = true
         ),
         ProviderModel(
             id = "doubao-seed-2-0-mini-260428",
             name = "Doubao Seed 2.0 Mini (全模态)",
-            description = "轻量均衡全模态，多语种及小语种"
+            description = "轻量均衡全模态，多语种及小语种",
+            supportsVision = true
         ),
         ProviderModel(
             id = "doubao-vision-32k-250115",
             name = "豆包 Vision",
-            description = "图片/视频/文档视觉理解"
+            description = "图片/视频/文档视觉理解",
+            supportsVision = true
         )
     )
     override val supportsThinking = true

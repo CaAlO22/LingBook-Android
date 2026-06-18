@@ -11,6 +11,7 @@ import com.lingji.app.data.remote.models.TextContentPart
 import com.lingji.app.data.remote.strategy.RequestStrategy
 import com.lingji.app.data.remote.strategy.RequestStrategyRegistry
 import com.lingji.app.domain.model.AISettings
+import com.lingji.app.domain.provider.ProviderRegistry
 import com.lingji.app.domain.model.Fragment
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -42,8 +43,16 @@ class LLMService @Inject constructor() {
         }
     }
 
-    private fun buildUserContent(prompt: String, images: List<String>, isResponses: Boolean): Any {
+    private fun buildUserContent(
+        prompt: String,
+        images: List<String>,
+        isResponses: Boolean,
+        supportsVision: Boolean
+    ): Any {
         if (images.isEmpty()) return prompt
+        if (!supportsVision) {
+            return "$prompt\n\n[系统提示：当前模型不支持图片输入，已忽略 ${images.size} 张图片。以下仅基于页面文字内容作答。]"
+        }
         if (isResponses) {
             return "$prompt\n\n[附图片数据：${images.size} 张，请在分析时结合图片内容]"
         }
@@ -58,15 +67,20 @@ class LLMService @Inject constructor() {
         prompt: String,
         settings: AISettings,
         systemPrompt: String? = null,
-        images: List<String> = emptyList()
+        images: List<String> = emptyList(),
+        onWarning: (String) -> Unit = {}
     ): String =
         withContext(Dispatchers.IO) {
             val endpoint = resolveEndpoint(settings.baseUrl)
             val isResponses = endpoint.endsWith("/responses", true)
+            val supportsVision = ProviderRegistry.supportsVision(settings.provider, settings.modelName)
             val strategy = RequestStrategyRegistry.get(settings.provider)
+            if (images.isNotEmpty() && !supportsVision) {
+                onWarning("当前模型 ${settings.modelName} 不支持图片输入，已忽略 ${images.size} 张图片。")
+            }
             val messages = listOf(
                 ChatMessage("system", systemPrompt ?: "你是一个有用的助手。"),
-                ChatMessage("user", buildUserContent(prompt, images, isResponses))
+                ChatMessage("user", buildUserContent(prompt, images, isResponses, supportsVision))
             )
             val body = strategy.buildChatRequestBody(settings, messages, stream = false)
             val request = buildRequest(endpoint, body, strategy, settings)
@@ -90,14 +104,19 @@ class LLMService @Inject constructor() {
         systemPrompt: String? = null,
         onToken: (String) -> Unit,
         onReasoning: (String) -> Unit = {},
-        images: List<String> = emptyList()
+        images: List<String> = emptyList(),
+        onWarning: (String) -> Unit = {}
     ): String = withContext(Dispatchers.IO) {
         val endpoint = resolveEndpoint(settings.baseUrl)
         val isResponses = endpoint.endsWith("/responses", true)
+        val supportsVision = ProviderRegistry.supportsVision(settings.provider, settings.modelName)
         val strategy = RequestStrategyRegistry.get(settings.provider)
+        if (images.isNotEmpty() && !supportsVision) {
+            onWarning("当前模型 ${settings.modelName} 不支持图片输入，已忽略 ${images.size} 张图片。")
+        }
         val messages = listOf(
             ChatMessage("system", systemPrompt ?: "你是一个有用的助手。"),
-            ChatMessage("user", buildUserContent(prompt, images, isResponses))
+            ChatMessage("user", buildUserContent(prompt, images, isResponses, supportsVision))
         )
         val body = strategy.buildChatRequestBody(settings, messages, stream = true)
         val request = buildRequest(endpoint, body, strategy, settings)
@@ -144,6 +163,9 @@ class LLMService @Inject constructor() {
     }
 
     suspend fun testMultimodalConnection(settings: AISettings, imageBase64: String): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+        if (!ProviderRegistry.supportsVision(settings.provider, settings.modelName)) {
+            return@withContext false to "当前模型 ${settings.modelName} 不支持图片输入"
+        }
         runCatching {
             val output = generate(
                 prompt = "请用一句话简要描述这张图片的主要内容。",
@@ -205,11 +227,12 @@ class LLMService @Inject constructor() {
         settings: AISettings,
         onToken: (String) -> Unit,
         onReasoning: (String) -> Unit = {},
-        images: List<String> = emptyList()
+        images: List<String> = emptyList(),
+        onWarning: (String) -> Unit = {}
     ): String {
         val systemPrompt = "你是一个有用的AI导师。请严格根据提供的上下文（包括文字与图片）回答用户的问题。回答要简洁明了。"
         val prompt = "上下文:\n$pageContent\n\n问题:\n$question\n\n回答:"
-        return streamGenerate(prompt, settings, systemPrompt, onToken, onReasoning, images)
+        return streamGenerate(prompt, settings, systemPrompt, onToken, onReasoning, images, onWarning)
     }
 
     private fun buildRequest(

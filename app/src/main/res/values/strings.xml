@@ -193,4 +193,8 @@
     <string name="settings_saved">设置已保存</string>
     <string name="note_saved">笔记已保存</string>
     <string name="page_saved">页面已保存</string>
+
+    <!-- 多模态降级提示 -->
+    <string name="vision_warning_title">图片输入已忽略</string>
+    <string name="i_know">我知道了</string>
 </resources>

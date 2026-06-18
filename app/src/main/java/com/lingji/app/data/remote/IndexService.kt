@@ -22,7 +22,8 @@ class IndexService @Inject constructor(
         page: NotebookPage,
         settings: AISettings,
         onToken: (String) -> Unit = {},
-        onReasoning: (String) -> Unit = {}
+        onReasoning: (String) -> Unit = {},
+        onWarning: (String) -> Unit = {}
     ): PageIndexEntry {
         val systemPrompt = """你是一个知识索引专家。请分析给定的笔记页面内容，生成以下结构化索引信息：
 1. keywords: 5-10个关键词，涵盖页面核心主题和重要概念
@@ -39,7 +40,15 @@ class IndexService @Inject constructor(
             "请分析以下笔记页面内容，生成索引信息：\n\n页面内容：\n${page.content}"
         }
 
-        val raw = llmService.streamGenerate(prompt, settings, systemPrompt, onToken, onReasoning, images)
+        val raw = llmService.streamGenerate(
+            prompt = prompt,
+            settings = settings,
+            systemPrompt = systemPrompt,
+            onToken = onToken,
+            onReasoning = onReasoning,
+            images = images,
+            onWarning = onWarning
+        )
 
         var keywords: List<String> = emptyList()
         var summary = ""
@@ -86,7 +95,8 @@ class IndexService @Inject constructor(
         settings: AISettings,
         onProgress: ((done: Int, total: Int, page: NotebookPage) -> Unit)? = null,
         onToken: ((String) -> Unit)? = null,
-        onReasoning: ((String) -> Unit)? = null
+        onReasoning: ((String) -> Unit)? = null,
+        onWarning: ((String) -> Unit)? = null
     ): Pair<List<PageIndexEntry>, List<String>> {
         val dirtyPages = getDirtyPages(pages)
         val entries = mutableListOf<PageIndexEntry>()
@@ -97,7 +107,8 @@ class IndexService @Inject constructor(
                     page,
                     settings,
                     onToken ?: {},
-                    onReasoning ?: {}
+                    onReasoning ?: {},
+                    onWarning ?: {}
                 )
             )
         }

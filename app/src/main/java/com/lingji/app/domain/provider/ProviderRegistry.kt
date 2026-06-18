@@ -27,4 +27,8 @@ object ProviderRegistry {
         configs[provider]
 
     fun allConfigs(): List<ProviderConfig> = APIProvider.entries.map { config(it) }
+
+    /** 查询指定供应商的某个模型是否支持视觉输入；未知模型按不支持处理。 */
+    fun supportsVision(provider: APIProvider, modelId: String): Boolean =
+        configOrNull(provider)?.models?.find { it.id == modelId }?.supportsVision ?: false
 }

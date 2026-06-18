@@ -13,6 +13,7 @@ data class SubjectUiState(
     val isSettingsOpen: Boolean = false,
     val processingLastUpdate: Long? = null,
     val aiErrorMessage: String? = null,
+    val aiWarningMessage: String? = null,
     /** 模型思考内容（仅用于 AI 运行岛展示，不写入最终生成内容）。 */
     val aiIslandReasoning: String = "",
     /** 供 AI 运行岛展示的最新文本行（按换行拆分），包含普通输出与思考内容。 */

@@ -55,12 +55,14 @@ object ZhipuConfig : ProviderConfig {
         ProviderModel(
             id = "glm-4.5v",
             name = "GLM-4.5V",
-            description = "视觉理解模型"
+            description = "视觉理解模型",
+            supportsVision = true
         ),
         ProviderModel(
             id = "glm-4.6v",
             name = "GLM-4.6V",
-            description = "视觉推理模型，支持 128K 上下文"
+            description = "视觉推理模型，支持 128K 上下文",
+            supportsVision = true
         )
     )
     override val supportsThinking = true
