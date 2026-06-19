@@ -7,6 +7,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
+import io.noties.markwon.image.ImagesPlugin
+import io.noties.markwon.image.data.DataUriSchemeHandler
 
 @Composable
 fun MarkdownView(markdown: String, modifier: Modifier = Modifier) {
@@ -14,6 +16,11 @@ fun MarkdownView(markdown: String, modifier: Modifier = Modifier) {
         factory = { context ->
             TextView(context).apply {
                 val markwon = Markwon.builder(context)
+                    .usePlugin(
+                        ImagesPlugin.create { plugin ->
+                            plugin.addSchemeHandler(DataUriSchemeHandler.create())
+                        }
+                    )
                     .usePlugin(TablePlugin.create(context))
                     .usePlugin(StrikethroughPlugin.create())
                     .build()
@@ -22,6 +29,11 @@ fun MarkdownView(markdown: String, modifier: Modifier = Modifier) {
         },
         update = { textView ->
             val markwon = Markwon.builder(textView.context)
+                .usePlugin(
+                    ImagesPlugin.create { plugin ->
+                        plugin.addSchemeHandler(DataUriSchemeHandler.create())
+                    }
+                )
                 .usePlugin(TablePlugin.create(textView.context))
                 .usePlugin(StrikethroughPlugin.create())
                 .build()

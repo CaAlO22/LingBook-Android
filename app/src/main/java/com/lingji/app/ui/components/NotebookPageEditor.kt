@@ -23,13 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Redo
-import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -37,7 +31,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -51,24 +47,89 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.lingji.app.R
-import com.lingji.app.data.remote.IndexService
 import com.lingji.app.domain.model.NotebookPage
 import com.lingji.app.domain.model.PageIndexEntry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-private val IMAGE_MARKDOWN_REGEX = "!\\[.*?\\]\\((data:image/[^)]+)\\)".toRegex()
+private data class PageEditState(val title: String, val content: String)
 
-private fun stripImageMarkdown(content: String): String {
-    return content
-        .replace(IMAGE_MARKDOWN_REGEX, "")
-        .replace(Regex("\n{3,}"), "\n\n")
-        .trim()
+/**
+ * 将页面内容解析为可编辑的文本段与图片段，按原有顺序混排。
+ */
+private sealed class PageSegment {
+    data class Text(val text: String) : PageSegment()
+    data class Image(val url: String) : PageSegment()
 }
 
-private data class PageEditState(val title: String, val content: String)
+private fun imageMarkdown(url: String): String = "![图片]($url)"
+
+private fun parsePageContent(content: String): List<PageSegment> {
+    if (content.isEmpty()) return listOf(PageSegment.Text(""))
+    val result = mutableListOf<PageSegment>()
+    val regex = "!\\[.*?\\]\\((data:image/[^)]+)\\)".toRegex()
+    var lastIndex = 0
+    regex.findAll(content).forEach { match ->
+        if (match.range.first > lastIndex) {
+            result.add(PageSegment.Text(content.substring(lastIndex, match.range.first)))
+        }
+        result.add(PageSegment.Image(match.groupValues[1]))
+        lastIndex = match.range.last + 1
+    }
+    if (lastIndex < content.length) {
+        result.add(PageSegment.Text(content.substring(lastIndex)))
+    }
+    return result
+}
+
+private fun List<PageSegment>.toContent(): String = joinToString("") {
+    when (it) {
+        is PageSegment.Text -> it.text
+        is PageSegment.Image -> imageMarkdown(it.url)
+    }
+}
+
+private fun List<PageSegment>.offsetBefore(textIndex: Int): Int {
+    var offset = 0
+    for (i in 0 until textIndex.coerceAtMost(size)) {
+        offset += when (val segment = this[i]) {
+            is PageSegment.Text -> segment.text.length
+            is PageSegment.Image -> imageMarkdown(segment.url).length
+        }
+    }
+    return offset
+}
+
+/**
+ * 用于将 [NotebookPageEditor] 内部的撤销/重做等操作暴露给外部宿主的状态持有者。
+ */
+class NotebookPageEditorHostState internal constructor() {
+    var onUndo by mutableStateOf<(() -> Unit)?>(null)
+        internal set
+    var onRedo by mutableStateOf<(() -> Unit)?>(null)
+        internal set
+    var canUndo by mutableStateOf(false)
+        internal set
+    var canRedo by mutableStateOf(false)
+        internal set
+    var isDirty by mutableStateOf(false)
+        internal set
+    var isPreview by mutableStateOf(false)
+        internal set
+    var cursorPosition by mutableStateOf(0)
+        internal set
+
+    fun setPreview(value: Boolean) {
+        isPreview = value
+    }
+}
+
+@Composable
+fun rememberNotebookPageEditorHostState(): NotebookPageEditorHostState = remember { NotebookPageEditorHostState() }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -76,26 +137,29 @@ fun NotebookPageEditor(
     page: NotebookPage,
     indexEntry: PageIndexEntry?,
     onUpdate: (NotebookPage) -> Unit,
-    onDelete: () -> Unit,
-    onAddImage: () -> Unit,
-    onGenerateIndex: () -> Unit,
     onEditIndex: () -> Unit,
     onFocus: () -> Unit,
     autoFocusContent: Boolean = false,
     fillHeight: Boolean = false,
+    hostState: NotebookPageEditorHostState = remember { NotebookPageEditorHostState() },
     modifier: Modifier = Modifier
 ) {
     val undoManager = remember(page.id) { UndoManager(PageEditState(page.title, page.content)) }
     val editState = undoManager.value
     val title = editState.title
     val content = editState.content
-    val images = remember(content) { IndexService.extractImagesFromContent(content) }
-    val imageMarkdownBlocks = remember(images) {
-        images.joinToString("") { "\n\n![图片]($it)\n\n" }
-    }
-    val displayContent = remember(content) { stripImageMarkdown(content) }
     val isDirty = page.indexedAt <= 0 || page.updatedAt > page.indexedAt
-    val contentFocusRequester = remember { FocusRequester() }
+    val isPreview = hostState.isPreview
+
+    val segments = remember(content) { parsePageContent(content) }
+    val textFieldValues = remember { mutableStateMapOf<Int, TextFieldValue>() }
+    var focusedTextIndex by remember { mutableStateOf<Int?>(null) }
+    val firstTextFocusRequester = remember { FocusRequester() }
+
+    // 切换页面时重置为编辑模式
+    LaunchedEffect(page.id) {
+        hostState.setPreview(false)
+    }
 
     // 当外部传入的页面数据与当前编辑状态不一致时（如从其他端同步），重置历史。
     LaunchedEffect(page.title, page.content) {
@@ -103,6 +167,43 @@ fun NotebookPageEditor(
         if (page.title != current.title || page.content != current.content) {
             undoManager.reset(PageEditState(page.title, page.content))
         }
+    }
+
+    // 外部 content 变化时同步各文本段的 TextFieldValue（例如插入图片、撤销/重做后）。
+    LaunchedEffect(content) {
+        segments.forEachIndexed { index, segment ->
+            if (segment is PageSegment.Text) {
+                val existing = textFieldValues[index]
+                if (existing == null || existing.text != segment.text) {
+                    textFieldValues[index] = TextFieldValue(
+                        segment.text,
+                        selection = TextRange(segment.text.length)
+                    )
+                }
+            }
+        }
+    }
+
+    // 将撤销/重做等操作暴露给宿主（如页面上方工具栏）。
+    SideEffect {
+        hostState.canUndo = undoManager.canUndo
+        hostState.canRedo = undoManager.canRedo
+        hostState.isDirty = isDirty
+        hostState.onUndo = {
+            undoManager.undo()?.let { updated ->
+                onUpdate(page.copy(title = updated.title, content = updated.content, updatedAt = System.currentTimeMillis()))
+            }
+        }
+        hostState.onRedo = {
+            undoManager.redo()?.let { updated ->
+                onUpdate(page.copy(title = updated.title, content = updated.content, updatedAt = System.currentTimeMillis()))
+            }
+        }
+        hostState.cursorPosition = focusedTextIndex?.let { index ->
+            val offsetBefore = segments.offsetBefore(index)
+            val selectionStart = textFieldValues[index]?.selection?.start ?: 0
+            (offsetBefore + selectionStart).coerceIn(0, content.length)
+        } ?: content.length
     }
 
     BoxWithConstraints(
@@ -119,15 +220,9 @@ fun NotebookPageEditor(
         }
         Column(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
                 .verticalScroll(scrollState)
                 .padding(bottom = 160.dp)
-        ) {
-        // Header: title + actions
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
         ) {
             UnderlinedTitleField(
                 value = title,
@@ -137,145 +232,155 @@ fun NotebookPageEditor(
                     onUpdate(page.copy(title = updated.title, content = updated.content, updatedAt = System.currentTimeMillis()))
                 },
                 onFocus = onFocus,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.fillMaxWidth()
             )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(
-                    onClick = {
-                        undoManager.undo()?.let { updated ->
-                            onUpdate(page.copy(title = updated.title, content = updated.content, updatedAt = System.currentTimeMillis()))
-                        }
-                    },
-                    enabled = undoManager.canUndo
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Keywords
+            if (!indexEntry?.keywords.isNullOrEmpty()) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Undo,
-                        contentDescription = stringResource(R.string.cd_undo)
-                    )
-                }
-                IconButton(
-                    onClick = {
-                        undoManager.redo()?.let { updated ->
-                            onUpdate(page.copy(title = updated.title, content = updated.content, updatedAt = System.currentTimeMillis()))
-                        }
-                    },
-                    enabled = undoManager.canRedo
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Redo,
-                        contentDescription = stringResource(R.string.cd_redo)
-                    )
-                }
-                if (isDirty) {
-                    Surface(
-                        shape = RoundedCornerShape(percent = 50),
-                        color = MaterialTheme.colorScheme.tertiaryContainer,
-                        modifier = Modifier.padding(end = 6.dp)
-                    ) {
-                        Text(
-                            text = "待索引",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
+                    indexEntry?.keywords?.forEach { kw ->
+                        KeywordTag(text = kw, onClick = onEditIndex)
                     }
                 }
-                IconButton(onClick = onAddImage) {
-                    Icon(Icons.Default.Image, contentDescription = stringResource(R.string.cd_add_image))
-                }
-                IconButton(onClick = onEditIndex) {
-                    Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.cd_edit_page_index))
-                }
-                IconButton(onClick = onGenerateIndex) {
-                    Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.cd_generate_index))
-                }
-                IconButton(onClick = onDelete) {
-                    Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.cd_delete))
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
+            if (autoFocusContent) {
+                androidx.compose.runtime.LaunchedEffect(page.id) {
+                    firstTextFocusRequester.requestFocus()
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Keywords
-        if (!indexEntry?.keywords.isNullOrEmpty()) {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                indexEntry?.keywords?.forEach { kw ->
-                    KeywordTag(text = kw, onClick = onEditIndex)
-                }
-            }
-            Spacer(modifier = Modifier.height(10.dp))
-        }
-
-        // Images
-        if (images.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                images.forEach { imageUrl ->
-                    ImageCard(
-                        imageUrl = imageUrl,
-                        onRemove = {
-                            val escaped = Regex.escape(imageUrl)
-                            val cleaned = content.replace(
-                                Regex("!\\[.*?\\]\\($escaped\\)"),
-                                ""
-                            )
-                            undoManager.update(PageEditState(title, cleaned))
-                            val updated = undoManager.value
-                            onUpdate(page.copy(content = updated.content, updatedAt = System.currentTimeMillis()))
-                        }
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(10.dp))
-        }
-
-        // Content：纯文本输入区，无额外底色/卡片背景，避免与页面背景形成色差。
-        if (autoFocusContent) {
-            androidx.compose.runtime.LaunchedEffect(page.id) {
-                contentFocusRequester.requestFocus()
-            }
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = contentHeight)
-        ) {
-            BasicTextField(
-                value = displayContent,
-                onValueChange = {
-                    val updatedContent = it + imageMarkdownBlocks
-                    undoManager.update(PageEditState(title, updatedContent))
-                    val updated = undoManager.value
-                    onUpdate(page.copy(content = updated.content, updatedAt = System.currentTimeMillis()))
-                },
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
-                    .focusRequester(contentFocusRequester)
-                    .onFocusChanged { if (it.isFocused) onFocus() },
-                textStyle = MaterialTheme.typography.bodyMedium.copy(
-                    color = MaterialTheme.colorScheme.onSurface
-                ),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                decorationBox = { innerTextField ->
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        if (displayContent.isEmpty()) {
-                            Text(
-                                text = stringResource(R.string.content_hint),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                            )
+                    .heightIn(min = contentHeight)
+            ) {
+                if (isPreview) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                    ) {
+                        MarkdownView(
+                            markdown = content,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                    ) {
+                        var textFieldCount = 0
+                        segments.forEachIndexed { index, segment ->
+                            when (segment) {
+                                is PageSegment.Text -> {
+                                    val isFirstTextField = textFieldCount == 0
+                                    textFieldCount++
+                                    val value = textFieldValues[index]
+                                        ?: TextFieldValue(segment.text)
+                                    BasicTextField(
+                                        value = value,
+                                        onValueChange = { newValue ->
+                                            textFieldValues[index] = newValue
+                                            val newContent = segments.mapIndexed { i, seg ->
+                                                when {
+                                                    i == index && seg is PageSegment.Text -> newValue.text
+                                                    seg is PageSegment.Text -> seg.text
+                                                    seg is PageSegment.Image -> imageMarkdown(seg.url)
+                                                    else -> ""
+                                                }
+                                            }.joinToString("")
+                                            if (newContent != content) {
+                                                undoManager.update(PageEditState(title, newContent))
+                                                val updated = undoManager.value
+                                                onUpdate(
+                                                    page.copy(
+                                                        title = updated.title,
+                                                        content = updated.content,
+                                                        updatedAt = System.currentTimeMillis()
+                                                    )
+                                                )
+                                            }
+                                            hostState.cursorPosition =
+                                                (segments.offsetBefore(index) + newValue.selection.start)
+                                                    .coerceIn(0, newContent.length)
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .then(
+                                                if (isFirstTextField) {
+                                                    Modifier.focusRequester(firstTextFocusRequester)
+                                                } else {
+                                                    Modifier
+                                                }
+                                            )
+                                            .onFocusChanged { focusState ->
+                                                if (focusState.isFocused) {
+                                                    focusedTextIndex = index
+                                                    onFocus()
+                                                } else if (focusedTextIndex == index) {
+                                                    focusedTextIndex = null
+                                                }
+                                            },
+                                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        ),
+                                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                        decorationBox = { innerTextField ->
+                                            Box(modifier = Modifier.fillMaxWidth()) {
+                                                if (value.text.isEmpty() && content.isEmpty()) {
+                                                    Text(
+                                                        text = stringResource(R.string.content_hint),
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                                                    )
+                                                }
+                                                innerTextField()
+                                            }
+                                        }
+                                    )
+                                }
+                                is PageSegment.Image -> {
+                                    ImageCard(
+                                        imageUrl = segment.url,
+                                        onRemove = {
+                                            val newSegments = segments.toMutableList().apply {
+                                                removeAt(index)
+                                            }
+                                            val newContent = newSegments.toContent()
+                                            if (newContent != content) {
+                                                undoManager.update(PageEditState(title, newContent))
+                                                val updated = undoManager.value
+                                                onUpdate(
+                                                    page.copy(
+                                                        title = updated.title,
+                                                        content = updated.content,
+                                                        updatedAt = System.currentTimeMillis()
+                                                    )
+                                                )
+                                            }
+                                        },
+                                        modifier = Modifier.padding(vertical = 8.dp)
+                                    )
+                                }
+                            }
+                            if (index != segments.lastIndex) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
                         }
-                        innerTextField()
                     }
                 }
-            )
+            }
         }
     }
-}
 }
 
 @Composable
@@ -328,7 +433,11 @@ private fun KeywordTag(text: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun ImageCard(imageUrl: String, onRemove: () -> Unit) {
+private fun ImageCard(
+    imageUrl: String,
+    onRemove: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     var bitmap by remember(imageUrl) { mutableStateOf<android.graphics.Bitmap?>(null) }
 
     LaunchedEffect(imageUrl) {
@@ -338,16 +447,16 @@ private fun ImageCard(imageUrl: String, onRemove: () -> Unit) {
     }
 
     BoxWithConstraints(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 120.dp, max = 400.dp)
+            .heightIn(min = 120.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center
     ) {
         bitmap?.let { bmp ->
             val aspectRatio = bmp.width.toFloat() / bmp.height.toFloat().coerceAtLeast(0.001f)
-            val targetHeight = (maxWidth / aspectRatio).coerceIn(120.dp, 400.dp)
+            val targetHeight = (maxWidth / aspectRatio).coerceAtLeast(120.dp)
             Image(
                 bitmap = bmp.asImageBitmap(),
                 contentDescription = stringResource(R.string.cd_remove_image),

@@ -156,7 +156,7 @@ fun NoteEditor(
 }
 
 @Composable
-private fun ModeChip(
+internal fun ModeChip(
     label: String,
     selected: Boolean,
     onClick: () -> Unit

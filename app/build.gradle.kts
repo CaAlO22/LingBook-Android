@@ -102,6 +102,7 @@ dependencies {
     implementation(libs.coroutines.android)
 
     implementation(libs.markwon.core)
+    implementation(libs.markwon.image)
     implementation(libs.markwon.ext.tables)
     implementation(libs.markwon.html)
     implementation(libs.markwon.strikethrough)

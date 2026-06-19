@@ -5,6 +5,7 @@ import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,11 +20,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
@@ -42,8 +47,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -69,8 +72,10 @@ import com.lingji.app.ui.components.IndexSearchPanel
 import com.lingji.app.ui.components.LingjiDialog
 import com.lingji.app.ui.components.LingjiDialogConfirmButton
 import com.lingji.app.ui.components.LingjiDialogDismissButton
+import com.lingji.app.ui.components.ModeChip
 import com.lingji.app.ui.components.NotebookPageEditor
 import com.lingji.app.ui.components.PageChatBar
+import com.lingji.app.ui.components.rememberNotebookPageEditorHostState
 import com.lingji.app.ui.components.PageImagePicker
 import com.lingji.app.ui.components.PageIndexEditorDialog
 import com.lingji.app.ui.components.TimeDisplay
@@ -139,6 +144,7 @@ fun NotebookSubjectScreen(
     var lastCreatedPageId by remember { mutableStateOf<String?>(null) }
     var showIndexEditorPage by remember { mutableStateOf<NotebookPage?>(null) }
 
+    val editorHostState = rememberNotebookPageEditorHostState()
     val imagePickerState = rememberImagePickerState()
 
     val indexEntries = remember(liveSubject.pageIndexEntries) {
@@ -201,104 +207,156 @@ fun NotebookSubjectScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                modifier = Modifier.padding(top = 16.dp),
-                title = {
-                    Text(
-                        text = liveSubject.title,
-                        style = MaterialTheme.typography.headlineSmall.copy(
-                            fontFamily = NotoSerifCJKsc,
-                            letterSpacing = (-0.02).sp
-                        )
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { showSearch = true }) {
-                        Icon(Icons.Default.Search, contentDescription = stringResource(R.string.cd_search))
-                    }
-                    Box {
-                        IconButton(onClick = { showMoreMenu = true }) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp)
+                    .padding(top = 16.dp, start = 4.dp, end = 4.dp)
+                    .background(MaterialTheme.colorScheme.background),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 左侧：返回 + 笔记名称
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onBack) {
                             Icon(
-                                imageVector = Icons.Default.MoreVert,
-                                contentDescription = stringResource(R.string.cd_more)
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "返回"
                             )
                         }
-                        DropdownMenu(
-                            expanded = showMoreMenu,
-                            onDismissRequest = { showMoreMenu = false }
+                        Text(
+                            text = liveSubject.title,
+                            style = MaterialTheme.typography.headlineSmall.copy(
+                                fontFamily = NotoSerifCJKsc,
+                                letterSpacing = (-0.02).sp
+                            ),
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                    }
+                }
+
+                // 中间：编辑/预览切换
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (pages.isNotEmpty()) {
+                        Surface(
+                            shape = RoundedCornerShape(percent = 50),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
                         ) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.build_index)) },
-                                onClick = {
-                                    showMoreMenu = false
-                                    triggerBuildIndex()
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        Icons.Default.Refresh,
-                                        contentDescription = null
-                                    )
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.export)) },
-                                onClick = {
-                                    showMoreMenu = false
-                                    val fileName = liveSubject.title
-                                        .replace(Regex("[\\\\/:*?\"<>|]"), "_")
-                                        .takeIf { it.isNotBlank() } ?: "notebook"
-                                    exportLauncher.launch("$fileName.ling")
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        Icons.Default.FileDownload,
-                                        contentDescription = null
-                                    )
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.copy_to_clipboard)) },
-                                onClick = {
-                                    showMoreMenu = false
-                                    scope.launch {
-                                        try {
-                                            val encoded = viewModel.exportSubjectToText(liveSubject)
-                                            if (encoded.length > CLIPBOARD_SIZE_LIMIT) {
-                                                Toast.makeText(
-                                                    context,
-                                                    context.getString(R.string.copy_too_large),
-                                                    Toast.LENGTH_LONG
-                                                ).show()
-                                                return@launch
-                                            }
-                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText(liveSubject.title, encoded))
-                                            Toast.makeText(context, context.getString(R.string.copy_success), Toast.LENGTH_SHORT).show()
-                                        } catch (e: Exception) {
-                                            e.printStackTrace()
-                                            Toast.makeText(context, context.getString(R.string.copy_failed), Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        Icons.Default.ContentCopy,
-                                        contentDescription = null
-                                    )
-                                }
-                            )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.padding(4.dp)
+                            ) {
+                                ModeChip(
+                                    label = stringResource(R.string.mode_edit),
+                                    selected = !editorHostState.isPreview,
+                                    onClick = { editorHostState.setPreview(false) }
+                                )
+                                ModeChip(
+                                    label = stringResource(R.string.mode_preview),
+                                    selected = editorHostState.isPreview,
+                                    onClick = { editorHostState.setPreview(true) }
+                                )
+                            }
                         }
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
-            )
+                }
+
+                // 右侧：搜索 + 更多
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.CenterEnd
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { showSearch = true }) {
+                            Icon(
+                                Icons.Default.Search,
+                                contentDescription = stringResource(R.string.cd_search)
+                            )
+                        }
+                        Box {
+                            IconButton(onClick = { showMoreMenu = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = stringResource(R.string.cd_more)
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showMoreMenu,
+                                onDismissRequest = { showMoreMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.build_index)) },
+                                    onClick = {
+                                        showMoreMenu = false
+                                        triggerBuildIndex()
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Default.Refresh,
+                                            contentDescription = null
+                                        )
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.export)) },
+                                    onClick = {
+                                        showMoreMenu = false
+                                        val fileName = liveSubject.title
+                                            .replace(Regex("[\\\\/:*?\"<>|]"), "_")
+                                            .takeIf { it.isNotBlank() } ?: "notebook"
+                                        exportLauncher.launch("$fileName.ling")
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Default.FileDownload,
+                                            contentDescription = null
+                                        )
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.copy_to_clipboard)) },
+                                    onClick = {
+                                        showMoreMenu = false
+                                        scope.launch {
+                                            try {
+                                                val encoded = viewModel.exportSubjectToText(liveSubject)
+                                                if (encoded.length > CLIPBOARD_SIZE_LIMIT) {
+                                                    Toast.makeText(
+                                                        context,
+                                                        context.getString(R.string.copy_too_large),
+                                                        Toast.LENGTH_LONG
+                                                    ).show()
+                                                    return@launch
+                                                }
+                                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                clipboard.setPrimaryClip(android.content.ClipData.newPlainText(liveSubject.title, encoded))
+                                                Toast.makeText(context, context.getString(R.string.copy_success), Toast.LENGTH_SHORT).show()
+                                            } catch (e: Exception) {
+                                                e.printStackTrace()
+                                                Toast.makeText(context, context.getString(R.string.copy_failed), Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Default.ContentCopy,
+                                            contentDescription = null
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     ) { padding ->
         Column(
@@ -337,7 +395,15 @@ fun NotebookSubjectScreen(
                         currentPageId = page.id
                         lastCreatedPageId = page.id
                     }
-                }
+                },
+                onUndo = editorHostState.onUndo,
+                onRedo = editorHostState.onRedo,
+                canUndo = editorHostState.canUndo,
+                canRedo = editorHostState.canRedo,
+                onAddImage = { currentPage?.let { showImagePickerForPage = it } },
+                onEditIndex = { currentPage?.let { showIndexEditorPage = it } },
+                onGenerateIndex = triggerBuildIndex,
+                onDelete = { currentPage?.let { deleteConfirmPage = it } }
             )
             Box(modifier = Modifier.weight(1f)) {
                 FloatingInputContainer(
@@ -383,13 +449,11 @@ fun NotebookSubjectScreen(
                             onUpdate = { updated ->
                                 viewModel.updatePage(liveSubject.id, updated)
                             },
-                            onDelete = { deleteConfirmPage = page },
-                            onAddImage = { showImagePickerForPage = page },
-                            onGenerateIndex = triggerBuildIndex,
                             onEditIndex = { showIndexEditorPage = page },
                             onFocus = { },
                             autoFocusContent = page.id == lastCreatedPageId,
                             fillHeight = true,
+                            hostState = editorHostState,
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(start = 12.dp, end = 12.dp, top = 8.dp)
@@ -503,8 +567,10 @@ fun NotebookSubjectScreen(
             onImagePicked = { base64 ->
                 val target = currentPage ?: page
                 val markdownImage = "\n\n![图片]($base64)\n\n"
+                val cursor = editorHostState.cursorPosition.coerceIn(0, target.content.length)
+                val updatedContent = target.content.take(cursor) + markdownImage + target.content.drop(cursor)
                 val updated = target.copy(
-                    content = target.content + markdownImage,
+                    content = updatedContent,
                     updatedAt = System.currentTimeMillis()
                 )
                 viewModel.updatePage(liveSubject.id, updated)
@@ -590,7 +656,15 @@ private fun NotebookPageToolbar(
     onEditPagePosition: () -> Unit,
     onPrevPage: () -> Unit,
     onNextPage: () -> Unit,
-    onAddPage: () -> Unit
+    onAddPage: () -> Unit,
+    onUndo: (() -> Unit)?,
+    onRedo: (() -> Unit)?,
+    canUndo: Boolean,
+    canRedo: Boolean,
+    onAddImage: () -> Unit,
+    onEditIndex: () -> Unit,
+    onGenerateIndex: () -> Unit,
+    onDelete: () -> Unit
 ) {
     var showPagePositionMenu by remember { mutableStateOf(false) }
 
@@ -644,6 +718,29 @@ private fun NotebookPageToolbar(
                             )
                         }
                     }
+                }
+
+                IconButton(
+                    onClick = { onUndo?.invoke() },
+                    enabled = canUndo && onUndo != null,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Undo,
+                        contentDescription = stringResource(R.string.cd_undo),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                IconButton(
+                    onClick = { onRedo?.invoke() },
+                    enabled = canRedo && onRedo != null,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Redo,
+                        contentDescription = stringResource(R.string.cd_redo),
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
 
@@ -741,12 +838,63 @@ private fun NotebookPageToolbar(
             Spacer(modifier = Modifier.weight(1f))
         }
 
-        // 右侧：新增页面
-        IconButton(onClick = onAddPage) {
-            Icon(
-                imageVector = Icons.Default.Add,
-                contentDescription = stringResource(R.string.add_page)
-            )
+        // 右侧：页面操作 + 新增页面
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            currentPage?.let {
+                IconButton(
+                    onClick = onAddImage,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Image,
+                        contentDescription = stringResource(R.string.cd_add_image),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                IconButton(
+                    onClick = onEditIndex,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = stringResource(R.string.cd_edit_page_index),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                IconButton(
+                    onClick = onGenerateIndex,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = stringResource(R.string.cd_generate_index),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = stringResource(R.string.cd_delete),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+            IconButton(
+                onClick = onAddPage,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = stringResource(R.string.add_page),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
     }
 }
