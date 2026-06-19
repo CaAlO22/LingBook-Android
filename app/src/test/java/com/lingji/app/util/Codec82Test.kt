@@ -1,7 +1,9 @@
 package com.lingji.app.util
 
 import com.google.gson.Gson
+import com.lingji.app.domain.model.Fragment
 import com.lingji.app.domain.model.Subject
+import com.lingji.app.domain.model.SubjectType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -99,5 +101,67 @@ class Codec82Test {
         val subject = gson.fromJson(gson.toJson(decoded), Subject::class.java)
         assertEquals("时事政治", subject.title)
         assertTrue("Fragments should not be empty", subject.fragments.isNotEmpty())
+    }
+
+    @Test
+    fun `base64 round trip encoding and decoding`() {
+        val data = mapOf(
+            "title" to "图文混排学科",
+            "pages" to listOf(
+                mapOf(
+                    "id" to "p1",
+                    "title" to "页面一",
+                    "content" to "文字 ![图片](data:image/jpeg;base64,/9j/4AAQ) 结尾"
+                )
+            )
+        )
+        val encoded = Codec82.encodeBase64(data)
+        assertTrue("Encoded text must start with LING64 prefix", encoded.startsWith(Codec82.LING64_PREFIX))
+        val decoded = Codec82.decode(encoded)
+        @Suppress("UNCHECKED_CAST")
+        val map = decoded as Map<String, Any>
+        assertEquals("图文混排学科", map["title"])
+    }
+
+    @Test
+    fun `subject round trip preserves fragments and pages`() {
+        val subject = Subject(
+            id = "s1",
+            title = "完整学科",
+            type = SubjectType.FRAGMENT,
+            fragments = listOf(
+                Fragment(id = "f1", content = "第一条碎片", timestamp = 1700000000000L),
+                Fragment(id = "f2", content = "第二条碎片", timestamp = 1700000000001L)
+            ),
+            unmergedFragments = listOf(
+                Fragment(id = "u1", content = "未合并碎片", timestamp = 1700000000002L)
+            ),
+            aggregatedNote = "# 完整学科\n\n笔记内容",
+            studyPlan = "学习计划",
+            createdAt = 1700000000000L,
+            pages = null
+        )
+        val encoded = Codec82.encodeBase64(subject)
+        assertTrue("Encoded text must start with LING64 prefix", encoded.startsWith(Codec82.LING64_PREFIX))
+        val decoded = Codec82.decode(encoded)
+        val restored = gson.fromJson(gson.toJsonTree(decoded), Subject::class.java)
+        assertEquals("完整学科", restored.title)
+        assertEquals(2, restored.fragments.size)
+        assertEquals("第一条碎片", restored.fragments[0].content)
+        assertEquals(1, restored.unmergedFragments.size)
+        assertEquals("未合并碎片", restored.unmergedFragments[0].content)
+        assertEquals("# 完整学科\n\n笔记内容", restored.aggregatedNote)
+        assertEquals("学习计划", restored.studyPlan)
+    }
+
+    @Test
+    fun `decode can handle both ling82 and ling64 prefixes`() {
+        val data = mapOf("title" to "双格式测试", "fragments" to emptyList<Map<String, Any>>())
+        val encoded82 = Codec82.encode(data)
+        val encoded64 = Codec82.encodeBase64(data)
+        assertTrue(encoded82.startsWith(Codec82.LING82_PREFIX))
+        assertTrue(encoded64.startsWith(Codec82.LING64_PREFIX))
+        assertEquals("双格式测试", (Codec82.decode(encoded82) as Map<String, Any>)["title"])
+        assertEquals("双格式测试", (Codec82.decode(encoded64) as Map<String, Any>)["title"])
     }
 }

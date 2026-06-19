@@ -29,10 +29,14 @@ class SubjectRepository @Inject constructor(
     private val gson = Gson()
     fun getAllSubjects(): Flow<List<Subject>> = combine(
         subjectDao.getAllSubjects(),
-        fragmentDao.getFragmentsBySubject(""),
-        pageDao.getPagesBySubject("")
-    ) { subjects, _, _ ->
-        subjects.map { entity -> loadSubject(entity) }
+        fragmentDao.getAllFragments(),
+        pageDao.getAllPages()
+    ) { subjects, fragments, pages ->
+        subjects.map { entity ->
+            val subjectFragments = fragments.filter { it.subjectId == entity.id }
+            val subjectPages = pages.filter { it.subjectId == entity.id }
+            assemble(entity, subjectFragments, subjectPages)
+        }
     }
 
     fun getSubjectById(id: String): Flow<Subject?> = combine(

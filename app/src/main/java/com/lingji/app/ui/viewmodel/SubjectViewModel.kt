@@ -481,6 +481,12 @@ class SubjectViewModel @Inject constructor(
         fileManager.encodeSubject(subject)
     }
 
+    fun buildExportFileName(title: String): String {
+        val safe = title.replace(Regex("[\\\\/:*?\"<>|]"), "_").takeIf { it.isNotBlank() } ?: "notebook"
+        val time = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())
+        return "${safe}_$time.ling"
+    }
+
     private fun setProcessing(loading: Boolean, message: String? = null) {
         _uiState.update {
             it.copy(

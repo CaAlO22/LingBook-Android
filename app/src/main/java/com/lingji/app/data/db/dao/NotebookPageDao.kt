@@ -16,6 +16,9 @@ interface NotebookPageDao {
     @Query("SELECT * FROM notebook_pages WHERE subjectId = :subjectId ORDER BY orderIndex ASC")
     suspend fun getPagesBySubjectOnce(subjectId: String): List<NotebookPageEntity>
 
+    @Query("SELECT * FROM notebook_pages ORDER BY orderIndex ASC")
+    fun getAllPages(): Flow<List<NotebookPageEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(page: NotebookPageEntity)
 

@@ -309,10 +309,7 @@ fun NotebookSubjectScreen(
                                     text = { Text(stringResource(R.string.export)) },
                                     onClick = {
                                         showMoreMenu = false
-                                        val fileName = liveSubject.title
-                                            .replace(Regex("[\\\\/:*?\"<>|]"), "_")
-                                            .takeIf { it.isNotBlank() } ?: "notebook"
-                                        exportLauncher.launch("$fileName.ling")
+                                        exportLauncher.launch(viewModel.buildExportFileName(liveSubject.title))
                                     },
                                     leadingIcon = {
                                         Icon(

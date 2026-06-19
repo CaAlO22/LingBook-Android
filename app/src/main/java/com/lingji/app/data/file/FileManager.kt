@@ -46,20 +46,23 @@ class FileManager @Inject constructor(
 
     suspend fun exportSubject(subject: Subject, uri: Uri) = withContext(Dispatchers.IO) {
         val encoded = encodeSubject(subject)
-        context.contentResolver.openOutputStream(uri)?.use { stream ->
-            stream.write(encoded.toByteArray(Charsets.UTF_8))
+        val stream = context.contentResolver.openOutputStream(uri)
+            ?: throw IllegalStateException("无法打开输出流")
+        stream.use {
+            it.write(encoded.toByteArray(Charsets.UTF_8))
         }
     }
 
     suspend fun encodeSubject(subject: Subject): String = withContext(Dispatchers.IO) {
-        val json = gson.toJson(subject)
-        Codec82.encode(json)
+        Codec82.encodeBase64(subject)
     }
 
     suspend fun exportPlainJson(subject: Subject, uri: Uri) = withContext(Dispatchers.IO) {
         val json = gson.toJson(subject)
-        context.contentResolver.openOutputStream(uri)?.use { stream ->
-            stream.write(json.toByteArray(Charsets.UTF_8))
+        val stream = context.contentResolver.openOutputStream(uri)
+            ?: throw IllegalStateException("无法打开输出流")
+        stream.use {
+            it.write(json.toByteArray(Charsets.UTF_8))
         }
     }
 }

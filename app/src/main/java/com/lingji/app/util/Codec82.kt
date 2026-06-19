@@ -4,38 +4,56 @@ import com.google.gson.Gson
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.math.BigInteger
+import java.util.Base64
 import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
 
 object Codec82 {
     const val LING82_PREFIX = "LING82GZ:"
+    const val LING64_PREFIX = "LING64GZ:"
     private const val ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_~!\$*()[]{}<>=+@%^.:"
     private val base = BigInteger.valueOf(ALPHABET.length.toLong())
     private val gson = Gson()
 
+    /**
+     * 使用 base82 编码（兼容旧版 .ling 文件）。
+     * 对于包含大体积内联图片的学科，建议使用 [encodeBase64] 以避免大整数编码的性能与内存问题。
+     */
     fun encode(obj: Any): String {
-        val json = if (obj is String) compactJson(obj) else gson.toJson(obj)
+        val json = if (obj is String) obj else gson.toJson(obj)
         val gz = gzipCompress(json.toByteArray(Charsets.UTF_8))
         val encoded = base82Encode(gz)
         return LING82_PREFIX + encoded
     }
 
-    private fun compactJson(text: String): String {
-        return try {
-            gson.toJson(gson.fromJson(text, Any::class.java))
-        } catch (_: Exception) {
-            text
-        }
+    /**
+     * 使用 base64 编码（推荐）。gzip 压缩后采用标准 Base64，编码/解码效率远高于 base82，
+     * 可稳定处理包含多张内联图片的图文混排笔记。
+     */
+    fun encodeBase64(obj: Any): String {
+        val json = if (obj is String) obj else gson.toJson(obj)
+        val gz = gzipCompress(json.toByteArray(Charsets.UTF_8))
+        val encoded = Base64.getEncoder().encodeToString(gz)
+        return LING64_PREFIX + encoded
     }
 
     fun decode(text: String): Any {
-        if (!text.startsWith(LING82_PREFIX)) {
-            return gson.fromJson(text, Any::class.java)
+        val trimmed = text.trim()
+        return when {
+            trimmed.startsWith(LING64_PREFIX) -> {
+                val payload = trimmed.removePrefix(LING64_PREFIX)
+                val gz = Base64.getDecoder().decode(payload)
+                val json = gzipDecompress(gz)
+                gson.fromJson(String(json, Charsets.UTF_8), Any::class.java)
+            }
+            trimmed.startsWith(LING82_PREFIX) -> {
+                val payload = trimmed.removePrefix(LING82_PREFIX)
+                val gz = base82Decode(payload)
+                val json = gzipDecompress(gz)
+                gson.fromJson(String(json, Charsets.UTF_8), Any::class.java)
+            }
+            else -> gson.fromJson(trimmed, Any::class.java)
         }
-        val payload = text.removePrefix(LING82_PREFIX)
-        val gz = base82Decode(payload)
-        val json = gzipDecompress(gz)
-        return gson.fromJson(String(json, Charsets.UTF_8), Any::class.java)
     }
 
     private fun base82Encode(bytes: ByteArray): String {

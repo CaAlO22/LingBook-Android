@@ -55,11 +55,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
@@ -171,7 +174,7 @@ fun SubjectGalleryScreen(
                                 text = { Text(stringResource(R.string.import_from_file)) },
                                 onClick = {
                                     showImportMenu = false
-                                    importLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream"))
+                                    importLauncher.launch(arrayOf("*/*"))
                                 },
                                 leadingIcon = {
                                     Icon(
@@ -267,10 +270,7 @@ fun SubjectGalleryScreen(
                             },
                             onExport = {
                                 exportSubject = subject
-                                val fileName = subject.title
-                                    .replace(Regex("[\\\\/:*?\"<>|]"), "_")
-                                    .takeIf { it.isNotBlank() } ?: "notebook"
-                                exportLauncher.launch("$fileName.ling")
+                                exportLauncher.launch(viewModel.buildExportFileName(subject.title))
                             },
                             onCopyExport = {
                                 scope.launch {
@@ -436,8 +436,6 @@ private fun AddSubjectCard(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = SubjectCardMinHeight)
-            .dashedBorder(strokeColor)
-            .padding(1.dp)
             .clip(RoundedCornerShape(16.dp))
             .clickable(
                 enabled = !isCreating,
@@ -450,9 +448,15 @@ private fun AddSubjectCard(
         border = null
     ) {
         Box(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxSize()
+                .dashedBorder(strokeColor),
             contentAlignment = Alignment.Center
         ) {
+            // Invisible sizing reference to match the height of regular subject cards
+            SubjectCardSizingReference(
+                modifier = Modifier.alpha(0f)
+            )
             if (isCreating) {
                 Column(
                     modifier = Modifier
@@ -544,6 +548,55 @@ private fun AddSubjectCard(
 }
 
 @Composable
+private fun SubjectCardSizingReference(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+    ) {
+        Text(
+            text = "",
+            style = MaterialTheme.typography.titleMedium,
+            maxLines = 2
+        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(top = 4.dp)
+        ) {
+            Spacer(modifier = Modifier.size(12.dp))
+            Text(
+                text = "",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(start = 4.dp)
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Spacer(modifier = Modifier.size(14.dp))
+                Text(
+                    text = "",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                // Match the 48.dp minimum touch target of IconButton
+                Spacer(modifier = Modifier.size(48.dp))
+                Spacer(modifier = Modifier.size(48.dp))
+            }
+        }
+    }
+}
+
+@Composable
 private fun TypeChip(
     label: String,
     selected: Boolean,
@@ -586,10 +639,16 @@ private fun TypeChip(
 }
 
 private fun Modifier.dashedBorder(color: androidx.compose.ui.graphics.Color) = drawBehind {
+    val strokeWidth = 2.dp.toPx()
     drawRoundRect(
         color = color,
+        topLeft = Offset(strokeWidth / 2, strokeWidth / 2),
+        size = Size(
+            size.width - strokeWidth,
+            size.height - strokeWidth
+        ),
         style = Stroke(
-            width = 2.dp.toPx(),
+            width = strokeWidth,
             pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f)
         ),
         cornerRadius = CornerRadius(16.dp.toPx())

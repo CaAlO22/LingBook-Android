@@ -3,6 +3,8 @@ package com.lingji.app.ui.screens
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -27,6 +29,7 @@ import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
@@ -95,6 +98,30 @@ fun FragmentSubjectScreen(
     }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("*/*")
+    ) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            try {
+                viewModel.exportSubject(liveSubject, uri)
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.export_success),
+                    Toast.LENGTH_SHORT
+                ).show()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.export_failed),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
     val pagerState = rememberPagerState(pageCount = { 3 })
     var showMenu by remember { mutableStateOf(false) }
     var editingFragment by remember { mutableStateOf<Fragment?>(null) }
@@ -143,6 +170,14 @@ fun FragmentSubjectScreen(
                                 viewModel.rollbackAggregatedNote()
                                 showMenu = false
                             }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.export)) },
+                            onClick = {
+                                showMenu = false
+                                exportLauncher.launch(viewModel.buildExportFileName(liveSubject.title))
+                            },
+                            leadingIcon = { Icon(Icons.Default.FileDownload, contentDescription = null) }
                         )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.copy_to_clipboard)) },

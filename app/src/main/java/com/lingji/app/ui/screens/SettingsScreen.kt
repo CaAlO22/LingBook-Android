@@ -237,9 +237,7 @@ fun SettingsScreen(
             SettingsCard(title = stringResource(R.string.app_settings)) {
                 Button(
                     onClick = {
-                        importLauncher.launch(
-                            arrayOf("application/json", "text/plain", "application/octet-stream")
-                        )
+                        importLauncher.launch(arrayOf("*/*"))
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {

@@ -16,6 +16,9 @@ interface FragmentDao {
     @Query("SELECT * FROM fragments WHERE subjectId = :subjectId ORDER BY timestamp ASC")
     suspend fun getFragmentsBySubjectOnce(subjectId: String): List<FragmentEntity>
 
+    @Query("SELECT * FROM fragments ORDER BY timestamp ASC")
+    fun getAllFragments(): Flow<List<FragmentEntity>>
+
     @Query("SELECT * FROM fragments WHERE subjectId = :subjectId AND isUnmerged = 1 ORDER BY timestamp ASC")
     suspend fun getUnmergedFragments(subjectId: String): List<FragmentEntity>
 
