@@ -55,6 +55,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -437,6 +438,7 @@ private fun AddSubjectCard(
             .heightIn(min = SubjectCardMinHeight)
             .dashedBorder(strokeColor)
             .padding(1.dp)
+            .clip(RoundedCornerShape(16.dp))
             .clickable(
                 enabled = !isCreating,
                 onClick = { isCreating = true }
