@@ -121,10 +121,9 @@ fun FragmentSubjectScreen(
                 title = {
                     Text(
                         text = liveSubject.title,
-                        style = MaterialTheme.typography.headlineLarge.copy(
+                        style = MaterialTheme.typography.headlineSmall.copy(
                             fontFamily = NotoSerifCJKsc,
-                            fontSize = 40.sp,
-                            letterSpacing = (-0.03).sp
+                            letterSpacing = (-0.02).sp
                         )
                     )
                 },
@@ -134,48 +133,6 @@ fun FragmentSubjectScreen(
                     }
                 },
                 actions = {
-                    when (pagerState.currentPage) {
-                        0 -> TopBarActionButton(
-                            label = stringResource(R.string.organize),
-                            icon = Icons.Default.AutoFixHigh,
-                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                            onClick = { viewModel.organize(liveSubject) },
-                            modifier = Modifier.padding(end = 8.dp)
-                        )
-                        1 -> TopBarActionButton(
-                            label = stringResource(R.string.refine),
-                            icon = Icons.Default.Brush,
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                            onClick = { showRefineDialog = true },
-                            modifier = Modifier.padding(end = 8.dp)
-                        )
-                        2 -> TopBarActionButton(
-                            label = stringResource(R.string.plan),
-                            icon = Icons.Default.CalendarToday,
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            borderColor = MaterialTheme.colorScheme.outline,
-                            onClick = {
-                                planDialogDeadline = deadline
-                                showPlanDialog = true
-                            },
-                            modifier = Modifier.padding(end = 8.dp)
-                        )
-                    }
-                    if (pagerState.currentPage == 1) {
-                        TextButton(
-                            onClick = {
-                                viewModel.updateAggregatedNote(noteText)
-                                Toast.makeText(context, R.string.note_saved, Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier.padding(end = 8.dp)
-                        ) {
-                            Text(stringResource(R.string.save))
-                        }
-                    }
-                    TimeDisplay(modifier = Modifier.padding(end = 8.dp))
                     IconButton(onClick = { showMenu = true }) {
                         Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.cd_more))
                     }
@@ -220,62 +177,76 @@ fun FragmentSubjectScreen(
             )
         }
     ) { padding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            FloatingInputContainer(
-                horizontalMargin = 24.dp,
-                bottomOffset = 16.dp,
-                floatingBar = {
-                    // 输入胶囊悬浮在内容之上，透明背景仅输入框可见，
-                    // 从而呈现沉浸式悬浮观感而非整版底栏。
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        if (pagerState.currentPage == 0) {
-                            InputCapsule(
-                                hint = stringResource(R.string.hint_enter_fragment),
-                                onSend = { viewModel.addFragment(it) },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        } else if (pagerState.currentPage == 1) {
-                            PageChatBar(
-                                targetTitle = liveSubject.title,
-                                targetContent = liveSubject.aggregatedNote,
-                                answer = noteChatAnswer,
-                                isLoading = isNoteChatLoading,
-                                placeholder = stringResource(R.string.note_chat_placeholder),
-                                targetLabelFormat = stringResource(R.string.note_chat_target),
-                                onSend = { question ->
-                                    noteChatAnswer = ""
-                                    isNoteChatLoading = true
-                                    viewModel.chatWithNote(
-                                        subject = liveSubject,
-                                        question = question,
-                                        onToken = { token ->
-                                            noteChatAnswer += token
-                                        },
-                                        onComplete = { answer ->
-                                            noteChatAnswer = answer
-                                            isNoteChatLoading = false
-                                        },
-                                        onError = { error ->
-                                            noteChatAnswer = "请求失败: $error"
-                                            isNoteChatLoading = false
-                                        }
-                                    )
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                    }
+            FragmentPageToolbar(
+                currentPage = pagerState.currentPage,
+                onOrganize = { viewModel.organize(liveSubject) },
+                onRefine = { showRefineDialog = true },
+                onPlan = {
+                    planDialogDeadline = deadline
+                    showPlanDialog = true
                 },
-                content = {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        PillTabSwitcher(
-                            selectedIndex = pagerState.currentPage,
-                            onSelect = { scope.launch { pagerState.animateScrollToPage(it) } }
-                        )
+                onSaveNote = {
+                    viewModel.updateAggregatedNote(noteText)
+                    Toast.makeText(context, R.string.note_saved, Toast.LENGTH_SHORT).show()
+                }
+            )
+            Box(modifier = Modifier.weight(1f)) {
+                FloatingInputContainer(
+                    horizontalMargin = 24.dp,
+                    bottomOffset = 16.dp,
+                    floatingBar = {
+                        // 输入胶囊悬浮在内容之上，透明背景仅输入框可见，
+                        // 从而呈现沉浸式悬浮观感而非整版底栏。
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            if (pagerState.currentPage == 0) {
+                                InputCapsule(
+                                    hint = stringResource(R.string.hint_enter_fragment),
+                                    onSend = { viewModel.addFragment(it) },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            } else if (pagerState.currentPage == 1) {
+                                PageChatBar(
+                                    targetTitle = liveSubject.title,
+                                    targetContent = liveSubject.aggregatedNote,
+                                    answer = noteChatAnswer,
+                                    isLoading = isNoteChatLoading,
+                                    placeholder = stringResource(R.string.note_chat_placeholder),
+                                    targetLabelFormat = stringResource(R.string.note_chat_target),
+                                    onSend = { question ->
+                                        noteChatAnswer = ""
+                                        isNoteChatLoading = true
+                                        viewModel.chatWithNote(
+                                            subject = liveSubject,
+                                            question = question,
+                                            onToken = { token ->
+                                                noteChatAnswer += token
+                                            },
+                                            onComplete = { answer ->
+                                                noteChatAnswer = answer
+                                                isNoteChatLoading = false
+                                            },
+                                            onError = { error ->
+                                                noteChatAnswer = "请求失败: $error"
+                                                isNoteChatLoading = false
+                                            }
+                                        )
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                    },
+                    content = {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            PillTabSwitcher(
+                                selectedIndex = pagerState.currentPage,
+                                onSelect = { scope.launch { pagerState.animateScrollToPage(it) } }
+                            )
                         HorizontalPager(
                             state = pagerState,
                             modifier = Modifier.weight(1f)
@@ -311,6 +282,7 @@ fun FragmentSubjectScreen(
                     }
                 }
             )
+            }
         }
     }
 
@@ -573,6 +545,60 @@ private fun PlanPage(
                     .fillMaxSize()
                     .padding(16.dp)
             )
+        }
+    }
+}
+
+@Composable
+private fun FragmentPageToolbar(
+    currentPage: Int,
+    onOrganize: () -> Unit,
+    onRefine: () -> Unit,
+    onPlan: () -> Unit,
+    onSaveNote: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        when (currentPage) {
+            0 -> TopBarActionButton(
+                label = stringResource(R.string.organize),
+                icon = Icons.Default.AutoFixHigh,
+                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                onClick = onOrganize
+            )
+            1 -> TopBarActionButton(
+                label = stringResource(R.string.refine),
+                icon = Icons.Default.Brush,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                onClick = onRefine
+            )
+            2 -> TopBarActionButton(
+                label = stringResource(R.string.plan),
+                icon = Icons.Default.CalendarToday,
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                borderColor = MaterialTheme.colorScheme.outline,
+                onClick = onPlan
+            )
+        }
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TimeDisplay()
+            if (currentPage == 1) {
+                TextButton(onClick = onSaveNote) {
+                    Text(stringResource(R.string.save))
+                }
+            }
         }
     }
 }

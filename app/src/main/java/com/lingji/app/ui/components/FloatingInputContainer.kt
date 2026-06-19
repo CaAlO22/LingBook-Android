@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -86,14 +87,15 @@ fun FloatingInputContainer(
                 .padding(horizontal = horizontalMargin)
                 .padding(bottom = bottomOffset + animatedKeyboardPadding)
                 .fillMaxWidth()
+                .shadow(elevation = 10.dp, shape = barShape, clip = false)
                 .clip(barShape)
                 .hazeChild(
                     state = hazeState,
                     style = HazeStyle(
                         backgroundColor = MaterialTheme.colorScheme.background,
-                        tint = HazeTint(Color.White.copy(alpha = 0.40f)),
-                        blurRadius = 16.dp,
-                        noiseFactor = 0.15f
+                        tint = HazeTint(Color.White.copy(alpha = 0.22f)),
+                        blurRadius = 18.dp,
+                        noiseFactor = 0.10f
                     )
                 )
         ) {

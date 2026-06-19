@@ -158,7 +158,7 @@ fun PageChatBar(
                                     Text(
                                         text = placeholder,
                                         style = MaterialTheme.typography.bodyLarge,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f)
                                     )
                                 }
                                 innerTextField()

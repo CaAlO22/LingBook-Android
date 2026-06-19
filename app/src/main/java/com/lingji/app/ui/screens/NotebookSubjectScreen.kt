@@ -5,6 +5,7 @@ import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,7 +34,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -128,7 +128,6 @@ fun NotebookSubjectScreen(
 
     var showSearch by remember { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
-    var showPagePositionMenu by remember { mutableStateOf(false) }
     var showImagePickerForPage by remember { mutableStateOf<NotebookPage?>(null) }
     var showJumpDialog by remember { mutableStateOf(false) }
     var jumpText by remember { mutableStateOf("") }
@@ -207,10 +206,9 @@ fun NotebookSubjectScreen(
                 title = {
                     Text(
                         text = liveSubject.title,
-                        style = MaterialTheme.typography.headlineLarge.copy(
+                        style = MaterialTheme.typography.headlineSmall.copy(
                             fontFamily = NotoSerifCJKsc,
-                            fontSize = 40.sp,
-                            letterSpacing = (-0.03).sp
+                            letterSpacing = (-0.02).sp
                         )
                     )
                 },
@@ -220,146 +218,9 @@ fun NotebookSubjectScreen(
                     }
                 },
                 actions = {
-                    TimeDisplay(modifier = Modifier.padding(end = 8.dp))
-
-                    currentPage?.let { page ->
-                        TextButton(
-                            onClick = {
-                                viewModel.updatePage(liveSubject.id, page)
-                                Toast.makeText(context, R.string.page_saved, Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier.padding(end = 8.dp)
-                        ) {
-                            Text(stringResource(R.string.save))
-                        }
+                    IconButton(onClick = { showSearch = true }) {
+                        Icon(Icons.Default.Search, contentDescription = stringResource(R.string.cd_search))
                     }
-
-                    if (dirtyCount > 0) {
-                        Surface(
-                            shape = RoundedCornerShape(percent = 50),
-                            color = MaterialTheme.colorScheme.tertiaryContainer,
-                            modifier = Modifier.padding(end = 8.dp),
-                            onClick = triggerBuildIndex
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                if (uiState.isProcessing) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(14.dp),
-                                        color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                        strokeWidth = 2.dp
-                                    )
-                                } else {
-                                    Icon(
-                                        imageVector = Icons.Default.Warning,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                }
-                                Text(
-                                    text = "$dirtyCount",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                    modifier = Modifier.padding(start = 4.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    if (pages.isNotEmpty()) {
-                        Box {
-                            Surface(
-                                shape = RoundedCornerShape(percent = 50),
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                modifier = Modifier.padding(end = 8.dp),
-                                onClick = { showPagePositionMenu = true }
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Book,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(14.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Text(
-                                        text = stringResource(
-                                            R.string.page_position_format,
-                                            currentPageIndex + 1,
-                                            pages.size
-                                        ),
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(start = 4.dp)
-                                    )
-                                }
-                            }
-                            DropdownMenu(
-                                expanded = showPagePositionMenu,
-                                onDismissRequest = { showPagePositionMenu = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.jump_to_page)) },
-                                    onClick = {
-                                        showPagePositionMenu = false
-                                        showJumpDialog = true
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            Icons.Default.Book,
-                                            contentDescription = null
-                                        )
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.edit_page_position)) },
-                                    onClick = {
-                                        showPagePositionMenu = false
-                                        moveText = (currentPageIndex + 1).toString()
-                                        showMoveDialog = true
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            Icons.Default.Edit,
-                                            contentDescription = null
-                                        )
-                                    }
-                                )
-                            }
-                        }
-
-                        IconButton(
-                            onClick = {
-                                val prev = pages.getOrNull(currentPageIndex - 1)
-                                if (prev != null) currentPageId = prev.id
-                            },
-                            enabled = currentPageIndex > 0
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowUp,
-                                contentDescription = stringResource(R.string.cd_prev_page)
-                            )
-                        }
-
-                        IconButton(
-                            onClick = {
-                                val next = pages.getOrNull(currentPageIndex + 1)
-                                if (next != null) currentPageId = next.id
-                            },
-                            enabled = currentPageIndex < pages.lastIndex
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowDown,
-                                contentDescription = stringResource(R.string.cd_next_page)
-                            )
-                        }
-                    }
-
                     Box {
                         IconButton(onClick = { showMoreMenu = true }) {
                             Icon(
@@ -433,36 +294,57 @@ fun NotebookSubjectScreen(
                             )
                         }
                     }
-                    IconButton(onClick = { showSearch = true }) {
-                        Icon(Icons.Default.Search, contentDescription = stringResource(R.string.cd_search))
-                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
                 )
             )
-        },
-        floatingActionButton = {
-            FloatingActionButton(onClick = {
-                viewModel.addPage(liveSubject.id) { page ->
-                    currentPageId = page.id
-                    lastCreatedPageId = page.id
-                }
-            }) {
-                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_page))
-            }
         }
     ) { padding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            FloatingInputContainer(
-                bottomOffset = 16.dp,
-                horizontalMargin = 24.dp,
-                floatingBar = {
-                    PageChatBar(
+            NotebookPageToolbar(
+                currentPage = currentPage,
+                currentPageIndex = currentPageIndex,
+                pagesSize = pages.size,
+                dirtyCount = dirtyCount,
+                isProcessing = uiState.isProcessing,
+                onSave = {
+                    currentPage?.let { page ->
+                        viewModel.updatePage(liveSubject.id, page)
+                        Toast.makeText(context, R.string.page_saved, Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onBuildIndex = triggerBuildIndex,
+                onJumpToPage = { showJumpDialog = true },
+                onEditPagePosition = {
+                    moveText = (currentPageIndex + 1).toString()
+                    showMoveDialog = true
+                },
+                onPrevPage = {
+                    val prev = pages.getOrNull(currentPageIndex - 1)
+                    if (prev != null) currentPageId = prev.id
+                },
+                onNextPage = {
+                    val next = pages.getOrNull(currentPageIndex + 1)
+                    if (next != null) currentPageId = next.id
+                },
+                onAddPage = {
+                    viewModel.addPage(liveSubject.id) { page ->
+                        currentPageId = page.id
+                        lastCreatedPageId = page.id
+                    }
+                }
+            )
+            Box(modifier = Modifier.weight(1f)) {
+                FloatingInputContainer(
+                    bottomOffset = 16.dp,
+                    horizontalMargin = 24.dp,
+                    floatingBar = {
+                        PageChatBar(
                         targetTitle = currentPage?.title?.takeIf { it.isNotBlank() }
                             ?: stringResource(R.string.unnamed_page),
                         targetContent = currentPage?.content ?: "",
@@ -515,6 +397,7 @@ fun NotebookSubjectScreen(
                     }
                 }
             )
+            }
         }
     }
 
@@ -693,6 +576,180 @@ fun NotebookSubjectScreen(
 }
 
 private const val CLIPBOARD_SIZE_LIMIT = 1_000_000
+
+@Composable
+private fun NotebookPageToolbar(
+    currentPage: NotebookPage?,
+    currentPageIndex: Int,
+    pagesSize: Int,
+    dirtyCount: Int,
+    isProcessing: Boolean,
+    onSave: () -> Unit,
+    onBuildIndex: () -> Unit,
+    onJumpToPage: () -> Unit,
+    onEditPagePosition: () -> Unit,
+    onPrevPage: () -> Unit,
+    onNextPage: () -> Unit,
+    onAddPage: () -> Unit
+) {
+    var showPagePositionMenu by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+) {
+        if (pagesSize > 0) {
+            // 左侧：保存 + 待索引
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                currentPage?.let {
+                    TextButton(onClick = onSave) {
+                        Text(stringResource(R.string.save))
+                    }
+                }
+                if (dirtyCount > 0) {
+                    Surface(
+                        shape = RoundedCornerShape(percent = 50),
+                        color = MaterialTheme.colorScheme.tertiaryContainer,
+                        onClick = onBuildIndex
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            if (isProcessing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Warning,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                            Text(
+                                text = "$dirtyCount",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                modifier = Modifier.padding(start = 4.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 中间：页面导航
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = onPrevPage,
+                    enabled = currentPageIndex > 0,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowUp,
+                        contentDescription = stringResource(R.string.cd_prev_page),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Box {
+                    Surface(
+                        shape = RoundedCornerShape(percent = 50),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        onClick = { showPagePositionMenu = true }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Book,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = stringResource(
+                                    R.string.page_position_format,
+                                    currentPageIndex + 1,
+                                    pagesSize
+                                ),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 4.dp)
+                            )
+                        }
+                    }
+                    DropdownMenu(
+                        expanded = showPagePositionMenu,
+                        onDismissRequest = { showPagePositionMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.jump_to_page)) },
+                            onClick = {
+                                showPagePositionMenu = false
+                                onJumpToPage()
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Book,
+                                    contentDescription = null
+                                )
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.edit_page_position)) },
+                            onClick = {
+                                showPagePositionMenu = false
+                                onEditPagePosition()
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Edit,
+                                    contentDescription = null
+                                )
+                            }
+                        )
+                    }
+                }
+                IconButton(
+                    onClick = onNextPage,
+                    enabled = currentPageIndex < pagesSize - 1,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowDown,
+                        contentDescription = stringResource(R.string.cd_next_page),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        }
+
+        if (pagesSize == 0) {
+            Spacer(modifier = Modifier.weight(1f))
+        }
+
+        // 右侧：新增页面
+        IconButton(onClick = onAddPage) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = stringResource(R.string.add_page)
+            )
+        }
+    }
+}
 
 @Composable
 private fun EmptyPagesState() {
