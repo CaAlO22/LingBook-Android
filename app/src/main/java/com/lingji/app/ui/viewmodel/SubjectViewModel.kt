@@ -245,19 +245,112 @@ class SubjectViewModel @Inject constructor(
         }
     }
 
+    fun buildDirectory(
+        subject: Subject,
+        onComplete: (String) -> Unit = {},
+        onError: (String) -> Unit = {}
+    ) {
+        if (_uiState.value.isProcessing) return
+        val pages = subject.pages ?: emptyList()
+        if (pages.isEmpty()) return
+        viewModelScope.launch {
+            setProcessing(true, "正在构建目录…")
+            try {
+                // Step 1: Build indexes for all dirty pages
+                _uiState.update {
+                    it.copy(
+                        processingStreamLine = "",
+                        aiIslandReasoning = "正在构建页面索引…",
+                        aiIslandLines = buildIslandLines(reasoning = "正在构建页面索引…", content = ""),
+                        processingLastUpdate = System.currentTimeMillis()
+                    )
+                }
+                val (newEntries, indexedIds) = indexService.batchBuildIndexesForDirtyPages(
+                    pages,
+                    _uiState.value.settings,
+                    onProgress = { done, total, page ->
+                        val title = page.title.takeIf { it.isNotBlank() } ?: "未命名页面"
+                        _uiState.update {
+                            it.copy(
+                                processingStreamLine = "",
+                                aiIslandReasoning = "正在分析页面 $done / $total：$title",
+                                aiIslandLines = buildIslandLines(
+                                    reasoning = "正在分析页面 $done / $total：$title",
+                                    content = ""
+                                ),
+                                processingLastUpdate = System.currentTimeMillis()
+                            )
+                        }
+                    },
+                    onToken = { token -> appendStream(token) },
+                    onReasoning = { token -> appendReasoning(token) },
+                    onWarning = { warning ->
+                        _uiState.update { state ->
+                            if (state.aiWarningMessage == null) state.copy(aiWarningMessage = warning) else state
+                        }
+                    }
+                )
+                subjectRepository.markPagesIndexed(subject.id, indexedIds, System.currentTimeMillis())
+                subjectRepository.savePageIndexEntries(subject.id, newEntries)
+
+                // Step 2: Merge all index entries (existing + newly built)
+                val allEntries = (subject.pageIndexEntries ?: emptyList()) + newEntries
+
+                // Step 3: Generate directory
+                _uiState.update {
+                    it.copy(
+                        processingStreamLine = "",
+                        aiIslandReasoning = "正在生成目录…",
+                        aiIslandLines = buildIslandLines(reasoning = "正在生成目录…", content = ""),
+                        processingLastUpdate = System.currentTimeMillis()
+                    )
+                }
+                val directory = indexService.generateDirectory(
+                    entries = allEntries,
+                    pages = pages,
+                    settings = _uiState.value.settings,
+                    onToken = { token -> appendStream(token) },
+                    onReasoning = { token -> appendReasoning(token) },
+                    onWarning = { warning ->
+                        _uiState.update { state ->
+                            if (state.aiWarningMessage == null) state.copy(aiWarningMessage = warning) else state
+                        }
+                    }
+                )
+
+                // Step 4: Insert directory page as first page
+                val directoryPage = NotebookPage(
+                    title = "目录",
+                    content = directory
+                )
+                subjectRepository.insertPageAt(subject.id, directoryPage, 0)
+
+                onComplete(directory)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _uiState.update { it.copy(aiErrorMessage = e.message ?: "构建目录失败") }
+                onError(e.message ?: "构建目录失败")
+            } finally {
+                setProcessing(false)
+            }
+        }
+    }
+
     fun chatWithPage(
         page: NotebookPage,
         question: String,
         onToken: (String) -> Unit,
         onComplete: (String) -> Unit = {},
-        onError: (String) -> Unit = {}
+        onError: (String) -> Unit = {},
+        conversationHistory: List<Pair<String, String>> = emptyList()
     ) {
         chatWithContent(
             content = page.content,
             question = question,
             onToken = onToken,
             onComplete = onComplete,
-            onError = onError
+            onError = onError,
+            conversationHistory = conversationHistory
         )
     }
 
@@ -266,14 +359,16 @@ class SubjectViewModel @Inject constructor(
         question: String,
         onToken: (String) -> Unit,
         onComplete: (String) -> Unit = {},
-        onError: (String) -> Unit = {}
+        onError: (String) -> Unit = {},
+        conversationHistory: List<Pair<String, String>> = emptyList()
     ) {
         chatWithContent(
             content = subject.aggregatedNote,
             question = question,
             onToken = onToken,
             onComplete = onComplete,
-            onError = onError
+            onError = onError,
+            conversationHistory = conversationHistory
         )
     }
 
@@ -282,7 +377,8 @@ class SubjectViewModel @Inject constructor(
         question: String,
         onToken: (String) -> Unit,
         onComplete: (String) -> Unit = {},
-        onError: (String) -> Unit = {}
+        onError: (String) -> Unit = {},
+        conversationHistory: List<Pair<String, String>> = emptyList()
     ) {
         if (_uiState.value.isProcessing) return
         viewModelScope.launch {
@@ -303,7 +399,8 @@ class SubjectViewModel @Inject constructor(
                         _uiState.update { state ->
                             if (state.aiWarningMessage == null) state.copy(aiWarningMessage = warning) else state
                         }
-                    }
+                    },
+                    conversationHistory = conversationHistory
                 )
                 onComplete(answer)
             } catch (e: Exception) {

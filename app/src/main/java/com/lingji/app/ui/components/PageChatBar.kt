@@ -11,13 +11,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.CircularProgressIndicator
@@ -27,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,17 +46,26 @@ import com.lingji.app.R
 fun PageChatBar(
     targetTitle: String,
     targetContent: String,
-    answer: String,
+    conversationHistory: List<Pair<String, String>>,
+    currentAnswer: String,
     isLoading: Boolean,
     onSend: (String) -> Unit,
+    onClearHistory: () -> Unit,
     modifier: Modifier = Modifier,
     placeholder: String = stringResource(R.string.chat_placeholder),
     targetLabelFormat: String = stringResource(R.string.chat_target)
 ) {
     var question by remember { mutableStateOf("") }
     var answerExpanded by remember { mutableStateOf(true) }
-    val hasAnswer = answer.isNotBlank() || isLoading
+    val hasHistory = conversationHistory.isNotEmpty() || currentAnswer.isNotBlank() || isLoading
     val enabled = question.isNotBlank() && targetContent.isNotBlank() && !isLoading
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(conversationHistory.size, currentAnswer) {
+        if (conversationHistory.isNotEmpty() || currentAnswer.isNotBlank()) {
+            listState.animateScrollToItem(0)
+        }
+    }
 
     GlassSurface(
         modifier = modifier.fillMaxWidth(),
@@ -64,137 +76,175 @@ fun PageChatBar(
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
-                AnimatedVisibility(visible = hasAnswer) {
-                    Column {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = stringResource(R.string.ai_answer),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.tertiary
-                            )
+            AnimatedVisibility(visible = hasHistory) {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(R.string.ai_answer),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.tertiary
+                        )
+                        Row {
+                            if (conversationHistory.isNotEmpty()) {
+                                IconButton(
+                                    onClick = onClearHistory,
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.DeleteSweep,
+                                        contentDescription = stringResource(R.string.cd_clear_history),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
                             IconButton(
                                 onClick = { answerExpanded = !answerExpanded },
                                 modifier = Modifier.size(24.dp)
                             ) {
                                 Icon(
-                                    imageVector = if (answerExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                    imageVector = if (answerExpanded) Icons.Default.ExpandMore else Icons.Default.ExpandLess,
                                     contentDescription = stringResource(R.string.cd_expand),
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
                         }
-                        if (answerExpanded) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(max = 180.dp)
-                                    .verticalScroll(rememberScrollState())
-                                    .padding(vertical = 4.dp)
-                            ) {
-                                when {
-                                    isLoading && answer.isBlank() -> {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            CircularProgressIndicator(
-                                                modifier = Modifier.size(16.dp),
-                                                strokeWidth = 2.dp,
-                                                color = MaterialTheme.colorScheme.tertiary
-                                            )
-                                            Text(
-                                                text = " ${stringResource(R.string.thinking)}",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    }
-                                    answer.isNotBlank() -> {
+                    }
+                    if (answerExpanded) {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 180.dp)
+                                .padding(vertical = 4.dp),
+                            reverseLayout = true
+                        ) {
+                            if (isLoading && currentAnswer.isBlank()) {
+                                item {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp,
+                                            color = MaterialTheme.colorScheme.tertiary
+                                        )
                                         Text(
-                                            text = answer,
-                                            style = MaterialTheme.typography.bodyMedium
+                                            text = " ${stringResource(R.string.thinking)}",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
+                                }
+                            }
+                            if (currentAnswer.isNotBlank()) {
+                                item {
+                                    Text(
+                                        text = currentAnswer,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        modifier = Modifier.padding(vertical = 4.dp)
+                                    )
+                                }
+                            }
+                            if (!isLoading && currentAnswer.isBlank() && conversationHistory.isNotEmpty()) {
+                                item {
+                                    Spacer(modifier = Modifier.height(0.dp))
+                                }
+                            }
+                            items(conversationHistory.reversed()) { (q, a) ->
+                                Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                                    Text(
+                                        text = q,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = a,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
                                 }
                             }
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
+            }
 
-                Text(
-                    text = targetLabelFormat.format(targetTitle.takeIf { it.isNotBlank() } ?: stringResource(R.string.unnamed_page)),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
-                )
+            Text(
+                text = targetLabelFormat.format(targetTitle.takeIf { it.isNotBlank() } ?: stringResource(R.string.unnamed_page)),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
+            )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val inputEnabled = targetContent.isNotBlank() && !isLoading
-                    BasicTextField(
-                        value = question,
-                        onValueChange = { question = it },
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        enabled = inputEnabled,
-                        maxLines = 4,
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(
-                            color = if (inputEnabled) {
-                                MaterialTheme.colorScheme.onSurface
-                            } else {
-                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                            }
-                        ),
-                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                        decorationBox = { innerTextField ->
-                            Box(modifier = Modifier.fillMaxWidth()) {
-                                if (question.isEmpty()) {
-                                    Text(
-                                        text = placeholder,
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f)
-                                    )
-                                }
-                                innerTextField()
-                            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val inputEnabled = targetContent.isNotBlank() && !isLoading
+                BasicTextField(
+                    value = question,
+                    onValueChange = { question = it },
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    enabled = inputEnabled,
+                    maxLines = 4,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                        color = if (inputEnabled) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                         }
-                    )
-                    IconButton(
-                        onClick = {
-                            if (question.isNotBlank()) {
-                                answerExpanded = true
-                                onSend(question.trim())
-                                question = ""
-                            }
-                        },
-                        enabled = enabled
-                    ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = if (enabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.9f) else Color.Transparent,
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.Send,
-                                    contentDescription = stringResource(R.string.cd_send),
-                                    tint = if (enabled) {
-                                        MaterialTheme.colorScheme.onPrimary
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                                    },
-                                    modifier = Modifier.size(20.dp)
+                    ),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    decorationBox = { innerTextField ->
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            if (question.isEmpty()) {
+                                Text(
+                                    text = placeholder,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f)
                                 )
                             }
+                            innerTextField()
+                        }
+                    }
+                )
+                IconButton(
+                    onClick = {
+                        if (question.isNotBlank()) {
+                            answerExpanded = true
+                            onSend(question.trim())
+                            question = ""
+                        }
+                    },
+                    enabled = enabled
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = if (enabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.9f) else Color.Transparent,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Send,
+                                contentDescription = stringResource(R.string.cd_send),
+                                tint = if (enabled) {
+                                    MaterialTheme.colorScheme.onPrimary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                },
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
                     }
                 }
             }
         }
     }
+}

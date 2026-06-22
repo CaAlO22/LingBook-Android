@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -128,6 +129,7 @@ fun FragmentSubjectScreen(
     var deadline by remember { mutableStateOf("") }
     var noteChatAnswer by remember { mutableStateOf("") }
     var isNoteChatLoading by remember { mutableStateOf(false) }
+    var noteChatHistory by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var refineHint by remember { mutableStateOf("") }
     var showRefineDialog by remember { mutableStateOf(false) }
     var planDialogDeadline by remember { mutableStateOf("") }
@@ -144,7 +146,7 @@ fun FragmentSubjectScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                modifier = Modifier.padding(top = 16.dp),
+                modifier = Modifier.statusBarsPadding(),
                 title = {
                     Text(
                         text = liveSubject.title,
@@ -248,7 +250,8 @@ fun FragmentSubjectScreen(
                                 PageChatBar(
                                     targetTitle = liveSubject.title,
                                     targetContent = liveSubject.aggregatedNote,
-                                    answer = noteChatAnswer,
+                                    conversationHistory = noteChatHistory,
+                                    currentAnswer = noteChatAnswer,
                                     isLoading = isNoteChatLoading,
                                     placeholder = stringResource(R.string.note_chat_placeholder),
                                     targetLabelFormat = stringResource(R.string.note_chat_target),
@@ -258,11 +261,13 @@ fun FragmentSubjectScreen(
                                         viewModel.chatWithNote(
                                             subject = liveSubject,
                                             question = question,
+                                            conversationHistory = noteChatHistory,
                                             onToken = { token ->
                                                 noteChatAnswer += token
                                             },
                                             onComplete = { answer ->
-                                                noteChatAnswer = answer
+                                                noteChatHistory = noteChatHistory + Pair(question, answer)
+                                                noteChatAnswer = ""
                                                 isNoteChatLoading = false
                                             },
                                             onError = { error ->
@@ -270,6 +275,10 @@ fun FragmentSubjectScreen(
                                                 isNoteChatLoading = false
                                             }
                                         )
+                                    },
+                                    onClearHistory = {
+                                        noteChatHistory = emptyList()
+                                        noteChatAnswer = ""
                                     },
                                     modifier = Modifier.fillMaxWidth()
                                 )

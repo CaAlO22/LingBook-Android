@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -25,6 +26,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -62,6 +64,8 @@ import com.lingji.app.ui.settings.ProviderModelSettings
 import com.lingji.app.ui.settings.providerDisplayName
 import com.lingji.app.ui.theme.NotoSerifCJKsc
 import com.lingji.app.ui.viewmodel.SubjectViewModel
+import com.lingji.app.ui.viewmodel.UpdateViewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 
@@ -69,6 +73,7 @@ import java.io.ByteArrayOutputStream
 @Composable
 fun SettingsScreen(
     viewModel: SubjectViewModel,
+    updateViewModel: UpdateViewModel,
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -77,6 +82,7 @@ fun SettingsScreen(
     var testResult by remember { mutableStateOf("") }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val isCheckingUpdate by updateViewModel.isChecking.collectAsState()
 
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -95,7 +101,7 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                modifier = Modifier.padding(top = 16.dp),
+                modifier = Modifier.statusBarsPadding(),
                 title = {
                     Text(
                         text = stringResource(R.string.settings_title),
@@ -271,6 +277,20 @@ fun SettingsScreen(
                 ) {
                     Icon(Icons.Default.ContentPaste, contentDescription = null)
                     Text(stringResource(R.string.import_from_clipboard), modifier = Modifier.padding(start = 8.dp))
+                }
+                Button(
+                    onClick = { updateViewModel.checkForUpdate() },
+                    enabled = !isCheckingUpdate,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp)
+                ) {
+                    if (isCheckingUpdate) {
+                        Text(stringResource(R.string.checking_update))
+                    } else {
+                        Icon(Icons.Default.SystemUpdate, contentDescription = null)
+                        Text(stringResource(R.string.check_update), modifier = Modifier.padding(start = 8.dp))
+                    }
                 }
                 Row(
                     modifier = Modifier

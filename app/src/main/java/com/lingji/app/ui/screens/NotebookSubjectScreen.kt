@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
@@ -140,6 +142,7 @@ fun NotebookSubjectScreen(
     var moveText by remember { mutableStateOf("") }
     var chatAnswer by remember { mutableStateOf("") }
     var isChatLoading by remember { mutableStateOf(false) }
+    var chatHistory by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var deleteConfirmPage by remember { mutableStateOf<NotebookPage?>(null) }
     var lastCreatedPageId by remember { mutableStateOf<String?>(null) }
     var showIndexEditorPage by remember { mutableStateOf<NotebookPage?>(null) }
@@ -205,13 +208,35 @@ fun NotebookSubjectScreen(
         )
     }
 
+    val triggerBuildDirectory = {
+        Toast.makeText(
+            context,
+            context.getString(R.string.building_directory_toast),
+            Toast.LENGTH_SHORT
+        ).show()
+        viewModel.buildDirectory(
+            subject = liveSubject,
+            onComplete = { directory ->
+                Toast.makeText(context, context.getString(R.string.directory_built_toast), Toast.LENGTH_SHORT).show()
+            },
+            onError = { error ->
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.directory_build_failed_toast, error),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .statusBarsPadding()
                     .height(64.dp)
-                    .padding(top = 16.dp, start = 4.dp, end = 4.dp)
+                    .padding(start = 4.dp, end = 4.dp)
                     .background(MaterialTheme.colorScheme.background),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -301,6 +326,19 @@ fun NotebookSubjectScreen(
                                     leadingIcon = {
                                         Icon(
                                             Icons.Default.Refresh,
+                                            contentDescription = null
+                                        )
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.build_directory)) },
+                                    onClick = {
+                                        showMoreMenu = false
+                                        triggerBuildDirectory()
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.AutoMirrored.Filled.List,
                                             contentDescription = null
                                         )
                                     }
@@ -411,7 +449,8 @@ fun NotebookSubjectScreen(
                         targetTitle = currentPage?.title?.takeIf { it.isNotBlank() }
                             ?: stringResource(R.string.unnamed_page),
                         targetContent = currentPage?.content ?: "",
-                        answer = chatAnswer,
+                        conversationHistory = chatHistory,
+                        currentAnswer = chatAnswer,
                         isLoading = isChatLoading,
                         onSend = { question ->
                             val page = currentPage ?: return@PageChatBar
@@ -420,11 +459,13 @@ fun NotebookSubjectScreen(
                             viewModel.chatWithPage(
                                 page = page,
                                 question = question,
+                                conversationHistory = chatHistory,
                                 onToken = { token ->
                                     chatAnswer += token
                                 },
                                 onComplete = { answer ->
-                                    chatAnswer = answer
+                                    chatHistory = chatHistory + Pair(question, answer)
+                                    chatAnswer = ""
                                     isChatLoading = false
                                 },
                                 onError = { error ->
@@ -432,6 +473,10 @@ fun NotebookSubjectScreen(
                                     isChatLoading = false
                                 }
                             )
+                        },
+                        onClearHistory = {
+                            chatHistory = emptyList()
+                            chatAnswer = ""
                         }
                     )
                 },

@@ -228,11 +228,60 @@ class LLMService @Inject constructor() {
         onToken: (String) -> Unit,
         onReasoning: (String) -> Unit = {},
         images: List<String> = emptyList(),
-        onWarning: (String) -> Unit = {}
+        onWarning: (String) -> Unit = {},
+        conversationHistory: List<Pair<String, String>> = emptyList()
     ): String {
         val systemPrompt = "你是一个有用的AI导师。请严格根据提供的上下文（包括文字与图片）回答用户的问题。回答要简洁明了。"
-        val prompt = "上下文:\n$pageContent\n\n问题:\n$question\n\n回答:"
-        return streamGenerate(prompt, settings, systemPrompt, onToken, onReasoning, images, onWarning)
+        val historyMessages = mutableListOf<ChatMessage>()
+        for ((q, a) in conversationHistory) {
+            val userPrompt = "上下文:\n$pageContent\n\n问题:\n$q\n\n回答:"
+            historyMessages.add(ChatMessage("user", userPrompt))
+            historyMessages.add(ChatMessage("assistant", a))
+        }
+        val currentUserPrompt = "上下文:\n$pageContent\n\n问题:\n$question\n\n回答:"
+        historyMessages.add(ChatMessage("user", currentUserPrompt))
+        val allMessages = listOf(
+            ChatMessage("system", systemPrompt)
+        ) + historyMessages
+        val endpoint = resolveEndpoint(settings.baseUrl)
+        val isResponses = endpoint.endsWith("/responses", true)
+        val supportsVision = ProviderRegistry.supportsVision(settings.provider, settings.modelName)
+        val strategy = RequestStrategyRegistry.get(settings.provider)
+        if (images.isNotEmpty() && !supportsVision) {
+            onWarning("当前模型 ${settings.modelName} 不支持图片输入，已忽略 ${images.size} 张图片。")
+        }
+        val body = strategy.buildChatRequestBody(settings, allMessages, stream = true)
+        val request = buildRequest(endpoint, body, strategy, settings)
+        return client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                val text = response.body?.string() ?: ""
+                throw Exception(parseError(text) ?: "请求失败: ${response.code}")
+            }
+            val source = response.body?.source() ?: throw Exception("AI 响应为空")
+            val acc = StringBuilder()
+            while (!source.exhausted()) {
+                val line = source.readUtf8Line() ?: break
+                if (!line.startsWith("data: ")) continue
+                val payload = line.removePrefix("data: ").trim()
+                if (payload == "[DONE]") continue
+                try {
+                    val obj = gson.fromJson(payload, com.lingji.app.data.remote.models.ChatResponse::class.java)
+                    val choice = obj.choices?.firstOrNull()
+                    val delta = choice?.delta
+                    val reasoning = choice?.reasoning_content
+                        ?: delta?.reasoning_content
+                    val deltaText = delta?.content?.let { if (it is String) it else "" } ?: ""
+                    if (reasoning != null && reasoning.isNotEmpty()) {
+                        onReasoning(reasoning)
+                    }
+                    if (deltaText.isNotEmpty()) {
+                        onToken(deltaText)
+                        acc.append(deltaText)
+                    }
+                } catch (_: Exception) {}
+            }
+            acc.toString()
+        }
     }
 
     private fun buildRequest(

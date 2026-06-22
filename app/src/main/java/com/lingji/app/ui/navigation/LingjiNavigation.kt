@@ -15,6 +15,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.lingji.app.ui.components.AiRunningIsland
 import com.lingji.app.ui.screens.FragmentSubjectScreen
+import com.lingji.app.ui.viewmodel.UpdateViewModel
 import com.lingji.app.ui.screens.NotebookSubjectScreen
 import com.lingji.app.ui.screens.SettingsScreen
 import com.lingji.app.ui.screens.SubjectGalleryScreen
@@ -65,8 +66,10 @@ fun LingjiNavigation() {
                 }
             }
             composable("settings") {
+                val updateViewModel: UpdateViewModel = hiltViewModel()
                 SettingsScreen(
                     viewModel = viewModel,
+                    updateViewModel = updateViewModel,
                     onBack = { navController.popBackStack() }
                 )
             }

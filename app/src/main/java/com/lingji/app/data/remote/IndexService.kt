@@ -86,6 +86,50 @@ class IndexService @Inject constructor(
         )
     }
 
+    suspend fun generateDirectory(
+        entries: List<PageIndexEntry>,
+        pages: List<NotebookPage>,
+        settings: AISettings,
+        onToken: (String) -> Unit = {},
+        onReasoning: (String) -> Unit = {},
+        onWarning: (String) -> Unit = {}
+    ): String {
+        val pageMap = pages.associateBy { it.id }
+        val indexText = entries.mapIndexed { idx, entry ->
+            val pageNum = pages.indexOfFirst { it.id == entry.pageId } + 1
+            "第${pageNum}页 [${entry.title}]: 关键词=${entry.keywords.joinToString("、")}，摘要=${entry.summary}"
+        }.joinToString("\n")
+
+        val systemPrompt = """你是一个目录生成专家。请根据以下所有页面的索引信息，生成一份结构化的目录。
+
+要求：
+1. 目录应按主题层级组织，将相关的页面归类到同一个大主题下
+2. 每个条目必须包含准确的页码
+3. 输出格式为Markdown格式的目录
+4. 不要包含其他任何解释文字，只输出目录内容
+
+输出格式示例：
+# 目录
+
+## 第一章 基础概念
+- 1.1 概述 ............. 第1页
+- 1.2 核心原理 ............. 第3页
+
+## 第二章 进阶内容
+- 2.1 高级应用 ............. 第5页"""
+
+        val prompt = "以下是笔记本中所有页面的索引信息：\n\n$indexText\n\n请根据以上信息生成结构化目录。"
+
+        return llmService.streamGenerate(
+            prompt = prompt,
+            settings = settings,
+            systemPrompt = systemPrompt,
+            onToken = onToken,
+            onReasoning = onReasoning,
+            onWarning = onWarning
+        )
+    }
+
     fun getDirtyPages(pages: List<NotebookPage>): List<NotebookPage> {
         return pages.filter { it.indexedAt <= 0 || it.updatedAt > it.indexedAt }
     }

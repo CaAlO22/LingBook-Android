@@ -107,6 +107,14 @@ class SubjectRepository @Inject constructor(
         pageDao.insert(page.toEntity(subjectId, count))
     }
 
+    suspend fun insertPageAt(subjectId: String, page: NotebookPage, position: Int) {
+        val existing = pageDao.getPagesBySubjectOnce(subjectId).toMutableList()
+        val entity = page.toEntity(subjectId, position)
+        existing.add(position, entity)
+        pageDao.deleteBySubject(subjectId)
+        pageDao.insertAll(existing.mapIndexed { idx, p -> p.copy(orderIndex = idx) })
+    }
+
     suspend fun updatePage(subjectId: String, page: NotebookPage) {
         pageDao.update(page.id, page.title, page.content, page.updatedAt)
     }
