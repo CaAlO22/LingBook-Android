@@ -91,6 +91,7 @@
     <string name="choose_image_source">选择图片来源</string>
     <string name="camera">拍照</string>
     <string name="gallery">相册</string>
+    <string name="camera_permission_denied">未获得相机权限，无法拍照</string>
     <string name="cd_generate_index">生成索引</string>
     <string name="cd_remove_image">移除图片</string>
     <string name="content_hint">在此输入页面内容…</string>

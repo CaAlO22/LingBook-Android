@@ -23,11 +23,6 @@ object MimoConfig : ProviderConfig {
             name = "MiMo-V2.5",
             description = "全模态理解、图文音视频",
             supportsVision = true
-        ),
-        ProviderModel(
-            id = "mimo-v2-flash",
-            name = "MiMo-V2-Flash",
-            description = "低成本、快速响应"
         )
     )
     override val supportsThinking = true

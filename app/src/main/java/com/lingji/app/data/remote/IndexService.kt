@@ -95,8 +95,9 @@ class IndexService @Inject constructor(
         onWarning: (String) -> Unit = {}
     ): String {
         val pageMap = pages.associateBy { it.id }
+        // 目录页作为第 1 页单独占位，正文实际页码从第 2 页开始，因此索引偏移 +2
         val indexText = entries.mapIndexed { idx, entry ->
-            val pageNum = pages.indexOfFirst { it.id == entry.pageId } + 1
+            val pageNum = pages.indexOfFirst { it.id == entry.pageId } + 2
             "第${pageNum}页 [${entry.title}]: 关键词=${entry.keywords.joinToString("、")}，摘要=${entry.summary}"
         }.joinToString("\n")
 
@@ -104,7 +105,7 @@ class IndexService @Inject constructor(
 
 要求：
 1. 目录应按主题层级组织，将相关的页面归类到同一个大主题下
-2. 每个条目必须包含准确的页码
+2. 每个条目必须包含准确的页码，页码必须严格使用输入中给出的"第N页"，不要重新编号
 3. 输出格式为Markdown格式的目录
 4. 不要包含其他任何解释文字，只输出目录内容
 

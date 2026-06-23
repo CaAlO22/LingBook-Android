@@ -9,6 +9,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -235,14 +237,12 @@ fun NotebookSubjectScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .height(64.dp)
                     .padding(start = 4.dp, end = 4.dp)
                     .background(MaterialTheme.colorScheme.background),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // 左侧：返回 + 笔记名称
                 Box(
-                    modifier = Modifier.weight(1f),
                     contentAlignment = Alignment.CenterStart
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -608,9 +608,13 @@ fun NotebookSubjectScreen(
             state = imagePickerState,
             onImagePicked = { base64 ->
                 val target = currentPage ?: page
-                val markdownImage = "\n\n![图片]($base64)\n\n"
                 val cursor = editorHostState.cursorPosition.coerceIn(0, target.content.length)
-                val updatedContent = target.content.take(cursor) + markdownImage + target.content.drop(cursor)
+                val before = target.content.take(cursor)
+                val after = target.content.drop(cursor)
+                val prefix = if (before.isEmpty() || before.endsWith("\n")) "" else "\n"
+                val suffix = if (after.isEmpty() || after.startsWith("\n")) "" else "\n"
+                val markdownImage = "$prefix![图片]($base64)$suffix"
+                val updatedContent = before + markdownImage + after
                 val updated = target.copy(
                     content = updatedContent,
                     updatedAt = System.currentTimeMillis()
@@ -686,6 +690,7 @@ fun NotebookSubjectScreen(
 private const val CLIPBOARD_SIZE_LIMIT = 1_000_000
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun NotebookPageToolbar(
     currentPage: NotebookPage?,
     currentPageIndex: Int,
@@ -710,13 +715,13 @@ private fun NotebookPageToolbar(
 ) {
     var showPagePositionMenu by remember { mutableStateOf(false) }
 
-    Row(
+    FlowRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-) {
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
         if (pagesSize > 0) {
             // 左侧：保存 + 待索引
             Row(

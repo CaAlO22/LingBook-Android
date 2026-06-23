@@ -1,10 +1,13 @@
 package com.lingji.app.ui.components
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
@@ -33,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -80,6 +84,38 @@ fun PageImagePicker(
         onDismiss()
     }
 
+    val launchCamera: () -> Unit = {
+        val uri = createTempImageUri(context)
+        state.pendingCameraUri = uri
+        try {
+            cameraLauncher.launch(uri)
+        } catch (e: SecurityException) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.camera_permission_denied),
+                Toast.LENGTH_SHORT
+            ).show()
+            state.pendingCameraUri = null
+            onDismiss()
+        }
+        showSourceChooser = false
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            launchCamera()
+        } else {
+            Toast.makeText(
+                context,
+                context.getString(R.string.camera_permission_denied),
+                Toast.LENGTH_SHORT
+            ).show()
+            onDismiss()
+        }
+    }
+
     if (showSourceChooser) {
         LingjiDialog(
             onDismissRequest = onDismiss,
@@ -97,10 +133,15 @@ fun PageImagePicker(
                     ) {
                         Button(
                             onClick = {
-                                val uri = createTempImageUri(context)
-                                state.pendingCameraUri = uri
-                                cameraLauncher.launch(uri)
-                                showSourceChooser = false
+                                if (ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.CAMERA
+                                    ) == PackageManager.PERMISSION_GRANTED
+                                ) {
+                                    launchCamera()
+                                } else {
+                                    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                }
                             },
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(
