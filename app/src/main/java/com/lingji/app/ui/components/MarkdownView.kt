@@ -2,7 +2,9 @@ package com.lingji.app.ui.components
 
 import android.widget.TextView
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
@@ -34,32 +36,22 @@ internal fun foldBlankLines(markdown: String): String {
 
 @Composable
 fun MarkdownView(markdown: String, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val markwon = remember(context) {
+        Markwon.builder(context)
+            .usePlugin(
+                ImagesPlugin.create { plugin ->
+                    plugin.addSchemeHandler(DataUriSchemeHandler.create())
+                }
+            )
+            .usePlugin(TablePlugin.create(context))
+            .usePlugin(StrikethroughPlugin.create())
+            .build()
+    }
     val rendered = foldBlankLines(markdown)
     AndroidView(
-        factory = { context ->
-            TextView(context).apply {
-                val markwon = Markwon.builder(context)
-                    .usePlugin(
-                        ImagesPlugin.create { plugin ->
-                            plugin.addSchemeHandler(DataUriSchemeHandler.create())
-                        }
-                    )
-                    .usePlugin(TablePlugin.create(context))
-                    .usePlugin(StrikethroughPlugin.create())
-                    .build()
-                markwon.setMarkdown(this, rendered)
-            }
-        },
+        factory = { ctx -> TextView(ctx) },
         update = { textView ->
-            val markwon = Markwon.builder(textView.context)
-                .usePlugin(
-                    ImagesPlugin.create { plugin ->
-                        plugin.addSchemeHandler(DataUriSchemeHandler.create())
-                    }
-                )
-                .usePlugin(TablePlugin.create(textView.context))
-                .usePlugin(StrikethroughPlugin.create())
-                .build()
             markwon.setMarkdown(textView, rendered)
         },
         modifier = modifier

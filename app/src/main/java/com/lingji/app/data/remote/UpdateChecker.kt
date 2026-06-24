@@ -24,8 +24,11 @@ class UpdateChecker @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .callTimeout(60, TimeUnit.SECONDS)
+        .followRedirects(true)
+        .followSslRedirects(true)
         .build()
 
     private val gson = Gson()
@@ -39,6 +42,7 @@ class UpdateChecker @Inject constructor(
             val request = Request.Builder()
                 .url(GITHUB_API)
                 .header("Accept", "application/vnd.github+json")
+                .header("User-Agent", "LingBook-Android")
                 .get()
                 .build()
 
@@ -68,7 +72,11 @@ class UpdateChecker @Inject constructor(
 
     suspend fun downloadApk(url: String, onProgress: (Int) -> Unit): java.io.File? = withContext(Dispatchers.IO) {
         runCatching {
-            val request = Request.Builder().url(url).get().build()
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", "LingBook-Android")
+                .get()
+                .build()
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return@runCatching null
                 val body = response.body ?: return@runCatching null

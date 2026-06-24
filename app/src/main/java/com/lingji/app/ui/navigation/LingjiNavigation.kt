@@ -22,7 +22,7 @@ import com.lingji.app.ui.screens.SubjectGalleryScreen
 import com.lingji.app.ui.viewmodel.SubjectViewModel
 
 @Composable
-fun LingjiNavigation() {
+fun LingjiNavigation(updateViewModel: UpdateViewModel) {
     val navController = rememberNavController()
     val viewModel: SubjectViewModel = hiltViewModel()
     val uiState by viewModel.uiState.collectAsState()
@@ -66,7 +66,6 @@ fun LingjiNavigation() {
                 }
             }
             composable("settings") {
-                val updateViewModel: UpdateViewModel = hiltViewModel()
                 SettingsScreen(
                     viewModel = viewModel,
                     updateViewModel = updateViewModel,

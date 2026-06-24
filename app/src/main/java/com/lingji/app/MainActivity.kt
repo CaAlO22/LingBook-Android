@@ -37,7 +37,7 @@ class MainActivity : ComponentActivity() {
                         updateViewModel.checkForUpdate()
                     }
 
-                    LingjiNavigation()
+                    LingjiNavigation(updateViewModel = updateViewModel)
 
                     // Show update dialog if update available
                     updateInfo?.let { info ->
