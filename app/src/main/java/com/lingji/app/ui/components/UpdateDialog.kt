@@ -1,10 +1,14 @@
 package com.lingji.app.ui.components
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
@@ -38,6 +42,8 @@ fun UpdateDialog(
             )
         },
         text = {
+            // 顶部版本号与底部下载进度区固定；中间 release notes 用受限高度 + 内部滚动，
+            // 避免长更新日志把下载进度条挤出对话框，同时保证用户可以读到全部内容。
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
                     text = stringResource(R.string.update_version_format, updateInfo.versionName),
@@ -47,14 +53,21 @@ fun UpdateDialog(
 
                 if (updateInfo.releaseNotes.isNotBlank()) {
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = updateInfo.releaseNotes,
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontFamily = FontFamily.Monospace
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 4.dp)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 240.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        Text(
+                            text = updateInfo.releaseNotes,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontFamily = FontFamily.Monospace
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+                    }
                 }
 
                 if (isDownloading) {

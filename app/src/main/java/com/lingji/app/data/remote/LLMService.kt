@@ -242,7 +242,7 @@ class LLMService @Inject constructor() {
         images: List<String> = emptyList(),
         onWarning: (String) -> Unit = {},
         conversationHistory: List<Pair<String, String>> = emptyList()
-    ): String {
+    ): String = withContext(Dispatchers.IO) {
         val systemPrompt = "你是一个有用的AI导师。请严格根据提供的上下文（包括文字与图片）回答用户的问题。回答要简洁明了。"
         val historyMessages = mutableListOf<ChatMessage>()
         for ((q, a) in conversationHistory) {
@@ -264,7 +264,7 @@ class LLMService @Inject constructor() {
         }
         val body = strategy.buildChatRequestBody(settings, allMessages, stream = true)
         val request = buildRequest(endpoint, body, strategy, settings)
-        return client.newCall(request).execute().use { response ->
+        client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 val text = response.body?.string() ?: ""
                 val detail = parseError(text)?.takeIf { it.isNotBlank() }

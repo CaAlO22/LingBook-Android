@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -509,45 +511,102 @@ fun NotebookSubjectScreen(
                     } else {
                         val page = currentPage ?: return@FloatingInputContainer
                         val swipeAction = uiState.settings.horizontalSwipeAction
-                        val onSwipeLeftHandler: (() -> Unit)? = when (swipeAction) {
-                            HorizontalSwipeAction.NONE -> null
+                        when (swipeAction) {
                             HorizontalSwipeAction.TOGGLE_PREVIEW -> {
-                                { editorHostState.setPreview(!editorHostState.isPreview) }
-                            }
-                            HorizontalSwipeAction.CHANGE_PAGE -> {
-                                {
-                                    pages.getOrNull(currentPageIndex + 1)?.let { currentPageId = it.id }
+                                // 2 页（编辑、预览）的 HorizontalPager，与 hostState.isPreview 双向同步。
+                                val pagerState = androidx.compose.foundation.pager.rememberPagerState(
+                                    initialPage = if (editorHostState.isPreview) 1 else 0,
+                                    pageCount = { 2 }
+                                )
+                                LaunchedEffect(pagerState.currentPage) {
+                                    editorHostState.setPreview(pagerState.currentPage == 1)
+                                }
+                                LaunchedEffect(editorHostState.isPreview) {
+                                    val target = if (editorHostState.isPreview) 1 else 0
+                                    if (pagerState.currentPage != target) {
+                                        pagerState.animateScrollToPage(target)
+                                    }
+                                }
+                                HorizontalPager(
+                                    state = pagerState,
+                                    modifier = Modifier.fillMaxSize(),
+                                    userScrollEnabled = true
+                                ) { _ ->
+                                    NotebookPageEditor(
+                                        page = page,
+                                        indexEntry = indexEntries[page.id],
+                                        onUpdate = { updated ->
+                                            viewModel.updatePage(liveSubject.id, updated)
+                                        },
+                                        onEditIndex = { showIndexEditorPage = page },
+                                        onFocus = { },
+                                        autoFocusContent = page.id == lastCreatedPageId,
+                                        fillHeight = true,
+                                        hostState = editorHostState,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(start = 12.dp, end = 12.dp, top = 8.dp)
+                                    )
                                 }
                             }
-                        }
-                        val onSwipeRightHandler: (() -> Unit)? = when (swipeAction) {
-                            HorizontalSwipeAction.NONE -> null
-                            HorizontalSwipeAction.TOGGLE_PREVIEW -> {
-                                { editorHostState.setPreview(!editorHostState.isPreview) }
-                            }
                             HorizontalSwipeAction.CHANGE_PAGE -> {
-                                {
-                                    pages.getOrNull(currentPageIndex - 1)?.let { currentPageId = it.id }
+                                val pagerState = androidx.compose.foundation.pager.rememberPagerState(
+                                    initialPage = currentPageIndex.coerceAtLeast(0),
+                                    pageCount = { pages.size }
+                                )
+                                LaunchedEffect(pagerState.currentPage) {
+                                    pages.getOrNull(pagerState.currentPage)?.let { p ->
+                                        if (currentPageId != p.id) currentPageId = p.id
+                                    }
+                                }
+                                LaunchedEffect(currentPageIndex) {
+                                    if (currentPageIndex in pages.indices &&
+                                        pagerState.currentPage != currentPageIndex
+                                    ) {
+                                        pagerState.animateScrollToPage(currentPageIndex)
+                                    }
+                                }
+                                HorizontalPager(
+                                    state = pagerState,
+                                    modifier = Modifier.fillMaxSize(),
+                                    userScrollEnabled = true
+                                ) { pageIndex ->
+                                    val displayPage = pages.getOrNull(pageIndex) ?: return@HorizontalPager
+                                    NotebookPageEditor(
+                                        page = displayPage,
+                                        indexEntry = indexEntries[displayPage.id],
+                                        onUpdate = { updated ->
+                                            viewModel.updatePage(liveSubject.id, updated)
+                                        },
+                                        onEditIndex = { showIndexEditorPage = displayPage },
+                                        onFocus = { },
+                                        autoFocusContent = displayPage.id == lastCreatedPageId,
+                                        fillHeight = true,
+                                        hostState = editorHostState,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(start = 12.dp, end = 12.dp, top = 8.dp)
+                                    )
                                 }
                             }
+                            HorizontalSwipeAction.NONE -> {
+                                NotebookPageEditor(
+                                    page = page,
+                                    indexEntry = indexEntries[page.id],
+                                    onUpdate = { updated ->
+                                        viewModel.updatePage(liveSubject.id, updated)
+                                    },
+                                    onEditIndex = { showIndexEditorPage = page },
+                                    onFocus = { },
+                                    autoFocusContent = page.id == lastCreatedPageId,
+                                    fillHeight = true,
+                                    hostState = editorHostState,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(start = 12.dp, end = 12.dp, top = 8.dp)
+                                )
+                            }
                         }
-                        NotebookPageEditor(
-                            page = page,
-                            indexEntry = indexEntries[page.id],
-                            onUpdate = { updated ->
-                                viewModel.updatePage(liveSubject.id, updated)
-                            },
-                            onEditIndex = { showIndexEditorPage = page },
-                            onFocus = { },
-                            autoFocusContent = page.id == lastCreatedPageId,
-                            fillHeight = true,
-                            hostState = editorHostState,
-                            onSwipeLeft = onSwipeLeftHandler,
-                            onSwipeRight = onSwipeRightHandler,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(start = 12.dp, end = 12.dp, top = 8.dp)
-                        )
                     }
                 }
             )

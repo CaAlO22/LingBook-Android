@@ -4,7 +4,6 @@ import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -46,7 +45,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
@@ -144,8 +142,6 @@ fun NotebookPageEditor(
     autoFocusContent: Boolean = false,
     fillHeight: Boolean = false,
     hostState: NotebookPageEditorHostState = remember { NotebookPageEditorHostState() },
-    onSwipeLeft: (() -> Unit)? = null,
-    onSwipeRight: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val undoManager = remember(page.id) { UndoManager(PageEditState(page.title, page.content)) }
@@ -214,25 +210,6 @@ fun NotebookPageEditor(
         modifier = modifier
             .fillMaxSize()
             .padding(16.dp)
-            .then(
-                if ((onSwipeLeft != null || onSwipeRight != null) && isPreview) {
-                    Modifier.pointerInput(onSwipeLeft, onSwipeRight) {
-                        var totalDrag = 0f
-                        detectHorizontalDragGestures(
-                            onDragStart = { totalDrag = 0f },
-                            onDragEnd = {
-                                val threshold = 80f
-                                when {
-                                    totalDrag <= -threshold -> onSwipeLeft?.invoke()
-                                    totalDrag >= threshold -> onSwipeRight?.invoke()
-                                }
-                            },
-                            onDragCancel = { totalDrag = 0f },
-                            onHorizontalDrag = { _, dragAmount -> totalDrag += dragAmount }
-                        )
-                    }
-                } else Modifier
-            )
     ) {
         val scrollState = rememberScrollState()
         // 文本区至少撑满剩余可视空间，保证内容短时也能沉浸在输入栏后方。
