@@ -92,11 +92,12 @@ fun SettingsScreen(
 
     androidx.compose.runtime.LaunchedEffect(updateCheckMessage) {
         val msg = updateCheckMessage ?: return@LaunchedEffect
-        val resId = when (msg) {
-            CheckMessage.AlreadyLatest -> R.string.update_already_latest
-            CheckMessage.Failed -> R.string.update_check_failed
+        val text = when (msg) {
+            CheckMessage.AlreadyLatest -> context.getString(R.string.update_already_latest)
+            is CheckMessage.Failed -> context.getString(R.string.update_check_failed, msg.reason)
         }
-        Toast.makeText(context, resId, Toast.LENGTH_SHORT).show()
+        val length = if (msg is CheckMessage.Failed) Toast.LENGTH_LONG else Toast.LENGTH_SHORT
+        Toast.makeText(context, text, length).show()
         updateViewModel.clearCheckMessage()
     }
 

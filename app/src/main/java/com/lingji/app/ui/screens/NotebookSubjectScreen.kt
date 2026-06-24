@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -50,6 +51,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -153,6 +155,7 @@ fun NotebookSubjectScreen(
     var deleteConfirmPage by remember { mutableStateOf<NotebookPage?>(null) }
     var lastCreatedPageId by remember { mutableStateOf<String?>(null) }
     var showIndexEditorPage by remember { mutableStateOf<NotebookPage?>(null) }
+    var showExportPdfDialog by remember { mutableStateOf(false) }
 
     val editorHostState = rememberNotebookPageEditorHostState()
     val imagePickerState = rememberImagePickerState()
@@ -357,22 +360,8 @@ fun NotebookSubjectScreen(
                                     text = { Text(stringResource(R.string.export_pdf)) },
                                     onClick = {
                                         showMoreMenu = false
-                                        val page = currentPage
-                                        if (page != null) {
-                                            val docTitle = page.title.takeIf { it.isNotBlank() }
-                                                ?: liveSubject.title
-                                            MarkdownPdfExporter.exportToPdf(
-                                                context = context,
-                                                title = docTitle,
-                                                markdown = page.content,
-                                                onError = {
-                                                    Toast.makeText(
-                                                        context,
-                                                        R.string.export_pdf_failed,
-                                                        Toast.LENGTH_SHORT
-                                                    ).show()
-                                                }
-                                            )
+                                        if (pages.isNotEmpty()) {
+                                            showExportPdfDialog = true
                                         }
                                     },
                                     leadingIcon = {
@@ -623,6 +612,41 @@ fun NotebookSubjectScreen(
                 currentPageId = pageId
             },
             onClose = { showSearch = false }
+        )
+    }
+
+    if (showExportPdfDialog) {
+        ExportPdfRangeDialog(
+            pageCount = pages.size,
+            currentPageNumber = (currentPageIndex + 1).coerceAtLeast(1),
+            onDismiss = { showExportPdfDialog = false },
+            onConfirm = { indices ->
+                showExportPdfDialog = false
+                val selected = indices.mapNotNull { pages.getOrNull(it) }
+                if (selected.isEmpty()) {
+                    Toast.makeText(context, R.string.export_pdf_range_invalid, Toast.LENGTH_SHORT).show()
+                    return@ExportPdfRangeDialog
+                }
+                val docTitle = liveSubject.title.takeIf { it.isNotBlank() }
+                    ?: selected.first().title
+                val sections = selected.mapIndexed { idx, page ->
+                    val title = page.title.takeIf { it.isNotBlank() }
+                        ?: "Page ${idx + 1}"
+                    MarkdownPdfExporter.Section(title = title, markdown = page.content)
+                }
+                MarkdownPdfExporter.exportSectionsToPdf(
+                    context = context,
+                    docTitle = docTitle,
+                    sections = sections,
+                    onError = {
+                        Toast.makeText(
+                            context,
+                            R.string.export_pdf_failed,
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                )
+            }
         )
     }
 
@@ -1079,4 +1103,127 @@ private fun EmptyPagesState() {
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
         )
     }
+}
+
+private enum class ExportRange { CURRENT, ALL, CUSTOM }
+
+@Composable
+private fun ExportPdfRangeDialog(
+    pageCount: Int,
+    currentPageNumber: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (List<Int>) -> Unit
+) {
+    var selected by remember { mutableStateOf(ExportRange.CURRENT) }
+    var customText by remember { mutableStateOf("") }
+    val context = LocalContext.current
+
+    LingjiDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.export_pdf_range_title)) },
+        text = {
+            Column {
+                ExportRangeOption(
+                    selected = selected == ExportRange.CURRENT,
+                    text = stringResource(R.string.export_pdf_range_current),
+                    onClick = { selected = ExportRange.CURRENT }
+                )
+                ExportRangeOption(
+                    selected = selected == ExportRange.ALL,
+                    text = stringResource(R.string.export_pdf_range_all, pageCount),
+                    onClick = { selected = ExportRange.ALL }
+                )
+                ExportRangeOption(
+                    selected = selected == ExportRange.CUSTOM,
+                    text = stringResource(R.string.export_pdf_range_custom),
+                    onClick = { selected = ExportRange.CUSTOM }
+                )
+                if (selected == ExportRange.CUSTOM) {
+                    OutlinedTextField(
+                        value = customText,
+                        onValueChange = { customText = it },
+                        label = { Text(stringResource(R.string.export_pdf_range_custom_hint)) },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            LingjiDialogConfirmButton(
+                text = stringResource(R.string.export_pdf),
+                onClick = {
+                    val indices: List<Int> = when (selected) {
+                        ExportRange.CURRENT -> listOf((currentPageNumber - 1).coerceAtLeast(0))
+                        ExportRange.ALL -> (0 until pageCount).toList()
+                        ExportRange.CUSTOM -> parsePageRanges(customText, pageCount)
+                    }
+                    if (indices.isEmpty()) {
+                        Toast.makeText(context, R.string.export_pdf_range_invalid, Toast.LENGTH_SHORT).show()
+                    } else {
+                        onConfirm(indices)
+                    }
+                }
+            )
+        },
+        dismissButton = {
+            LingjiDialogDismissButton(
+                text = stringResource(R.string.cancel),
+                onClick = onDismiss
+            )
+        }
+    )
+}
+
+@Composable
+private fun ExportRangeOption(
+    selected: Boolean,
+    text: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(selected = selected, onClick = onClick)
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(selected = selected, onClick = onClick)
+        Spacer(modifier = Modifier.size(8.dp))
+        Text(text = text, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+/**
+ * 解析形如 "1-3,5,7" 的页码字符串为 0-based 索引列表（已排序去重，超界自动过滤）。
+ * 输入非法或解析后为空则返回空列表。
+ */
+private fun parsePageRanges(input: String, pageCount: Int): List<Int> {
+    if (pageCount <= 0) return emptyList()
+    val result = sortedSetOf<Int>()
+    val tokens = input.split(',', '，', ';', '；', ' ', '\t').filter { it.isNotBlank() }
+    if (tokens.isEmpty()) return emptyList()
+    for (raw in tokens) {
+        val token = raw.trim().replace('－', '-')
+        if (token.contains('-')) {
+            val parts = token.split('-').map { it.trim() }
+            if (parts.size != 2) return emptyList()
+            val from = parts[0].toIntOrNull() ?: return emptyList()
+            val to = parts[1].toIntOrNull() ?: return emptyList()
+            if (from <= 0 || to <= 0) return emptyList()
+            val lo = minOf(from, to)
+            val hi = maxOf(from, to)
+            for (n in lo..hi) {
+                val idx = n - 1
+                if (idx in 0 until pageCount) result.add(idx)
+            }
+        } else {
+            val n = token.toIntOrNull() ?: return emptyList()
+            val idx = n - 1
+            if (idx in 0 until pageCount) result.add(idx)
+        }
+    }
+    return result.toList()
 }

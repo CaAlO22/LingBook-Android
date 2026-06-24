@@ -120,7 +120,7 @@ object MarkdownToHtml {
 
             // 普通段落（连续非空行合并）
             closeLists()
-            val paragraph = StringBuilder(line)
+            val paragraphLines = mutableListOf(line)
             i++
             while (i < lines.size && lines[i].isNotBlank() &&
                 !lines[i].trimStart().startsWith("#") &&
@@ -128,10 +128,12 @@ object MarkdownToHtml {
                 !lines[i].trimStart().startsWith("~~~") &&
                 !lines[i].trimStart().startsWith("> ")
             ) {
-                paragraph.append("<br/>").append(lines[i])
+                paragraphLines.add(lines[i])
                 i++
             }
-            out.append("<p>").append(inlineMd(paragraph.toString())).append("</p>\n")
+            out.append("<p>")
+                .append(paragraphLines.joinToString("<br/>") { inlineMd(it) })
+                .append("</p>\n")
         }
         closeLists()
         return out.toString()

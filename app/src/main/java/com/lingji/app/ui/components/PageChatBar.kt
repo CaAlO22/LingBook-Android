@@ -160,10 +160,11 @@ fun PageChatBar(
                             }
                             if (currentAnswer.isNotBlank()) {
                                 item {
-                                    Text(
-                                        text = currentAnswer,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        modifier = Modifier.padding(vertical = 4.dp)
+                                    MarkdownView(
+                                        markdown = currentAnswer,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp)
                                     )
                                 }
                             }
@@ -180,9 +181,9 @@ fun PageChatBar(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = a,
-                                        style = MaterialTheme.typography.bodyMedium
+                                    MarkdownView(
+                                        markdown = a,
+                                        modifier = Modifier.fillMaxWidth()
                                     )
                                 }
                             }

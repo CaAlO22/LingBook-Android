@@ -241,20 +241,21 @@ class LLMService @Inject constructor() {
         onReasoning: (String) -> Unit = {},
         images: List<String> = emptyList(),
         onWarning: (String) -> Unit = {},
-        conversationHistory: List<Pair<String, String>> = emptyList()
+        conversationHistory: List<Pair<String, String>> = emptyList(),
+        pageTitle: String = ""
     ): String = withContext(Dispatchers.IO) {
         val systemPrompt = "你是一个有用的AI导师。请严格根据提供的上下文（包括文字与图片）回答用户的问题。回答要简洁明了。"
-        val historyMessages = mutableListOf<ChatMessage>()
-        for ((q, a) in conversationHistory) {
-            val userPrompt = "上下文:\n$pageContent\n\n问题:\n$q\n\n回答:"
-            historyMessages.add(ChatMessage("user", userPrompt))
-            historyMessages.add(ChatMessage("assistant", a))
+
+        // 从 markdown 文本里剥离 data:image base64 占位，避免长 base64 把真正的文本上下文淹没；
+        // 同时让模型知道图片位置已通过多模态消息单独附上。
+        val cleanedContent = stripDataImagesForChat(pageContent, images.size)
+        val titleLine = if (pageTitle.isNotBlank()) "页面标题：${pageTitle.trim()}\n" else ""
+        val context = buildString {
+            append(titleLine)
+            append("页面正文：\n")
+            append(cleanedContent.ifBlank { "（本页无文字内容，仅含图片）" })
         }
-        val currentUserPrompt = "上下文:\n$pageContent\n\n问题:\n$question\n\n回答:"
-        historyMessages.add(ChatMessage("user", currentUserPrompt))
-        val allMessages = listOf(
-            ChatMessage("system", systemPrompt)
-        ) + historyMessages
+
         val endpoint = resolveEndpoint(settings.baseUrl)
         val isResponses = endpoint.endsWith("/responses", true)
         val supportsVision = ProviderRegistry.supportsVision(settings.provider, settings.modelName)
@@ -262,6 +263,19 @@ class LLMService @Inject constructor() {
         if (images.isNotEmpty() && !supportsVision) {
             onWarning("当前模型 ${settings.modelName} 不支持图片输入，已忽略 ${images.size} 张图片。")
         }
+
+        val historyMessages = mutableListOf<ChatMessage>()
+        // 历史轮次仅用纯文本上下文（一次的图片不重复发送），节约 token 并避免供应商对历史消息重复图片的限制。
+        for ((q, a) in conversationHistory) {
+            historyMessages.add(ChatMessage("user", "问题：$q"))
+            historyMessages.add(ChatMessage("assistant", a))
+        }
+        // 当前轮：文字上下文 + 图片附件
+        val currentPrompt = "$context\n\n问题：$question\n\n请基于以上页面内容（含图片）作答。"
+        val currentUserContent = buildUserContent(currentPrompt, images, isResponses, supportsVision)
+        historyMessages.add(ChatMessage("user", currentUserContent))
+
+        val allMessages = listOf(ChatMessage("system", systemPrompt)) + historyMessages
         val body = strategy.buildChatRequestBody(settings, allMessages, stream = true)
         val request = buildRequest(endpoint, body, strategy, settings)
         client.newCall(request).execute().use { response ->
@@ -300,6 +314,20 @@ class LLMService @Inject constructor() {
             }
             acc.toString()
         }
+    }
+
+    /**
+     * 将 markdown 里的 data:image base64 图片块替换为简短占位（[图片1]…），
+     * 防止数万字符的 base64 把真正的文本上下文淹没。其它 markdown 文字保持不变。
+     */
+    private fun stripDataImagesForChat(content: String, imageCount: Int): String {
+        if (imageCount == 0 && !content.contains("data:image", ignoreCase = true)) return content.trim()
+        val regex = Regex("!\\[[^\\]]*]\\(data:image/[^)]+\\)")
+        var index = 0
+        return regex.replace(content) {
+            index += 1
+            "[图片$index]"
+        }.trim()
     }
 
     private fun buildRequest(

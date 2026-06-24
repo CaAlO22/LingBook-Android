@@ -14,21 +14,40 @@ import android.webkit.WebViewClient
  */
 object MarkdownPdfExporter {
 
+    data class Section(val title: String, val markdown: String)
+
     fun exportToPdf(
         context: Context,
         title: String,
         markdown: String,
         onError: (Throwable) -> Unit = {}
     ) {
+        exportSectionsToPdf(
+            context = context,
+            docTitle = title,
+            sections = listOf(Section(title, markdown)),
+            onError = onError
+        )
+    }
+
+    /**
+     * 导出多页 Markdown 为单个 PDF：每个 [Section] 在 PDF 中占据独立的一页起点。
+     */
+    fun exportSectionsToPdf(
+        context: Context,
+        docTitle: String,
+        sections: List<Section>,
+        onError: (Throwable) -> Unit = {}
+    ) {
         try {
-            val html = buildHtml(title, markdown)
+            val html = buildHtml(docTitle, sections)
             val webView = WebView(context).apply {
                 settings.javaScriptEnabled = false
                 settings.loadsImagesAutomatically = true
                 webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, url: String?) {
                         val printManager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
-                        val jobName = title.ifBlank { "LingBook" }
+                        val jobName = docTitle.ifBlank { "LingBook" }
                         val adapter = view.createPrintDocumentAdapter(jobName)
                         val attrs = PrintAttributes.Builder()
                             .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
@@ -45,15 +64,24 @@ object MarkdownPdfExporter {
         }
     }
 
-    private fun buildHtml(title: String, markdown: String): String {
-        val body = MarkdownToHtml.convert(markdown)
-        val safeTitle = escapeHtml(title.ifBlank { "LingBook" })
+    private fun buildHtml(docTitle: String, sections: List<Section>): String {
+        val safeDocTitle = escapeHtml(docTitle.ifBlank { "LingBook" })
+        val bodyBuilder = StringBuilder()
+        sections.forEachIndexed { idx, section ->
+            val sectionTitle = escapeHtml(section.title.ifBlank { "Page ${idx + 1}" })
+            val sectionBody = MarkdownToHtml.convert(section.markdown)
+            val pageBreakClass = if (idx == 0) "section" else "section page-break"
+            bodyBuilder.append("<section class=\"").append(pageBreakClass).append("\">\n")
+                .append("<h1>").append(sectionTitle).append("</h1>\n")
+                .append(sectionBody)
+                .append("</section>\n")
+        }
         return """
             <!DOCTYPE html>
             <html>
             <head>
             <meta charset="utf-8" />
-            <title>$safeTitle</title>
+            <title>$safeDocTitle</title>
             <style>
             body { font-family: serif; line-height: 1.6; color: #222; padding: 16px; }
             h1, h2, h3, h4 { color: #111; line-height: 1.3; }
@@ -63,11 +91,12 @@ object MarkdownPdfExporter {
             img { max-width: 100%; height: auto; }
             table { border-collapse: collapse; width: 100%; }
             table, th, td { border: 1px solid #ddd; padding: 6px 8px; }
+            .section { }
+            .page-break { page-break-before: always; break-before: page; }
             </style>
             </head>
             <body>
-            <h1>$safeTitle</h1>
-            $body
+            $bodyBuilder
             </body>
             </html>
         """.trimIndent()

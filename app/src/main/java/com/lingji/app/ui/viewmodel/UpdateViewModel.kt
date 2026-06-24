@@ -5,6 +5,7 @@ import android.content.Intent
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lingji.app.data.remote.UpdateCheckResult
 import com.lingji.app.data.remote.UpdateChecker
 import com.lingji.app.data.remote.UpdateInfo
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -39,11 +40,16 @@ class UpdateViewModel @Inject constructor(
         viewModelScope.launch {
             _isChecking.value = true
             try {
-                val info = updateChecker.checkForUpdate()
-                when {
-                    info == null -> _checkMessage.value = CheckMessage.Failed
-                    info.hasUpdate -> _updateInfo.value = info
-                    else -> _checkMessage.value = CheckMessage.AlreadyLatest
+                when (val result = updateChecker.checkForUpdate()) {
+                    is UpdateCheckResult.Failed ->
+                        _checkMessage.value = CheckMessage.Failed(result.reason)
+                    is UpdateCheckResult.Success -> {
+                        if (result.info.hasUpdate) {
+                            _updateInfo.value = result.info
+                        } else {
+                            _checkMessage.value = CheckMessage.AlreadyLatest
+                        }
+                    }
                 }
             } finally {
                 _isChecking.value = false
@@ -100,4 +106,7 @@ class UpdateViewModel @Inject constructor(
     }
 }
 
-enum class CheckMessage { AlreadyLatest, Failed }
+sealed class CheckMessage {
+    data object AlreadyLatest : CheckMessage()
+    data class Failed(val reason: String) : CheckMessage()
+}
