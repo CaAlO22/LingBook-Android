@@ -242,4 +242,6 @@
     <string name="export_pdf_range_custom">指定页</string>
     <string name="export_pdf_range_custom_hint">如 1-3,5,7（页码从 1 开始）</string>
     <string name="export_pdf_range_invalid">页码无效，请检查输入</string>
+    <string name="export_pdf_force_white">白底（适合打印）</string>
+    <string name="export_pdf_force_white_hint">强制白色背景与黑色文字，避免暗色模式下颜色被反相</string>
 </resources>

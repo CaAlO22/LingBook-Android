@@ -59,7 +59,18 @@ class UpdateChecker @Inject constructor(
 
     private companion object {
         const val GITHUB_API = "https://api.github.com/repos/CaAlO22/LingBook-Android/releases/latest"
+        const val GITHUB_LATEST_HTML = "https://github.com/CaAlO22/LingBook-Android/releases/latest"
+        const val GITHUB_REPO_RELEASES = "https://github.com/CaAlO22/LingBook-Android/releases"
     }
+
+    /**
+     * 不跟随重定向的 client：用于回退路径从 ``github.com/.../releases/latest`` 的
+     * 302 Location 头解析最新 tag，绕开 ``api.github.com`` 在某些 VPN 出口 IP 被 403/429 拦截的情况。
+     */
+    private val noRedirectClient: OkHttpClient = client.newBuilder()
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .build()
 
     suspend fun checkForUpdate(): UpdateCheckResult = withContext(Dispatchers.IO) {
         try {
@@ -72,6 +83,11 @@ class UpdateChecker @Inject constructor(
 
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
+                    // 403/429/451 通常是 GitHub API 对该出口 IP 限速或封禁；
+                    // 退化到不需要认证的 github.com 重定向抓取，仍可拿到最新 tag。
+                    if (response.code == 403 || response.code == 429 || response.code == 451) {
+                        return@withContext fallbackViaHtmlRedirect(response.code)
+                    }
                     return@withContext UpdateCheckResult.Failed(
                         "HTTP ${response.code} ${response.message.ifBlank { "" }}".trim()
                     )
@@ -116,6 +132,52 @@ class UpdateChecker @Inject constructor(
             UpdateCheckResult.Failed("网络错误：${e.message ?: e.javaClass.simpleName}")
         } catch (e: Exception) {
             UpdateCheckResult.Failed("${e.javaClass.simpleName}: ${e.message ?: ""}".trim().trimEnd(':'))
+        }
+    }
+
+    /**
+     * 当 ``api.github.com`` 返回 403/429/451 时的回退路径：
+     * 访问 ``https://github.com/<repo>/releases/latest``，GitHub 会用 302 重定向到
+     * ``/releases/tag/v<x.y.z>``。从 Location 头里解析出 tag，再构造下载链接（直接指向
+     * 仓库 release 页，由用户在浏览器中下载 APK）。
+     */
+    private fun fallbackViaHtmlRedirect(originalCode: Int): UpdateCheckResult {
+        return try {
+            val request = Request.Builder()
+                .url(GITHUB_LATEST_HTML)
+                .header("User-Agent", "LingBook-Android")
+                .header("Accept", "text/html")
+                .get()
+                .build()
+            noRedirectClient.newCall(request).execute().use { response ->
+                val location = response.header("Location")
+                    ?: response.header("location")
+                if (response.code !in 300..399 || location.isNullOrBlank()) {
+                    return UpdateCheckResult.Failed(
+                        "HTTP $originalCode（GitHub API 限流），回退也失败：HTTP ${response.code}"
+                    )
+                }
+                val tagMatch = Regex("/releases/tag/(v?[^/?#]+)").find(location)
+                val rawTag = tagMatch?.groupValues?.getOrNull(1)
+                    ?: return UpdateCheckResult.Failed(
+                        "HTTP $originalCode（GitHub API 限流），回退响应无法解析 tag：$location"
+                    )
+                val tagName = rawTag.removePrefix("v")
+                val currentVersion = getCurrentVersionName()
+                val hasUpdate = isNewerVersion(tagName, currentVersion)
+                UpdateCheckResult.Success(
+                    UpdateInfo(
+                        versionName = tagName,
+                        downloadUrl = "$GITHUB_REPO_RELEASES/tag/$rawTag",
+                        releaseNotes = "（GitHub API 暂不可用，已通过回退路径获取版本信息。详细更新说明请到发布页查看。）",
+                        hasUpdate = hasUpdate
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            UpdateCheckResult.Failed(
+                "HTTP $originalCode（GitHub API 限流），回退也失败：${e.message ?: e.javaClass.simpleName}"
+            )
         }
     }
 

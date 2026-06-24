@@ -346,8 +346,8 @@ class SubjectViewModel @Inject constructor(
     ) {
         chatWithContent(
             content = page.content,
-            pageTitle = page.title,
             question = question,
+            pageTitle = page.title,
             onToken = onToken,
             onComplete = onComplete,
             onError = onError,
@@ -365,8 +365,8 @@ class SubjectViewModel @Inject constructor(
     ) {
         chatWithContent(
             content = subject.aggregatedNote,
-            pageTitle = subject.title,
             question = question,
+            pageTitle = subject.title,
             onToken = onToken,
             onComplete = onComplete,
             onError = onError,
@@ -376,8 +376,8 @@ class SubjectViewModel @Inject constructor(
 
     private fun chatWithContent(
         content: String,
-        pageTitle: String,
         question: String,
+        pageTitle: String = "",
         onToken: (String) -> Unit,
         onComplete: (String) -> Unit = {},
         onError: (String) -> Unit = {},

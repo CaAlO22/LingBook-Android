@@ -67,6 +67,18 @@ class UpdateViewModel @Inject constructor(
 
     fun downloadAndInstallApk() {
         val info = _updateInfo.value ?: return
+        // 回退路径下 downloadUrl 是 GitHub 网页（非 .apk），无法直接下载安装；
+        // 改为用系统浏览器打开发布页，由用户手动下载。
+        if (!info.downloadUrl.endsWith(".apk", ignoreCase = true)) {
+            try {
+                val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(info.downloadUrl)).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            } catch (_: Exception) {
+            }
+            return
+        }
         viewModelScope.launch {
             _downloadProgress.value = 0
             val apkFile = updateChecker.downloadApk(info.downloadUrl) { progress ->

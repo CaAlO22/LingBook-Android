@@ -620,7 +620,7 @@ fun NotebookSubjectScreen(
             pageCount = pages.size,
             currentPageNumber = (currentPageIndex + 1).coerceAtLeast(1),
             onDismiss = { showExportPdfDialog = false },
-            onConfirm = { indices ->
+            onConfirm = { indices, forceWhite ->
                 showExportPdfDialog = false
                 val selected = indices.mapNotNull { pages.getOrNull(it) }
                 if (selected.isEmpty()) {
@@ -638,6 +638,7 @@ fun NotebookSubjectScreen(
                     context = context,
                     docTitle = docTitle,
                     sections = sections,
+                    forcePrintWhite = forceWhite,
                     onError = {
                         Toast.makeText(
                             context,
@@ -1112,10 +1113,11 @@ private fun ExportPdfRangeDialog(
     pageCount: Int,
     currentPageNumber: Int,
     onDismiss: () -> Unit,
-    onConfirm: (List<Int>) -> Unit
+    onConfirm: (List<Int>, Boolean) -> Unit
 ) {
     var selected by remember { mutableStateOf(ExportRange.CURRENT) }
     var customText by remember { mutableStateOf("") }
+    var forceWhite by remember { mutableStateOf(true) }
     val context = LocalContext.current
 
     LingjiDialog(
@@ -1149,6 +1151,30 @@ private fun ExportPdfRangeDialog(
                             .padding(top = 8.dp)
                     )
                 }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    androidx.compose.material3.Switch(
+                        checked = forceWhite,
+                        onCheckedChange = { forceWhite = it }
+                    )
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Column {
+                        Text(
+                            text = stringResource(R.string.export_pdf_force_white),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            text = stringResource(R.string.export_pdf_force_white_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
@@ -1163,7 +1189,7 @@ private fun ExportPdfRangeDialog(
                     if (indices.isEmpty()) {
                         Toast.makeText(context, R.string.export_pdf_range_invalid, Toast.LENGTH_SHORT).show()
                     } else {
-                        onConfirm(indices)
+                        onConfirm(indices, forceWhite)
                     }
                 }
             )
