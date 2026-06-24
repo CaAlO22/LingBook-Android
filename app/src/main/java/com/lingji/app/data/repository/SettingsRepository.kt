@@ -4,6 +4,7 @@ import com.lingji.app.data.db.dao.SettingsDao
 import com.lingji.app.data.db.entities.SettingsEntity
 import com.lingji.app.domain.model.AISettings
 import com.lingji.app.domain.model.APIProvider
+import com.lingji.app.domain.model.HorizontalSwipeAction
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -24,7 +25,9 @@ class SettingsRepository @Inject constructor(
         baseUrl = baseUrl,
         apiKey = apiKey,
         modelName = modelName,
-        enableThinking = enableThinking
+        enableThinking = enableThinking,
+        horizontalSwipeAction = runCatching { HorizontalSwipeAction.valueOf(horizontalSwipeAction) }
+            .getOrDefault(HorizontalSwipeAction.TOGGLE_PREVIEW)
     )
 
     private fun AISettings.toEntity() = SettingsEntity(
@@ -32,6 +35,7 @@ class SettingsRepository @Inject constructor(
         baseUrl = baseUrl,
         apiKey = apiKey,
         modelName = modelName,
-        enableThinking = enableThinking
+        enableThinking = enableThinking,
+        horizontalSwipeAction = horizontalSwipeAction.name
     )
 }

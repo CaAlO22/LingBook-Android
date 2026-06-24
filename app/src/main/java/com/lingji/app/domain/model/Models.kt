@@ -4,6 +4,7 @@ import java.util.UUID
 
 enum class APIProvider { OPENAI, DOUBAO, XIAOMI, BAILIAN, ZHIPU, DEEPSEEK, KIMI }
 enum class SubjectType { FRAGMENT, NOTEBOOK }
+enum class HorizontalSwipeAction { NONE, TOGGLE_PREVIEW, CHANGE_PAGE }
 
 fun generateId(): String = UUID.randomUUID().toString().take(8)
 
@@ -12,7 +13,8 @@ data class AISettings(
     val baseUrl: String = "",
     val apiKey: String = "",
     val modelName: String = "gpt-4o",
-    val enableThinking: Boolean = false
+    val enableThinking: Boolean = false,
+    val horizontalSwipeAction: HorizontalSwipeAction = HorizontalSwipeAction.TOGGLE_PREVIEW
 )
 
 data class Fragment(

@@ -10,5 +10,7 @@ data class SettingsEntity(
     val baseUrl: String = "",
     val apiKey: String = "",
     val modelName: String = "gpt-4o",
-    val enableThinking: Boolean = false
+    val enableThinking: Boolean = false,
+    /** 笔记页左右横滑手势行为：NONE / TOGGLE_PREVIEW / CHANGE_PAGE */
+    val horizontalSwipeAction: String = "TOGGLE_PREVIEW"
 )

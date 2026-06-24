@@ -169,18 +169,18 @@ internal fun ModeChip(
             androidx.compose.ui.graphics.Color.Transparent
         },
         tonalElevation = if (selected) 1.dp else 0.dp,
-        shadowElevation = if (selected) 1.dp else 0.dp,
+        shadowElevation = if (selected) 0.5.dp else 0.dp,
         onClick = onClick
     ) {
         Text(
             text = label,
-            style = MaterialTheme.typography.labelLarge,
+            style = MaterialTheme.typography.labelMedium,
             color = if (selected) {
                 MaterialTheme.colorScheme.onSurface
             } else {
                 MaterialTheme.colorScheme.onSurfaceVariant
             },
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 3.dp)
         )
     }
 }

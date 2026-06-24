@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
@@ -68,6 +69,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lingji.app.R
+import com.lingji.app.domain.model.HorizontalSwipeAction
 import com.lingji.app.domain.model.NotebookPage
 import com.lingji.app.domain.model.PageIndexEntry
 import com.lingji.app.domain.model.Subject
@@ -86,6 +88,7 @@ import com.lingji.app.ui.components.TimeDisplay
 import com.lingji.app.ui.components.rememberImagePickerState
 import com.lingji.app.ui.theme.NotoSerifCJKsc
 import com.lingji.app.ui.viewmodel.SubjectViewModel
+import com.lingji.app.util.MarkdownPdfExporter
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -241,65 +244,57 @@ fun NotebookSubjectScreen(
                     .background(MaterialTheme.colorScheme.background),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 左侧：返回 + 笔记名称
-                Box(
-                    contentAlignment = Alignment.CenterStart
+                // 左侧：返回 + 笔记名称（可被压缩，标题省略）
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = onBack) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "返回"
-                            )
-                        }
-                        Text(
-                            text = liveSubject.title,
-                            style = MaterialTheme.typography.headlineSmall.copy(
-                                fontFamily = NotoSerifCJKsc,
-                                letterSpacing = (-0.02).sp
-                            ),
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(end = 8.dp)
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "返回"
                         )
                     }
+                    Text(
+                        text = liveSubject.title,
+                        style = MaterialTheme.typography.headlineSmall.copy(
+                            fontFamily = NotoSerifCJKsc,
+                            letterSpacing = (-0.02).sp
+                        ),
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .padding(end = 8.dp)
+                    )
                 }
 
-                // 中间：编辑/预览切换
-                Box(
-                    modifier = Modifier.weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (pages.isNotEmpty()) {
-                        Surface(
-                            shape = RoundedCornerShape(percent = 50),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                // 中间：编辑/预览切换（intrinsic 宽度，保留完整显示，不被挤压）
+                if (pages.isNotEmpty()) {
+                    Surface(
+                        shape = RoundedCornerShape(percent = 50),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.padding(3.dp)
                         ) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                modifier = Modifier.padding(4.dp)
-                            ) {
-                                ModeChip(
-                                    label = stringResource(R.string.mode_edit),
-                                    selected = !editorHostState.isPreview,
-                                    onClick = { editorHostState.setPreview(false) }
-                                )
-                                ModeChip(
-                                    label = stringResource(R.string.mode_preview),
-                                    selected = editorHostState.isPreview,
-                                    onClick = { editorHostState.setPreview(true) }
-                                )
-                            }
+                            ModeChip(
+                                label = stringResource(R.string.mode_edit),
+                                selected = !editorHostState.isPreview,
+                                onClick = { editorHostState.setPreview(false) }
+                            )
+                            ModeChip(
+                                label = stringResource(R.string.mode_preview),
+                                selected = editorHostState.isPreview,
+                                onClick = { editorHostState.setPreview(true) }
+                            )
                         }
                     }
                 }
 
-                // 右侧：搜索 + 更多
-                Box(
-                    modifier = Modifier.weight(1f),
-                    contentAlignment = Alignment.CenterEnd
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                // 右侧：搜索 + 更多（intrinsic 宽度）
+                Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { showSearch = true }) {
                             Icon(
                                 Icons.Default.Search,
@@ -357,6 +352,35 @@ fun NotebookSubjectScreen(
                                     }
                                 )
                                 DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.export_pdf)) },
+                                    onClick = {
+                                        showMoreMenu = false
+                                        val page = currentPage
+                                        if (page != null) {
+                                            val docTitle = page.title.takeIf { it.isNotBlank() }
+                                                ?: liveSubject.title
+                                            MarkdownPdfExporter.exportToPdf(
+                                                context = context,
+                                                title = docTitle,
+                                                markdown = page.content,
+                                                onError = {
+                                                    Toast.makeText(
+                                                        context,
+                                                        R.string.export_pdf_failed,
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+                                            )
+                                        }
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Default.PictureAsPdf,
+                                            contentDescription = null
+                                        )
+                                    }
+                                )
+                                DropdownMenuItem(
                                     text = { Text(stringResource(R.string.copy_to_clipboard)) },
                                     onClick = {
                                         showMoreMenu = false
@@ -390,7 +414,6 @@ fun NotebookSubjectScreen(
                             }
                         }
                     }
-                }
             }
         }
     ) { padding ->
@@ -485,6 +508,29 @@ fun NotebookSubjectScreen(
                         EmptyPagesState()
                     } else {
                         val page = currentPage ?: return@FloatingInputContainer
+                        val swipeAction = uiState.settings.horizontalSwipeAction
+                        val onSwipeLeftHandler: (() -> Unit)? = when (swipeAction) {
+                            HorizontalSwipeAction.NONE -> null
+                            HorizontalSwipeAction.TOGGLE_PREVIEW -> {
+                                { editorHostState.setPreview(!editorHostState.isPreview) }
+                            }
+                            HorizontalSwipeAction.CHANGE_PAGE -> {
+                                {
+                                    pages.getOrNull(currentPageIndex + 1)?.let { currentPageId = it.id }
+                                }
+                            }
+                        }
+                        val onSwipeRightHandler: (() -> Unit)? = when (swipeAction) {
+                            HorizontalSwipeAction.NONE -> null
+                            HorizontalSwipeAction.TOGGLE_PREVIEW -> {
+                                { editorHostState.setPreview(!editorHostState.isPreview) }
+                            }
+                            HorizontalSwipeAction.CHANGE_PAGE -> {
+                                {
+                                    pages.getOrNull(currentPageIndex - 1)?.let { currentPageId = it.id }
+                                }
+                            }
+                        }
                         NotebookPageEditor(
                             page = page,
                             indexEntry = indexEntries[page.id],
@@ -496,6 +542,8 @@ fun NotebookSubjectScreen(
                             autoFocusContent = page.id == lastCreatedPageId,
                             fillHeight = true,
                             hostState = editorHostState,
+                            onSwipeLeft = onSwipeLeftHandler,
+                            onSwipeRight = onSwipeRightHandler,
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(start = 12.dp, end = 12.dp, top = 8.dp)

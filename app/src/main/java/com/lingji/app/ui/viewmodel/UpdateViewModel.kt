@@ -30,19 +30,29 @@ class UpdateViewModel @Inject constructor(
     private val _isChecking = MutableStateFlow(false)
     val isChecking: StateFlow<Boolean> = _isChecking.asStateFlow()
 
+    /** 检查更新的一次性结果消息（已是最新 / 失败 / 等）。UI 消费后调用 [clearCheckMessage]。 */
+    private val _checkMessage = MutableStateFlow<CheckMessage?>(null)
+    val checkMessage: StateFlow<CheckMessage?> = _checkMessage.asStateFlow()
+
     fun checkForUpdate() {
         if (_isChecking.value) return
         viewModelScope.launch {
             _isChecking.value = true
             try {
                 val info = updateChecker.checkForUpdate()
-                if (info != null && info.hasUpdate) {
-                    _updateInfo.value = info
+                when {
+                    info == null -> _checkMessage.value = CheckMessage.Failed
+                    info.hasUpdate -> _updateInfo.value = info
+                    else -> _checkMessage.value = CheckMessage.AlreadyLatest
                 }
             } finally {
                 _isChecking.value = false
             }
         }
+    }
+
+    fun clearCheckMessage() {
+        _checkMessage.value = null
     }
 
     fun dismissUpdate() {
@@ -89,3 +99,5 @@ class UpdateViewModel @Inject constructor(
         }
     }
 }
+
+enum class CheckMessage { AlreadyLatest, Failed }

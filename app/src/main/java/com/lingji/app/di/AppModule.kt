@@ -25,7 +25,8 @@ object AppModule {
             .addMigrations(
                 LingjiDatabase.MIGRATION_1_2,
                 LingjiDatabase.MIGRATION_2_3,
-                LingjiDatabase.MIGRATION_3_4
+                LingjiDatabase.MIGRATION_3_4,
+                LingjiDatabase.MIGRATION_4_5
             )
             .build()
     }

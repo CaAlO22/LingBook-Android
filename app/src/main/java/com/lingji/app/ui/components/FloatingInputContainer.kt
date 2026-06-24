@@ -87,7 +87,7 @@ fun FloatingInputContainer(
                 .padding(horizontal = horizontalMargin)
                 .padding(bottom = bottomOffset + animatedKeyboardPadding)
                 .fillMaxWidth()
-                .shadow(elevation = 10.dp, shape = barShape, clip = false)
+                .shadow(elevation = 3.dp, shape = barShape, clip = false)
                 .clip(barShape)
                 .hazeChild(
                     state = hazeState,

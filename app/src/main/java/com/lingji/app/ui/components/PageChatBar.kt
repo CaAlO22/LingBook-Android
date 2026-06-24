@@ -38,7 +38,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.lingji.app.R
 
@@ -55,11 +64,20 @@ fun PageChatBar(
     placeholder: String = stringResource(R.string.chat_placeholder),
     targetLabelFormat: String = stringResource(R.string.chat_target)
 ) {
-    var question by remember { mutableStateOf("") }
+    var question by remember { mutableStateOf(TextFieldValue("")) }
     var answerExpanded by remember { mutableStateOf(true) }
     val hasHistory = conversationHistory.isNotEmpty() || currentAnswer.isNotBlank() || isLoading
-    val enabled = question.isNotBlank() && targetContent.isNotBlank() && !isLoading
+    val enabled = question.text.isNotBlank() && targetContent.isNotBlank() && !isLoading
     val listState = rememberLazyListState()
+
+    val submitQuestion: () -> Unit = {
+        val text = question.text.trim()
+        if (text.isNotBlank() && targetContent.isNotBlank() && !isLoading) {
+            answerExpanded = true
+            onSend(text)
+            question = TextFieldValue("")
+        }
+    }
 
     LaunchedEffect(conversationHistory.size, currentAnswer) {
         if (conversationHistory.isNotEmpty() || currentAnswer.isNotBlank()) {
@@ -191,7 +209,31 @@ fun PageChatBar(
                     onValueChange = { question = it },
                     modifier = Modifier
                         .weight(1f)
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                        .onPreviewKeyEvent { event ->
+                            if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                            if (event.key != Key.Enter && event.key != Key.NumPadEnter) {
+                                return@onPreviewKeyEvent false
+                            }
+                            if (event.isCtrlPressed || event.isShiftPressed) {
+                                // Ctrl/Shift+Enter 插入换行，由系统行为接管
+                                val current = question
+                                val newText = current.text.replaceRange(
+                                    current.selection.start,
+                                    current.selection.end,
+                                    "\n"
+                                )
+                                val cursor = current.selection.start + 1
+                                question = TextFieldValue(
+                                    text = newText,
+                                    selection = TextRange(cursor)
+                                )
+                                true
+                            } else {
+                                submitQuestion()
+                                true
+                            }
+                        },
                     enabled = inputEnabled,
                     maxLines = 4,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(
@@ -204,7 +246,7 @@ fun PageChatBar(
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     decorationBox = { innerTextField ->
                         Box(modifier = Modifier.fillMaxWidth()) {
-                            if (question.isEmpty()) {
+                            if (question.text.isEmpty()) {
                                 Text(
                                     text = placeholder,
                                     style = MaterialTheme.typography.bodyLarge,
@@ -216,13 +258,7 @@ fun PageChatBar(
                     }
                 )
                 IconButton(
-                    onClick = {
-                        if (question.isNotBlank()) {
-                            answerExpanded = true
-                            onSend(question.trim())
-                            question = ""
-                        }
-                    },
+                    onClick = submitQuestion,
                     enabled = enabled
                 ) {
                     Surface(

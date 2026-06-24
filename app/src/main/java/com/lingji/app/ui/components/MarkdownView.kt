@@ -10,8 +10,31 @@ import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.image.ImagesPlugin
 import io.noties.markwon.image.data.DataUriSchemeHandler
 
+/**
+ * 将编辑器中的“双换行”折叠为“硬换行”，使预览效果符合用户直觉：
+ * - 编辑里单换行 → 预览不换行（CommonMark 默认软换行行为）
+ * - 编辑里双换行（空一行） → 预览单换行（不再产生空段落）
+ *
+ * 折叠时会保护围栏代码块，避免破坏代码块内部的空行。
+ */
+internal fun foldBlankLines(markdown: String): String {
+    if (markdown.isEmpty()) return markdown
+    val placeholders = mutableListOf<String>()
+    val fenceRegex = Regex("```[\\s\\S]*?```|~~~[\\s\\S]*?~~~")
+    var protectedText = markdown.replace(fenceRegex) { match ->
+        placeholders += match.value
+        "\u0001${placeholders.lastIndex}\u0001"
+    }
+    protectedText = protectedText.replace(Regex("\\n[ \\t]*\\n+"), "  \n")
+    placeholders.forEachIndexed { i, v ->
+        protectedText = protectedText.replace("\u0001${i}\u0001", v)
+    }
+    return protectedText
+}
+
 @Composable
 fun MarkdownView(markdown: String, modifier: Modifier = Modifier) {
+    val rendered = foldBlankLines(markdown)
     AndroidView(
         factory = { context ->
             TextView(context).apply {
@@ -24,7 +47,7 @@ fun MarkdownView(markdown: String, modifier: Modifier = Modifier) {
                     .usePlugin(TablePlugin.create(context))
                     .usePlugin(StrikethroughPlugin.create())
                     .build()
-                markwon.setMarkdown(this, markdown)
+                markwon.setMarkdown(this, rendered)
             }
         },
         update = { textView ->
@@ -37,7 +60,7 @@ fun MarkdownView(markdown: String, modifier: Modifier = Modifier) {
                 .usePlugin(TablePlugin.create(textView.context))
                 .usePlugin(StrikethroughPlugin.create())
                 .build()
-            markwon.setMarkdown(textView, markdown)
+            markwon.setMarkdown(textView, rendered)
         },
         modifier = modifier
     )

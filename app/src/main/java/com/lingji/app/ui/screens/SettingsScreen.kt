@@ -23,10 +23,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -57,12 +60,14 @@ import androidx.compose.ui.unit.sp
 import com.lingji.app.R
 import com.lingji.app.domain.model.APIProvider
 import com.lingji.app.domain.model.AISettings
+import com.lingji.app.domain.model.HorizontalSwipeAction
 import com.lingji.app.domain.provider.ProviderRegistry
 import com.lingji.app.ui.components.SettingsOutlinedTextField
 import com.lingji.app.ui.settings.ProviderEndpointSettings
 import com.lingji.app.ui.settings.ProviderModelSettings
 import com.lingji.app.ui.settings.providerDisplayName
 import com.lingji.app.ui.theme.NotoSerifCJKsc
+import com.lingji.app.ui.viewmodel.CheckMessage
 import com.lingji.app.ui.viewmodel.SubjectViewModel
 import com.lingji.app.ui.viewmodel.UpdateViewModel
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -83,6 +88,17 @@ fun SettingsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val isCheckingUpdate by updateViewModel.isChecking.collectAsState()
+    val updateCheckMessage by updateViewModel.checkMessage.collectAsState()
+
+    androidx.compose.runtime.LaunchedEffect(updateCheckMessage) {
+        val msg = updateCheckMessage ?: return@LaunchedEffect
+        val resId = when (msg) {
+            CheckMessage.AlreadyLatest -> R.string.update_already_latest
+            CheckMessage.Failed -> R.string.update_check_failed
+        }
+        Toast.makeText(context, resId, Toast.LENGTH_SHORT).show()
+        updateViewModel.clearCheckMessage()
+    }
 
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -188,10 +204,19 @@ fun SettingsScreen(
                     onValueChange = { viewModel.saveSettings(settings.copy(baseUrl = it)) },
                     label = stringResource(R.string.base_url)
                 )
-                SettingsTextField(
+                ApiKeyField(
                     value = settings.apiKey,
                     onValueChange = { viewModel.saveSettings(settings.copy(apiKey = it)) },
-                    label = stringResource(R.string.api_key)
+                    onCopy = {
+                        val key = settings.apiKey
+                        if (key.isBlank()) {
+                            Toast.makeText(context, R.string.api_key_empty, Toast.LENGTH_SHORT).show()
+                        } else {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("API Key", key))
+                            Toast.makeText(context, R.string.api_key_copied, Toast.LENGTH_SHORT).show()
+                        }
+                    }
                 )
                 ProviderModelSettings(
                     provider = settings.provider,
@@ -240,6 +265,13 @@ fun SettingsScreen(
             }
 
             // 应用
+            SettingsCard(title = stringResource(R.string.editor_gesture_settings)) {
+                HorizontalSwipeSetting(
+                    current = settings.horizontalSwipeAction,
+                    onChange = { viewModel.saveSettings(settings.copy(horizontalSwipeAction = it)) }
+                )
+            }
+
             SettingsCard(title = stringResource(R.string.app_settings)) {
                 Button(
                     onClick = {
@@ -360,6 +392,115 @@ private fun SettingsTextField(
         modifier = Modifier.fillMaxWidth(),
         singleLine = true
     )
+}
+
+@Composable
+private fun ApiKeyField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onCopy: () -> Unit
+) {
+    var revealed by remember { mutableStateOf(false) }
+    SettingsOutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(stringResource(R.string.api_key)) },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        visualTransformation = if (revealed) {
+            androidx.compose.ui.text.input.VisualTransformation.None
+        } else {
+            ApiKeyMaskTransformation
+        },
+        trailingIcon = {
+            Row {
+                IconButton(onClick = { revealed = !revealed }) {
+                    Icon(
+                        imageVector = if (revealed) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                        contentDescription = stringResource(R.string.cd_toggle_api_key_visibility)
+                    )
+                }
+                IconButton(onClick = onCopy) {
+                    Icon(
+                        imageVector = Icons.Default.ContentCopy,
+                        contentDescription = stringResource(R.string.cd_copy_api_key)
+                    )
+                }
+            }
+        }
+    )
+}
+
+private object ApiKeyMaskTransformation : androidx.compose.ui.text.input.VisualTransformation {
+    override fun filter(text: androidx.compose.ui.text.AnnotatedString): androidx.compose.ui.text.input.TransformedText {
+        val raw = text.text
+        val masked = maskApiKey(raw)
+        // 由于掩码长度与原文不一致，使用映射将光标固定到掩码末尾。
+        val offsetMapping = object : androidx.compose.ui.text.input.OffsetMapping {
+            override fun originalToTransformed(offset: Int): Int = masked.length
+            override fun transformedToOriginal(offset: Int): Int = raw.length
+        }
+        return androidx.compose.ui.text.input.TransformedText(
+            androidx.compose.ui.text.AnnotatedString(masked),
+            offsetMapping
+        )
+    }
+}
+
+private fun maskApiKey(key: String): String {
+    if (key.isEmpty()) return ""
+    if (key.length <= 8) return "*".repeat(key.length)
+    val prefix = key.take(3)
+    val suffix = key.takeLast(4)
+    return "$prefix****$suffix"
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HorizontalSwipeSetting(
+    current: HorizontalSwipeAction,
+    onChange: (HorizontalSwipeAction) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val label = when (current) {
+        HorizontalSwipeAction.NONE -> stringResource(R.string.horizontal_swipe_none)
+        HorizontalSwipeAction.TOGGLE_PREVIEW -> stringResource(R.string.horizontal_swipe_toggle_preview)
+        HorizontalSwipeAction.CHANGE_PAGE -> stringResource(R.string.horizontal_swipe_change_page)
+    }
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it }
+    ) {
+        SettingsOutlinedTextField(
+            value = label,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(stringResource(R.string.horizontal_swipe_action)) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor()
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            HorizontalSwipeAction.entries.forEach { action ->
+                val text = when (action) {
+                    HorizontalSwipeAction.NONE -> stringResource(R.string.horizontal_swipe_none)
+                    HorizontalSwipeAction.TOGGLE_PREVIEW -> stringResource(R.string.horizontal_swipe_toggle_preview)
+                    HorizontalSwipeAction.CHANGE_PAGE -> stringResource(R.string.horizontal_swipe_change_page)
+                }
+                DropdownMenuItem(
+                    text = { Text(text) },
+                    onClick = {
+                        onChange(action)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
 }
 
 private fun applyProviderPreset(settings: AISettings, provider: APIProvider): AISettings {

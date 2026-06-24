@@ -88,7 +88,13 @@ class LLMService @Inject constructor() {
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
                     val text = response.body?.string() ?: ""
-                    throw Exception(parseError(text) ?: "请求失败: ${response.code}")
+                    val detail = parseError(text)?.takeIf { it.isNotBlank() }
+                    throw Exception(
+                        buildString {
+                            append("请求失败: ${response.code}")
+                            if (detail != null) append(" - ").append(detail)
+                        }
+                    )
                 }
                 val text = response.body?.string() ?: ""
                 val data = gson.fromJson(text, com.lingji.app.data.remote.models.ChatResponse::class.java)
@@ -124,7 +130,13 @@ class LLMService @Inject constructor() {
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 val text = response.body?.string() ?: ""
-                throw Exception(parseError(text) ?: "请求失败: ${response.code}")
+                val detail = parseError(text)?.takeIf { it.isNotBlank() }
+                throw Exception(
+                    buildString {
+                        append("请求失败: ${response.code}")
+                        if (detail != null) append(" - ").append(detail)
+                    }
+                )
             }
             val source = response.body?.source() ?: throw Exception("AI 响应为空")
             val acc = StringBuilder()
@@ -255,7 +267,13 @@ class LLMService @Inject constructor() {
         return client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 val text = response.body?.string() ?: ""
-                throw Exception(parseError(text) ?: "请求失败: ${response.code}")
+                val detail = parseError(text)?.takeIf { it.isNotBlank() }
+                throw Exception(
+                    buildString {
+                        append("请求失败: ${response.code}")
+                        if (detail != null) append(" - ").append(detail)
+                    }
+                )
             }
             val source = response.body?.source() ?: throw Exception("AI 响应为空")
             val acc = StringBuilder()

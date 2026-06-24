@@ -20,7 +20,7 @@ import com.lingji.app.data.db.entities.SubjectEntity
         NotebookPageEntity::class,
         SettingsEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class LingjiDatabase : RoomDatabase() {
@@ -42,6 +42,12 @@ abstract class LingjiDatabase : RoomDatabase() {
         val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE subjects ADD COLUMN lastOpenedPageId TEXT")
+            }
+        }
+
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE settings ADD COLUMN horizontalSwipeAction TEXT NOT NULL DEFAULT 'TOGGLE_PREVIEW'")
             }
         }
     }
