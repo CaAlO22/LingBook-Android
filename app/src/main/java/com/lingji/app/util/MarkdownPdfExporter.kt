@@ -16,6 +16,9 @@ import android.webkit.WebViewClient
  */
 object MarkdownPdfExporter {
 
+    private const val PaperBackgroundColor = "#FDFBF7"
+    private val activePrintWebViews = mutableListOf<WebView>()
+
     data class Section(val title: String, val markdown: String)
 
     fun exportToPdf(
@@ -54,7 +57,9 @@ object MarkdownPdfExporter {
             val webView = WebView(context).apply {
                 settings.javaScriptEnabled = true
                 settings.loadsImagesAutomatically = true
-                setBackgroundColor(android.graphics.Color.WHITE)
+                setBackgroundColor(
+                    android.graphics.Color.parseColor(if (forcePrintWhite) "#FFFFFF" else PaperBackgroundColor)
+                )
                 if (forcePrintWhite) {
                     applyForceLightWebSettings(settings)
                 }
@@ -68,6 +73,7 @@ object MarkdownPdfExporter {
                     }
                 }
             }
+            activePrintWebViews += webView
             webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
         } catch (t: Throwable) {
             onError(t)
@@ -84,6 +90,10 @@ object MarkdownPdfExporter {
             .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
             .build()
         printManager.print(jobName, adapter, attrs)
+        view.postDelayed({
+            activePrintWebViews -= view
+            view.destroy()
+        }, 60_000)
     }
 
     @Suppress("DEPRECATION")
@@ -114,6 +124,12 @@ object MarkdownPdfExporter {
                 .append(sectionBody)
                 .append("</section>\n")
         }
+        val paperBackgroundCss = if (forcePrintWhite) "" else """
+            html, body { background: $PaperBackgroundColor; }
+            @media print {
+                html, body { background: $PaperBackgroundColor; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            }
+        """.trimIndent()
         val printWhiteCss = if (forcePrintWhite) """
             :root { color-scheme: light only; }
             html, body { background: #ffffff !important; color: #000000 !important; }
@@ -143,7 +159,7 @@ object MarkdownPdfExporter {
                 svg: { fontCache: 'global' }
             };
             </script>
-            <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+            <script src="file:///android_asset/mathjax/tex-svg.js"></script>
             <style>
             body { font-family: serif; line-height: 1.6; color: #222; padding: 16px; }
             h1, h2, h3, h4 { color: #111; line-height: 1.3; }
@@ -155,6 +171,7 @@ object MarkdownPdfExporter {
             table, th, td { border: 1px solid #ddd; padding: 6px 8px; }
             .section { }
             .page-break { page-break-before: always; break-before: page; }
+            $paperBackgroundCss
             $printWhiteCss
             </style>
             </head>

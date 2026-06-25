@@ -147,7 +147,7 @@
     <string name="api_key">API Key</string>
     <string name="model_name">模型名称</string>
     <string name="enable_thinking">开启深度思考</string>
-    <string name="enable_thinking_hint">深度思考模式（thinking.type=enabled）</string>
+    <string name="enable_thinking_hint">控制模型思考模式（开启为 enabled，关闭为 disabled）</string>
 
     <!-- 设置：供应商名称 -->
     <string name="provider_openai">OpenAI</string>

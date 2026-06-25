@@ -80,6 +80,8 @@ private fun parsePageContent(content: String): List<PageSegment> {
     }
     if (lastIndex < content.length) {
         result.add(PageSegment.Text(content.substring(lastIndex)))
+    } else if (result.lastOrNull() is PageSegment.Image) {
+        result.add(PageSegment.Text(""))
     }
     return result
 }
