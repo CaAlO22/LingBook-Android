@@ -16,12 +16,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -31,6 +33,7 @@ import com.lingji.app.R
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,8 +41,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
+import kotlin.math.max
 
 class ImagePickerState {
     var pendingCameraUri: Uri? by mutableStateOf(null)
@@ -55,33 +62,43 @@ fun PageImagePicker(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var showSourceChooser by remember { mutableStateOf(true) }
+    var isProcessing by remember { mutableStateOf(false) }
+
+    fun handleImage(uri: Uri, onComplete: () -> Unit = {}) {
+        isProcessing = true
+        scope.launch {
+            val base64 = withContext(Dispatchers.IO) { uriToBase64(context, uri) }
+            if (base64 != null) {
+                onImagePicked(base64)
+            }
+            isProcessing = false
+            onComplete()
+            onDismiss()
+        }
+    }
 
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
-        uri?.let {
-            val base64 = uriToBase64(context, it)
-            if (base64 != null) {
-                onImagePicked(base64)
-            }
+        if (uri != null) {
+            handleImage(uri)
+        } else {
+            onDismiss()
         }
-        onDismiss()
     }
 
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
-        if (success) {
-            state.pendingCameraUri?.let { uri ->
-                val base64 = uriToBase64(context, uri)
-                if (base64 != null) {
-                    onImagePicked(base64)
-                }
-            }
+        val uri = state.pendingCameraUri
+        if (success && uri != null) {
+            handleImage(uri) { state.pendingCameraUri = null }
+        } else {
+            state.pendingCameraUri = null
+            onDismiss()
         }
-        state.pendingCameraUri = null
-        onDismiss()
     }
 
     val launchCamera: () -> Unit = {
@@ -116,7 +133,25 @@ fun PageImagePicker(
         }
     }
 
-    if (showSourceChooser) {
+    if (isProcessing) {
+        LingjiDialog(
+            onDismissRequest = { },
+            title = { Text(stringResource(R.string.add_image_title)) },
+            text = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    Text(
+                        text = stringResource(R.string.processing_image),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(start = 12.dp)
+                    )
+                }
+            }
+        )
+    } else if (showSourceChooser) {
         LingjiDialog(
             onDismissRequest = onDismiss,
             title = { Text(stringResource(R.string.add_image_title)) },
@@ -187,18 +222,35 @@ private fun createTempImageUri(context: Context): Uri {
 
 private fun uriToBase64(context: Context, uri: Uri): String? {
     return try {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         context.contentResolver.openInputStream(uri)?.use { input ->
-            val bitmap = BitmapFactory.decodeStream(input) ?: return null
-            val scaled = scaleBitmap(bitmap, 1200)
-            val output = ByteArrayOutputStream()
-            scaled.compress(Bitmap.CompressFormat.JPEG, 85, output)
-            val bytes = output.toByteArray()
+            BitmapFactory.decodeStream(input, null, bounds)
+        }
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight, 720)
+        }
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            val bitmap = BitmapFactory.decodeStream(input, null, options) ?: return null
+            val scaled = scaleBitmap(bitmap, 720)
+            val bytes = compressToTargetSize(scaled, 320 * 1024)
+            if (scaled !== bitmap) scaled.recycle()
+            bitmap.recycle()
             "data:image/jpeg;base64,${Base64.encodeToString(bytes, Base64.NO_WRAP)}"
         }
-    } catch (e: Exception) {
+    } catch (e: Throwable) {
         e.printStackTrace()
         null
     }
+}
+
+private fun calculateInSampleSize(width: Int, height: Int, maxDimension: Int): Int {
+    var inSampleSize = 1
+    var halfWidth = width / 2
+    var halfHeight = height / 2
+    while (halfWidth / inSampleSize >= maxDimension || halfHeight / inSampleSize >= maxDimension) {
+        inSampleSize *= 2
+    }
+    return inSampleSize.coerceAtLeast(1)
 }
 
 private fun scaleBitmap(bitmap: Bitmap, maxDimension: Int): Bitmap {
@@ -210,10 +262,22 @@ private fun scaleBitmap(bitmap: Bitmap, maxDimension: Int): Bitmap {
     val newHeight: Int
     if (width > height) {
         newWidth = maxDimension
-        newHeight = (maxDimension / ratio).toInt()
+        newHeight = max(1, (maxDimension / ratio).toInt())
     } else {
         newHeight = maxDimension
-        newWidth = (maxDimension * ratio).toInt()
+        newWidth = max(1, (maxDimension * ratio).toInt())
     }
     return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
+}
+
+private fun compressToTargetSize(bitmap: Bitmap, maxBytes: Int): ByteArray {
+    var quality = 80
+    var bytes: ByteArray
+    do {
+        val output = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, quality, output)
+        bytes = output.toByteArray()
+        quality -= 10
+    } while (bytes.size > maxBytes && quality >= 40)
+    return bytes
 }

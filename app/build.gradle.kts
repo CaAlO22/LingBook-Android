@@ -105,6 +105,7 @@ dependencies {
     implementation(libs.markwon.image)
     implementation(libs.markwon.ext.tables)
     implementation(libs.markwon.html)
+    implementation(libs.markwon.latex)
     implementation(libs.markwon.strikethrough)
 
     implementation(libs.coil.compose)

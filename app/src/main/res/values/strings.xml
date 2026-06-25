@@ -44,6 +44,7 @@
     <string name="empty_fragments_title">还没有碎片</string>
     <string name="empty_fragments_hint">在下方输入框添加第一条知识碎片</string>
     <string name="edit_fragment">编辑碎片</string>
+    <string name="fragment_merged">已整理</string>
     <string name="cd_edit">编辑</string>
     <string name="cd_undo">撤销</string>
     <string name="cd_redo">重做</string>
@@ -89,10 +90,12 @@
     <string name="cd_add_image">添加图片</string>
     <string name="add_image_title">添加图片</string>
     <string name="choose_image_source">选择图片来源</string>
+    <string name="processing_image">正在处理图片…</string>
     <string name="camera">拍照</string>
     <string name="gallery">相册</string>
     <string name="camera_permission_denied">未获得相机权限，无法拍照</string>
     <string name="cd_generate_index">生成索引</string>
+
     <string name="cd_remove_image">移除图片</string>
     <string name="content_hint">在此输入页面内容…</string>
     <string name="chat_placeholder">询问 AI 关于当前页的内容…</string>
@@ -119,9 +122,9 @@
     <string name="directory_build_failed_toast">构建目录失败：%1$s</string>
     <string name="cd_edit_page_index">编辑页面索引</string>
     <string name="edit_page_index">编辑页面索引</string>
-    <string name="index_keywords">关键词</string>
+    <string name="index_keywords">联想搜索</string>
     <string name="add_keyword">添加关键词</string>
-    <string name="add_keyword_hint">输入关键词</string>
+    <string name="add_keyword_hint">输入用户可能搜索的关键词</string>
     <string name="remove_keyword">删除关键词</string>
     <string name="index_summary">摘要</string>
     <string name="summary_hint">页面摘要</string>
@@ -133,6 +136,7 @@
     <string name="copy_success">已复制到剪贴板</string>
     <string name="copy_failed">复制失败</string>
     <string name="copy_too_large">内容过大，无法复制到剪贴板，请使用文件导出</string>
+    <string name="page_content_too_large_for_image">当前页面图片过多，无法继续插入图片</string>
 
     <!-- 设置 -->
     <string name="settings_title">设置</string>

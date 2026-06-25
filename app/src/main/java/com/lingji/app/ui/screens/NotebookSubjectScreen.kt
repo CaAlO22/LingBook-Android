@@ -95,6 +95,8 @@ import com.lingji.app.ui.viewmodel.SubjectViewModel
 import com.lingji.app.util.MarkdownPdfExporter
 import kotlinx.coroutines.launch
 
+private const val MAX_NOTEBOOK_PAGE_CONTENT_CHARS = 1_200_000
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotebookSubjectScreen(
@@ -520,14 +522,15 @@ fun NotebookSubjectScreen(
                                     state = pagerState,
                                     modifier = Modifier.fillMaxSize(),
                                     userScrollEnabled = true
-                                ) { _ ->
+                                ) { pageIndex ->
+                                    if (editorHostState.isPreview != (pageIndex == 1)) {
+                                        return@HorizontalPager
+                                    }
                                     NotebookPageEditor(
                                         page = page,
-                                        indexEntry = indexEntries[page.id],
                                         onUpdate = { updated ->
                                             viewModel.updatePage(liveSubject.id, updated)
                                         },
-                                        onEditIndex = { showIndexEditorPage = page },
                                         onFocus = { },
                                         autoFocusContent = page.id == lastCreatedPageId,
                                         fillHeight = true,
@@ -563,11 +566,9 @@ fun NotebookSubjectScreen(
                                     val displayPage = pages.getOrNull(pageIndex) ?: return@HorizontalPager
                                     NotebookPageEditor(
                                         page = displayPage,
-                                        indexEntry = indexEntries[displayPage.id],
                                         onUpdate = { updated ->
                                             viewModel.updatePage(liveSubject.id, updated)
                                         },
-                                        onEditIndex = { showIndexEditorPage = displayPage },
                                         onFocus = { },
                                         autoFocusContent = displayPage.id == lastCreatedPageId,
                                         fillHeight = true,
@@ -581,11 +582,9 @@ fun NotebookSubjectScreen(
                             HorizontalSwipeAction.NONE -> {
                                 NotebookPageEditor(
                                     page = page,
-                                    indexEntry = indexEntries[page.id],
                                     onUpdate = { updated ->
                                         viewModel.updatePage(liveSubject.id, updated)
                                     },
-                                    onEditIndex = { showIndexEditorPage = page },
                                     onFocus = { },
                                     autoFocusContent = page.id == lastCreatedPageId,
                                     fillHeight = true,
@@ -747,6 +746,15 @@ fun NotebookSubjectScreen(
                 val suffix = if (after.isEmpty() || after.startsWith("\n")) "" else "\n"
                 val markdownImage = "$prefix![图片]($base64)$suffix"
                 val updatedContent = before + markdownImage + after
+                if (updatedContent.length > MAX_NOTEBOOK_PAGE_CONTENT_CHARS) {
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.page_content_too_large_for_image),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    showImagePickerForPage = null
+                    return@PageImagePicker
+                }
                 val updated = target.copy(
                     content = updatedContent,
                     updatedAt = System.currentTimeMillis()

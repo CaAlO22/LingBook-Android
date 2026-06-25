@@ -97,9 +97,7 @@ class SubjectRepository @Inject constructor(
     }
 
     suspend fun completeBatchMerge(subjectId: String, mergedFragmentIds: List<String>) {
-        fragmentDao.deleteUnmergedByIds(subjectId, mergedFragmentIds)
-        // Mark remaining unmerged as not unmerged? Keep existing logic: deleted ones are removed.
-        // The rest remains with isUnmerged=1.
+        fragmentDao.markUnmergedMergedByIds(subjectId, mergedFragmentIds)
     }
 
     suspend fun addPage(subjectId: String, page: NotebookPage) {
@@ -224,7 +222,7 @@ class SubjectRepository @Inject constructor(
         isUnmerged = isUnmerged
     )
 
-    private fun FragmentEntity.toDomain() = Fragment(id, content, timestamp)
+    private fun FragmentEntity.toDomain() = Fragment(id, content, timestamp, !isUnmerged)
 
     private fun NotebookPage.toEntity(subjectId: String, orderIndex: Int) = NotebookPageEntity(
         id = id,

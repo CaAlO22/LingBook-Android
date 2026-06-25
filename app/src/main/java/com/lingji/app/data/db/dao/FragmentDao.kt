@@ -34,8 +34,8 @@ interface FragmentDao {
     @Query("DELETE FROM fragments WHERE subjectId = :subjectId")
     suspend fun deleteBySubject(subjectId: String)
 
-    @Query("DELETE FROM fragments WHERE subjectId = :subjectId AND isUnmerged = 1 AND id IN (:ids)")
-    suspend fun deleteUnmergedByIds(subjectId: String, ids: List<String>)
+    @Query("UPDATE fragments SET isUnmerged = 0 WHERE subjectId = :subjectId AND isUnmerged = 1 AND id IN (:ids)")
+    suspend fun markUnmergedMergedByIds(subjectId: String, ids: List<String>)
 
     @Query("UPDATE fragments SET content = :content WHERE id = :id")
     suspend fun updateContent(id: String, content: String)

@@ -106,6 +106,27 @@ private fun FragmentBubble(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val containerColor = if (fragment.isMerged) {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+    } else {
+        MaterialTheme.colorScheme.primaryContainer
+    }
+    val contentColor = if (fragment.isMerged) {
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+    val metaColor = if (fragment.isMerged) {
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+    }
+    val actionColor = if (fragment.isMerged) {
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+    }
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End
@@ -117,7 +138,7 @@ private fun FragmentBubble(
             Text(
                 text = "#$index",
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                color = metaColor,
                 modifier = Modifier.padding(end = 8.dp, bottom = 2.dp)
             )
             Card(
@@ -128,7 +149,7 @@ private fun FragmentBubble(
                     bottomEnd = 4.dp
                 ),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                    containerColor = containerColor
                 ),
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
@@ -136,7 +157,7 @@ private fun FragmentBubble(
                     Text(
                         text = fragment.content,
                         style = MaterialTheme.typography.bodyMedium.copy(
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = contentColor,
                             lineHeight = 20.sp
                         )
                     )
@@ -151,27 +172,37 @@ private fun FragmentBubble(
                             Icon(
                                 imageVector = Icons.Default.Schedule,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                tint = metaColor,
                                 modifier = Modifier.size(10.dp)
                             )
                             Text(
                                 text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(fragment.timestamp)),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                color = metaColor,
                                 modifier = Modifier.padding(start = 3.dp)
                             )
+                            if (fragment.isMerged) {
+                                Text(
+                                    text = stringResource(R.string.fragment_merged),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = metaColor,
+                                    modifier = Modifier.padding(start = 8.dp)
+                                )
+                            }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                            IconButton(
-                                onClick = onEdit,
-                                modifier = Modifier.size(24.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Edit,
-                                    contentDescription = stringResource(R.string.cd_edit),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                    modifier = Modifier.size(16.dp)
-                                )
+                            if (!fragment.isMerged) {
+                                IconButton(
+                                    onClick = onEdit,
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = stringResource(R.string.cd_edit),
+                                        tint = actionColor,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
                             }
                             IconButton(
                                 onClick = onDelete,
@@ -180,7 +211,7 @@ private fun FragmentBubble(
                                 Icon(
                                     imageVector = Icons.Default.Delete,
                                     contentDescription = stringResource(R.string.cd_delete),
-                                    tint = Color(0xFFD6D3D1),
+                                    tint = if (fragment.isMerged) actionColor else Color(0xFFD6D3D1),
                                     modifier = Modifier.size(16.dp)
                                 )
                             }

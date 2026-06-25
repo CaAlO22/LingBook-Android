@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import io.noties.markwon.Markwon
+import io.noties.markwon.ext.latex.JLatexMathPlugin
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.image.ImagesPlugin
@@ -45,6 +46,7 @@ fun MarkdownView(markdown: String, modifier: Modifier = Modifier) {
                 }
             )
             .usePlugin(TablePlugin.create(context))
+            .usePlugin(JLatexMathPlugin.create(48f))
             .usePlugin(StrikethroughPlugin.create())
             .build()
     }

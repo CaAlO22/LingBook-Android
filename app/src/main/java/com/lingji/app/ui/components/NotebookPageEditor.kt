@@ -6,12 +6,10 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -53,7 +51,6 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.lingji.app.R
 import com.lingji.app.domain.model.NotebookPage
-import com.lingji.app.domain.model.PageIndexEntry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -136,9 +133,7 @@ fun rememberNotebookPageEditorHostState(): NotebookPageEditorHostState = remembe
 @Composable
 fun NotebookPageEditor(
     page: NotebookPage,
-    indexEntry: PageIndexEntry?,
     onUpdate: (NotebookPage) -> Unit,
-    onEditIndex: () -> Unit,
     onFocus: () -> Unit,
     autoFocusContent: Boolean = false,
     fillHeight: Boolean = false,
@@ -239,19 +234,6 @@ fun NotebookPageEditor(
             )
 
             Spacer(modifier = Modifier.height(10.dp))
-
-            // Keywords
-            if (!indexEntry?.keywords.isNullOrEmpty()) {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    indexEntry?.keywords?.forEach { kw ->
-                        KeywordTag(text = kw, onClick = onEditIndex)
-                    }
-                }
-                Spacer(modifier = Modifier.height(10.dp))
-            }
 
             if (autoFocusContent) {
                 androidx.compose.runtime.LaunchedEffect(page.id) {
@@ -420,22 +402,6 @@ private fun UnderlinedTitleField(
 }
 
 @Composable
-private fun KeywordTag(text: String, onClick: () -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(6.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        onClick = onClick
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-        )
-    }
-}
-
-@Composable
 private fun ImageCard(
     imageUrl: String,
     onRemove: () -> Unit,
@@ -458,16 +424,18 @@ private fun ImageCard(
         contentAlignment = Alignment.Center
     ) {
         bitmap?.let { bmp ->
-            val aspectRatio = bmp.width.toFloat() / bmp.height.toFloat().coerceAtLeast(0.001f)
-            val targetHeight = (maxWidth / aspectRatio).coerceAtLeast(120.dp)
-            Image(
-                bitmap = bmp.asImageBitmap(),
-                contentDescription = stringResource(R.string.cd_remove_image),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(targetHeight),
-                contentScale = ContentScale.Fit
-            )
+            if (!bmp.isRecycled) {
+                val aspectRatio = bmp.width.toFloat() / bmp.height.toFloat().coerceAtLeast(0.001f)
+                val targetHeight = (maxWidth / aspectRatio).coerceAtLeast(120.dp)
+                Image(
+                    bitmap = bmp.asImageBitmap(),
+                    contentDescription = stringResource(R.string.cd_remove_image),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(targetHeight),
+                    contentScale = ContentScale.Fit
+                )
+            }
         }
         IconButton(
             onClick = onRemove,
@@ -493,9 +461,25 @@ private fun decodeBase64Image(imageUrl: String): android.graphics.Bitmap? {
         val base64Part = imageUrl.substringAfter(",", "")
         if (base64Part.isEmpty()) return null
         val bytes = Base64.decode(base64Part, Base64.DEFAULT)
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-    } catch (e: Exception) {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight, 720)
+        }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+    } catch (e: Throwable) {
         e.printStackTrace()
         null
     }
 }
+
+private fun calculateInSampleSize(width: Int, height: Int, maxDimension: Int): Int {
+    var inSampleSize = 1
+    val halfWidth = width / 2
+    val halfHeight = height / 2
+    while (halfWidth / inSampleSize >= maxDimension || halfHeight / inSampleSize >= maxDimension) {
+        inSampleSize *= 2
+    }
+    return inSampleSize.coerceAtLeast(1)
+}
+

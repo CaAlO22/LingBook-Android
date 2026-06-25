@@ -20,8 +20,6 @@ class MimoRequestStrategy : RequestStrategy {
         messages = messages,
         temperature = 0.7,
         stream = stream,
-        thinking = mapOf(
-            "type" to if (settings.enableThinking) "enabled" else "disabled"
-        )
+        thinking = if (settings.enableThinking) mapOf("type" to "enabled") else null
     )
 }

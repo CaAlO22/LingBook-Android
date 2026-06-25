@@ -20,7 +20,8 @@ data class AISettings(
 data class Fragment(
     val id: String = generateId(),
     val content: String,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val isMerged: Boolean = false
 )
 
 data class NotebookPage(

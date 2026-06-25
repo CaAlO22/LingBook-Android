@@ -2,6 +2,8 @@ package com.lingji.app.di
 
 import android.content.Context
 import androidx.room.Room
+import androidx.room.RoomDatabase
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.lingji.app.data.db.LingjiDatabase
 import dagger.Module
 import dagger.Provides
@@ -27,6 +29,15 @@ object AppModule {
                 LingjiDatabase.MIGRATION_2_3,
                 LingjiDatabase.MIGRATION_3_4,
                 LingjiDatabase.MIGRATION_4_5
+            )
+            .addCallback(
+                object : RoomDatabase.Callback() {
+                    override fun onOpen(db: SupportSQLiteDatabase) {
+                        db.execSQL(
+                            "UPDATE notebook_pages SET content = '', updatedAt = strftime('%s','now') * 1000, indexedAt = 0 WHERE length(content) > 1200000"
+                        )
+                    }
+                }
             )
             .build()
     }

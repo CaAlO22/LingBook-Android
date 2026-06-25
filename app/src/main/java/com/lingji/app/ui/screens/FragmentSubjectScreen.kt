@@ -297,7 +297,7 @@ fun FragmentSubjectScreen(
                         ) { page ->
                             when (page) {
                                 0 -> FragmentList(
-                                    fragments = liveSubject.fragments + liveSubject.unmergedFragments,
+                                    fragments = (liveSubject.fragments + liveSubject.unmergedFragments).sortedBy { it.timestamp },
                                     onEdit = { editingFragment = it },
                                     onDelete = { viewModel.deleteFragment(liveSubject.id, it.id) },
                                     modifier = Modifier.fillMaxSize(),

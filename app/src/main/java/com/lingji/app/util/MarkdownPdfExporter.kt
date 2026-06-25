@@ -52,7 +52,7 @@ object MarkdownPdfExporter {
         try {
             val html = buildHtml(docTitle, sections, forcePrintWhite)
             val webView = WebView(context).apply {
-                settings.javaScriptEnabled = false
+                settings.javaScriptEnabled = true
                 settings.loadsImagesAutomatically = true
                 setBackgroundColor(android.graphics.Color.WHITE)
                 if (forcePrintWhite) {
@@ -60,15 +60,11 @@ object MarkdownPdfExporter {
                 }
                 webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, url: String?) {
-                        val printManager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
-                        val jobName = docTitle.ifBlank { "LingBook" }
-                        val adapter = view.createPrintDocumentAdapter(jobName)
-                        val attrs = PrintAttributes.Builder()
-                            .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
-                            .setResolution(PrintAttributes.Resolution("pdf", "pdf", 600, 600))
-                            .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
-                            .build()
-                        printManager.print(jobName, adapter, attrs)
+                        view.evaluateJavascript(
+                            "(window.MathJax && MathJax.startup ? MathJax.startup.promise : Promise.resolve()).then(function(){ return true; })"
+                        ) {
+                            printWebView(context, docTitle, view)
+                        }
                     }
                 }
             }
@@ -76,6 +72,18 @@ object MarkdownPdfExporter {
         } catch (t: Throwable) {
             onError(t)
         }
+    }
+
+    private fun printWebView(context: Context, docTitle: String, view: WebView) {
+        val printManager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
+        val jobName = docTitle.ifBlank { "LingBook" }
+        val adapter = view.createPrintDocumentAdapter(jobName)
+        val attrs = PrintAttributes.Builder()
+            .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
+            .setResolution(PrintAttributes.Resolution("pdf", "pdf", 600, 600))
+            .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
+            .build()
+        printManager.print(jobName, adapter, attrs)
     }
 
     @Suppress("DEPRECATION")
@@ -126,6 +134,16 @@ object MarkdownPdfExporter {
             <meta charset="utf-8" />
             <meta name="color-scheme" content="${if (forcePrintWhite) "light only" else "light dark"}" />
             <title>$safeDocTitle</title>
+            <script>
+            MathJax = {
+                tex: {
+                    inlineMath: [['$', '$'], ['\\\\(', '\\\\)']],
+                    displayMath: [['$$', '$$'], ['\\\\[', '\\\\]']]
+                },
+                svg: { fontCache: 'global' }
+            };
+            </script>
+            <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
             <style>
             body { font-family: serif; line-height: 1.6; color: #222; padding: 16px; }
             h1, h2, h3, h4 { color: #111; line-height: 1.3; }

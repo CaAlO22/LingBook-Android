@@ -55,6 +55,7 @@ markwon-core = { group = "io.noties.markwon", name = "core", version.ref = "mark
 markwon-image = { group = "io.noties.markwon", name = "image", version.ref = "markwon" }
 markwon-ext-tables = { group = "io.noties.markwon", name = "ext-tables", version.ref = "markwon" }
 markwon-html = { group = "io.noties.markwon", name = "html", version.ref = "markwon" }
+markwon-latex = { group = "io.noties.markwon", name = "ext-latex", version.ref = "markwon" }
 markwon-strikethrough = { group = "io.noties.markwon", name = "ext-strikethrough", version.ref = "markwon" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version = "2.6.0" }
 haze-android = { group = "dev.chrisbanes.haze", name = "haze-android", version.ref = "haze" }
