@@ -72,7 +72,7 @@
     <string name="add_page">添加页面</string>
     <string name="hint_page_title">页面标题</string>
     <string name="empty_pages_title">还没有页面</string>
-    <string name="empty_pages_hint">点击右下角按钮创建新页面</string>
+    <string name="empty_pages_hint">点击右上角按钮创建新页面</string>
     <string name="page_count_format">%1$d 页</string>
     <string name="page_position_format">%1$d / %2$d</string>
     <string name="jump_to_page">跳转到页面</string>

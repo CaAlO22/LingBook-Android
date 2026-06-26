@@ -154,12 +154,10 @@ private fun FragmentBubble(
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
                 Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                    Text(
-                        text = fragment.content,
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            color = contentColor,
-                            lineHeight = 20.sp
-                        )
+                    MarkdownView(
+                        markdown = fragment.content,
+                        textColor = contentColor,
+                        textSizeSp = 14f
                     )
                     Row(
                         modifier = Modifier
