@@ -154,11 +154,6 @@ fun NotebookPageEditor(
     var focusedTextIndex by remember { mutableStateOf<Int?>(null) }
     val firstTextFocusRequester = remember { FocusRequester() }
 
-    // 切换页面时重置为编辑模式
-    LaunchedEffect(page.id) {
-        hostState.setPreview(false)
-    }
-
     // 当外部传入的页面数据与当前编辑状态不一致时（如从其他端同步），重置历史。
     LaunchedEffect(page.title, page.content) {
         val current = undoManager.value

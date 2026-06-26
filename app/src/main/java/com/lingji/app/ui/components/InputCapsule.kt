@@ -24,7 +24,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.lingji.app.R
 
@@ -35,7 +44,14 @@ fun InputCapsule(
     modifier: Modifier = Modifier,
     maxLines: Int = 4
 ) {
-    var text by remember { mutableStateOf("") }
+    var text by remember { mutableStateOf(TextFieldValue("")) }
+
+    val submitText: () -> Unit = {
+        if (text.text.isNotBlank()) {
+            onSend(text.text.trim())
+            text = TextFieldValue("")
+        }
+    }
 
     GlassSurface(
         modifier = modifier.fillMaxWidth(),
@@ -52,7 +68,30 @@ fun InputCapsule(
                 onValueChange = { text = it },
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                    .onPreviewKeyEvent { event ->
+                        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        if (event.key != Key.Enter && event.key != Key.NumPadEnter) {
+                            return@onPreviewKeyEvent false
+                        }
+                        if (event.isCtrlPressed || event.isShiftPressed) {
+                            val current = text
+                            val newText = current.text.replaceRange(
+                                current.selection.start,
+                                current.selection.end,
+                                "\n"
+                            )
+                            val cursor = current.selection.start + 1
+                            text = TextFieldValue(
+                                text = newText,
+                                selection = TextRange(cursor)
+                            )
+                            true
+                        } else {
+                            submitText()
+                            true
+                        }
+                    },
                 maxLines = maxLines,
                 textStyle = MaterialTheme.typography.bodyLarge.copy(
                     color = MaterialTheme.colorScheme.onSurface
@@ -60,7 +99,7 @@ fun InputCapsule(
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 decorationBox = { innerTextField ->
                     Box(modifier = Modifier.fillMaxWidth()) {
-                        if (text.isEmpty()) {
+                        if (text.text.isEmpty()) {
                             Text(
                                 text = hint,
                                 style = MaterialTheme.typography.bodyLarge,
@@ -72,14 +111,9 @@ fun InputCapsule(
                 }
             )
 
-            val enabled = text.isNotBlank()
+            val enabled = text.text.isNotBlank()
             IconButton(
-                onClick = {
-                    if (text.isNotBlank()) {
-                        onSend(text.trim())
-                        text = ""
-                    }
-                },
+                onClick = submitText,
                 enabled = enabled,
                 modifier = Modifier.padding(start = 4.dp)
             ) {
@@ -109,4 +143,3 @@ fun InputCapsule(
         }
     }
 }
-

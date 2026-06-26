@@ -12,6 +12,8 @@ import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.image.ImagesPlugin
 import io.noties.markwon.image.data.DataUriSchemeHandler
+import io.noties.markwon.inlineparser.MarkwonInlineParser
+import io.noties.markwon.inlineparser.MarkwonInlineParserPlugin
 
 /**
  * 将编辑器中的“双换行”折叠为“硬换行”，使预览效果符合用户直觉：
@@ -39,6 +41,11 @@ internal fun foldBlankLines(markdown: String): String {
 fun MarkdownView(markdown: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val markwon = remember(context) {
+        val inlineParserBuilder = MarkwonInlineParser.factoryBuilderNoDefaults()
+        inlineParserBuilder.addInlineProcessor(BackslashLatexInlineProcessor())
+        inlineParserBuilder.includeDefaults()
+        inlineParserBuilder.addInlineProcessor(DollarLatexInlineProcessor())
+
         Markwon.builder(context)
             .usePlugin(
                 ImagesPlugin.create { plugin ->
@@ -46,7 +53,8 @@ fun MarkdownView(markdown: String, modifier: Modifier = Modifier) {
                 }
             )
             .usePlugin(TablePlugin.create(context))
-            .usePlugin(JLatexMathPlugin.create(48f))
+            .usePlugin(MarkwonInlineParserPlugin.create(inlineParserBuilder))
+            .usePlugin(JLatexMathPlugin.create(48f) { it.inlinesEnabled(true) })
             .usePlugin(StrikethroughPlugin.create())
             .build()
     }

@@ -90,6 +90,14 @@ import com.lingji.app.ui.components.PageImagePicker
 import com.lingji.app.ui.components.PageIndexEditorDialog
 import com.lingji.app.ui.components.TimeDisplay
 import com.lingji.app.ui.components.rememberImagePickerState
+import com.lingji.app.ui.screens.notebook.DeletePageDialog
+import com.lingji.app.ui.screens.notebook.EmptyPagesState
+import com.lingji.app.ui.screens.notebook.ExportPdfRangeDialog
+import com.lingji.app.ui.screens.notebook.JumpPageDialog
+import com.lingji.app.ui.screens.notebook.MovePageDialog
+import com.lingji.app.ui.screens.notebook.NotebookEditorArea
+import com.lingji.app.ui.screens.notebook.NotebookPageToolbar
+import com.lingji.app.ui.screens.notebook.NotebookSubjectTopBar
 import com.lingji.app.ui.theme.NotoSerifCJKsc
 import com.lingji.app.ui.viewmodel.SubjectViewModel
 import com.lingji.app.util.MarkdownPdfExporter
@@ -145,12 +153,9 @@ fun NotebookSubjectScreen(
     }
 
     var showSearch by remember { mutableStateOf(false) }
-    var showMoreMenu by remember { mutableStateOf(false) }
     var showImagePickerForPage by remember { mutableStateOf<NotebookPage?>(null) }
     var showJumpDialog by remember { mutableStateOf(false) }
-    var jumpText by remember { mutableStateOf("") }
     var showMoveDialog by remember { mutableStateOf(false) }
-    var moveText by remember { mutableStateOf("") }
     var chatAnswer by remember { mutableStateOf("") }
     var isChatLoading by remember { mutableStateOf(false) }
     var chatHistory by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
@@ -161,6 +166,11 @@ fun NotebookSubjectScreen(
 
     val editorHostState = rememberNotebookPageEditorHostState()
     val imagePickerState = rememberImagePickerState()
+
+    // 切换笔记页面时重置为编辑模式
+    LaunchedEffect(currentPageId) {
+        editorHostState.setPreview(false)
+    }
 
     val indexEntries = remember(liveSubject.pageIndexEntries) {
         (liveSubject.pageIndexEntries ?: emptyList()).associateBy { it.pageId }
@@ -243,171 +253,39 @@ fun NotebookSubjectScreen(
 
     Scaffold(
         topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(start = 4.dp, end = 4.dp)
-                    .background(MaterialTheme.colorScheme.background),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // 左侧：返回 + 笔记名称（可被压缩，标题省略）
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回"
-                        )
-                    }
-                    Text(
-                        text = liveSubject.title,
-                        style = MaterialTheme.typography.headlineSmall.copy(
-                            fontFamily = NotoSerifCJKsc,
-                            letterSpacing = (-0.02).sp
-                        ),
-                        maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .weight(1f, fill = false)
-                            .padding(end = 8.dp)
-                    )
-                }
-
-                // 中间：编辑/预览切换（intrinsic 宽度，保留完整显示，不被挤压）
-                if (pages.isNotEmpty()) {
-                    Surface(
-                        shape = RoundedCornerShape(percent = 50),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-                    ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier.padding(3.dp)
-                        ) {
-                            ModeChip(
-                                label = stringResource(R.string.mode_edit),
-                                selected = !editorHostState.isPreview,
-                                onClick = { editorHostState.setPreview(false) }
-                            )
-                            ModeChip(
-                                label = stringResource(R.string.mode_preview),
-                                selected = editorHostState.isPreview,
-                                onClick = { editorHostState.setPreview(true) }
-                            )
+            NotebookSubjectTopBar(
+                title = liveSubject.title,
+                isPreview = editorHostState.isPreview,
+                isPagesEmpty = pages.isEmpty(),
+                onBack = onBack,
+                onTogglePreview = { editorHostState.setPreview(it) },
+                onSearch = { showSearch = true },
+                onBuildIndex = triggerBuildIndex,
+                onBuildDirectory = triggerBuildDirectory,
+                onExport = { exportLauncher.launch(viewModel.buildExportFileName(liveSubject.title)) },
+                onExportPdf = { if (pages.isNotEmpty()) showExportPdfDialog = true },
+                onCopyToClipboard = {
+                    scope.launch {
+                        try {
+                            val encoded = viewModel.exportSubjectToText(liveSubject)
+                            if (encoded.length > CLIPBOARD_SIZE_LIMIT) {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.copy_too_large),
+                                    Toast.LENGTH_LONG
+                                ).show()
+                                return@launch
+                            }
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText(liveSubject.title, encoded))
+                            Toast.makeText(context, context.getString(R.string.copy_success), Toast.LENGTH_SHORT).show()
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            Toast.makeText(context, context.getString(R.string.copy_failed), Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
-
-                // 右侧：搜索 + 更多（intrinsic 宽度）
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { showSearch = true }) {
-                            Icon(
-                                Icons.Default.Search,
-                                contentDescription = stringResource(R.string.cd_search)
-                            )
-                        }
-                        Box {
-                            IconButton(onClick = { showMoreMenu = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.MoreVert,
-                                    contentDescription = stringResource(R.string.cd_more)
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = showMoreMenu,
-                                onDismissRequest = { showMoreMenu = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.build_index)) },
-                                    onClick = {
-                                        showMoreMenu = false
-                                        triggerBuildIndex()
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            Icons.Default.Refresh,
-                                            contentDescription = null
-                                        )
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.build_directory)) },
-                                    onClick = {
-                                        showMoreMenu = false
-                                        triggerBuildDirectory()
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            Icons.AutoMirrored.Filled.List,
-                                            contentDescription = null
-                                        )
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.export)) },
-                                    onClick = {
-                                        showMoreMenu = false
-                                        exportLauncher.launch(viewModel.buildExportFileName(liveSubject.title))
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            Icons.Default.FileDownload,
-                                            contentDescription = null
-                                        )
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.export_pdf)) },
-                                    onClick = {
-                                        showMoreMenu = false
-                                        if (pages.isNotEmpty()) {
-                                            showExportPdfDialog = true
-                                        }
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            Icons.Default.PictureAsPdf,
-                                            contentDescription = null
-                                        )
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.copy_to_clipboard)) },
-                                    onClick = {
-                                        showMoreMenu = false
-                                        scope.launch {
-                                            try {
-                                                val encoded = viewModel.exportSubjectToText(liveSubject)
-                                                if (encoded.length > CLIPBOARD_SIZE_LIMIT) {
-                                                    Toast.makeText(
-                                                        context,
-                                                        context.getString(R.string.copy_too_large),
-                                                        Toast.LENGTH_LONG
-                                                    ).show()
-                                                    return@launch
-                                                }
-                                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                                clipboard.setPrimaryClip(android.content.ClipData.newPlainText(liveSubject.title, encoded))
-                                                Toast.makeText(context, context.getString(R.string.copy_success), Toast.LENGTH_SHORT).show()
-                                            } catch (e: Exception) {
-                                                e.printStackTrace()
-                                                Toast.makeText(context, context.getString(R.string.copy_failed), Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            Icons.Default.ContentCopy,
-                                            contentDescription = null
-                                        )
-                                    }
-                                )
-                            }
-                        }
-                    }
-            }
+            )
         }
     ) { padding ->
         Column(
@@ -430,7 +308,6 @@ fun NotebookSubjectScreen(
                 onBuildIndex = triggerBuildIndex,
                 onJumpToPage = { showJumpDialog = true },
                 onEditPagePosition = {
-                    moveText = (currentPageIndex + 1).toString()
                     showMoveDialog = true
                 },
                 onPrevPage = {
@@ -501,100 +378,18 @@ fun NotebookSubjectScreen(
                         EmptyPagesState()
                     } else {
                         val page = currentPage ?: return@FloatingInputContainer
-                        val swipeAction = uiState.settings.horizontalSwipeAction
-                        when (swipeAction) {
-                            HorizontalSwipeAction.TOGGLE_PREVIEW -> {
-                                // 2 页（编辑、预览）的 HorizontalPager，与 hostState.isPreview 双向同步。
-                                val pagerState = androidx.compose.foundation.pager.rememberPagerState(
-                                    initialPage = if (editorHostState.isPreview) 1 else 0,
-                                    pageCount = { 2 }
-                                )
-                                LaunchedEffect(pagerState.currentPage) {
-                                    editorHostState.setPreview(pagerState.currentPage == 1)
-                                }
-                                LaunchedEffect(editorHostState.isPreview) {
-                                    val target = if (editorHostState.isPreview) 1 else 0
-                                    if (pagerState.currentPage != target) {
-                                        pagerState.animateScrollToPage(target)
-                                    }
-                                }
-                                HorizontalPager(
-                                    state = pagerState,
-                                    modifier = Modifier.fillMaxSize(),
-                                    userScrollEnabled = true
-                                ) { pageIndex ->
-                                    if (editorHostState.isPreview != (pageIndex == 1)) {
-                                        return@HorizontalPager
-                                    }
-                                    NotebookPageEditor(
-                                        page = page,
-                                        onUpdate = { updated ->
-                                            viewModel.updatePage(liveSubject.id, updated)
-                                        },
-                                        onFocus = { },
-                                        autoFocusContent = page.id == lastCreatedPageId,
-                                        fillHeight = true,
-                                        hostState = editorHostState,
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(start = 12.dp, end = 12.dp, top = 8.dp)
-                                    )
-                                }
-                            }
-                            HorizontalSwipeAction.CHANGE_PAGE -> {
-                                val pagerState = androidx.compose.foundation.pager.rememberPagerState(
-                                    initialPage = currentPageIndex.coerceAtLeast(0),
-                                    pageCount = { pages.size }
-                                )
-                                LaunchedEffect(pagerState.currentPage) {
-                                    pages.getOrNull(pagerState.currentPage)?.let { p ->
-                                        if (currentPageId != p.id) currentPageId = p.id
-                                    }
-                                }
-                                LaunchedEffect(currentPageIndex) {
-                                    if (currentPageIndex in pages.indices &&
-                                        pagerState.currentPage != currentPageIndex
-                                    ) {
-                                        pagerState.animateScrollToPage(currentPageIndex)
-                                    }
-                                }
-                                HorizontalPager(
-                                    state = pagerState,
-                                    modifier = Modifier.fillMaxSize(),
-                                    userScrollEnabled = true
-                                ) { pageIndex ->
-                                    val displayPage = pages.getOrNull(pageIndex) ?: return@HorizontalPager
-                                    NotebookPageEditor(
-                                        page = displayPage,
-                                        onUpdate = { updated ->
-                                            viewModel.updatePage(liveSubject.id, updated)
-                                        },
-                                        onFocus = { },
-                                        autoFocusContent = displayPage.id == lastCreatedPageId,
-                                        fillHeight = true,
-                                        hostState = editorHostState,
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(start = 12.dp, end = 12.dp, top = 8.dp)
-                                    )
-                                }
-                            }
-                            HorizontalSwipeAction.NONE -> {
-                                NotebookPageEditor(
-                                    page = page,
-                                    onUpdate = { updated ->
-                                        viewModel.updatePage(liveSubject.id, updated)
-                                    },
-                                    onFocus = { },
-                                    autoFocusContent = page.id == lastCreatedPageId,
-                                    fillHeight = true,
-                                    hostState = editorHostState,
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(start = 12.dp, end = 12.dp, top = 8.dp)
-                                )
-                            }
-                        }
+                        NotebookEditorArea(
+                            page = page,
+                            pages = pages,
+                            currentPageIndex = currentPageIndex,
+                            swipeAction = uiState.settings.horizontalSwipeAction,
+                            editorHostState = editorHostState,
+                            lastCreatedPageId = lastCreatedPageId,
+                            onUpdate = { updated ->
+                                viewModel.updatePage(liveSubject.id, updated)
+                            },
+                            onPageChange = { pageId -> currentPageId = pageId }
+                        )
                     }
                 }
             )
@@ -651,86 +446,23 @@ fun NotebookSubjectScreen(
     }
 
     if (showJumpDialog) {
-        LingjiDialog(
-            onDismissRequest = { showJumpDialog = false; jumpText = "" },
-            title = { Text(stringResource(R.string.jump_to_page)) },
-            text = {
-                OutlinedTextField(
-                    value = jumpText,
-                    onValueChange = { value ->
-                        jumpText = value.filter { it.isDigit() }
-                    },
-                    label = { Text(stringResource(R.string.page_number_hint)) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true
-                )
-            },
-            confirmButton = {
-                LingjiDialogConfirmButton(
-                    text = stringResource(R.string.jump),
-                    onClick = {
-                        val number = jumpText.toIntOrNull()
-                        val index = number?.minus(1)
-                        if (index != null && index in pages.indices) {
-                            currentPageId = pages[index].id
-                        }
-                        showJumpDialog = false
-                        jumpText = ""
-                    }
-                )
-            },
-            dismissButton = {
-                LingjiDialogDismissButton(
-                    text = stringResource(R.string.cancel),
-                    onClick = { showJumpDialog = false; jumpText = "" }
-                )
-            }
+        JumpPageDialog(
+            pageCount = pages.size,
+            onJump = { index -> currentPageId = pages[index].id },
+            onDismiss = { showJumpDialog = false }
         )
     }
 
     if (showMoveDialog) {
-        LingjiDialog(
-            onDismissRequest = { showMoveDialog = false; moveText = "" },
-            title = { Text(stringResource(R.string.edit_page_position)) },
-            text = {
-                OutlinedTextField(
-                    value = moveText,
-                    onValueChange = { value ->
-                        moveText = value.filter { it.isDigit() }
-                    },
-                    label = {
-                        Text(
-                            stringResource(
-                                R.string.edit_page_position_hint,
-                                pages.size
-                            )
-                        )
-                    },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true
-                )
+        MovePageDialog(
+            pageCount = pages.size,
+            onMove = { index ->
+                val page = currentPage
+                if (page != null && index != currentPageIndex) {
+                    viewModel.movePage(liveSubject.id, page.id, index)
+                }
             },
-            confirmButton = {
-                LingjiDialogConfirmButton(
-                    text = stringResource(R.string.move),
-                    onClick = {
-                        val number = moveText.toIntOrNull()
-                        val index = number?.minus(1)
-                        val page = currentPage
-                        if (page != null && index != null && index in pages.indices && index != currentPageIndex) {
-                            viewModel.movePage(liveSubject.id, page.id, index)
-                        }
-                        showMoveDialog = false
-                        moveText = ""
-                    }
-                )
-            },
-            dismissButton = {
-                LingjiDialogDismissButton(
-                    text = stringResource(R.string.cancel),
-                    onClick = { showMoveDialog = false; moveText = "" }
-                )
-            }
+            onDismiss = { showMoveDialog = false }
         )
     }
 
@@ -785,33 +517,18 @@ fun NotebookSubjectScreen(
     }
 
     deleteConfirmPage?.let { page ->
-        LingjiDialog(
-            onDismissRequest = { deleteConfirmPage = null },
-            title = { Text(stringResource(R.string.delete_page)) },
-            text = { Text(stringResource(R.string.delete_page_confirm, page.title.takeIf { it.isNotBlank() } ?: stringResource(R.string.unnamed_page))) },
-            confirmButton = {
-                LingjiDialogConfirmButton(
-                    text = stringResource(R.string.delete),
-                    isDestructive = true,
-                    onClick = {
-                        val deletedIndex = pages.indexOfFirst { it.id == page.id }
-                        val nextPage = pages.getOrNull(deletedIndex + 1)
-                            ?: pages.getOrNull(deletedIndex - 1)
-                        currentPageId = nextPage?.id
-                        viewModel.deletePage(liveSubject.id, page.id)
-                        deleteConfirmPage = null
-                    }
-                )
+        DeletePageDialog(
+            pageTitle = page.title,
+            onConfirm = {
+                val deletedIndex = pages.indexOfFirst { it.id == page.id }
+                val nextPage = pages.getOrNull(deletedIndex + 1)
+                    ?: pages.getOrNull(deletedIndex - 1)
+                currentPageId = nextPage?.id
+                viewModel.deletePage(liveSubject.id, page.id)
             },
-            dismissButton = {
-                LingjiDialogDismissButton(
-                    text = stringResource(R.string.cancel),
-                    onClick = { deleteConfirmPage = null }
-                )
-            }
+            onDismiss = { deleteConfirmPage = null }
         )
     }
-
     uiState.aiWarningMessage?.let { warning ->
         LingjiDialog(
             onDismissRequest = { viewModel.clearAiWarning() },
@@ -828,436 +545,3 @@ fun NotebookSubjectScreen(
 }
 
 private const val CLIPBOARD_SIZE_LIMIT = 1_000_000
-
-@Composable
-@OptIn(ExperimentalLayoutApi::class)
-private fun NotebookPageToolbar(
-    currentPage: NotebookPage?,
-    currentPageIndex: Int,
-    pagesSize: Int,
-    dirtyCount: Int,
-    isProcessing: Boolean,
-    onSave: () -> Unit,
-    onBuildIndex: () -> Unit,
-    onJumpToPage: () -> Unit,
-    onEditPagePosition: () -> Unit,
-    onPrevPage: () -> Unit,
-    onNextPage: () -> Unit,
-    onAddPage: () -> Unit,
-    onUndo: (() -> Unit)?,
-    onRedo: (() -> Unit)?,
-    canUndo: Boolean,
-    canRedo: Boolean,
-    onAddImage: () -> Unit,
-    onEditIndex: () -> Unit,
-    onGenerateIndex: () -> Unit,
-    onDelete: () -> Unit
-) {
-    var showPagePositionMenu by remember { mutableStateOf(false) }
-
-    FlowRow(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        if (pagesSize > 0) {
-            // 左侧：保存 + 待索引
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                currentPage?.let {
-                    TextButton(onClick = onSave) {
-                        Text(stringResource(R.string.save))
-                    }
-                }
-                if (dirtyCount > 0) {
-                    Surface(
-                        shape = RoundedCornerShape(percent = 50),
-                        color = MaterialTheme.colorScheme.tertiaryContainer,
-                        onClick = onBuildIndex
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            if (isProcessing) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(14.dp),
-                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                    strokeWidth = 2.dp
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Default.Warning,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                            }
-                            Text(
-                                text = "$dirtyCount",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                modifier = Modifier.padding(start = 4.dp)
-                            )
-                        }
-                    }
-                }
-
-                IconButton(
-                    onClick = { onUndo?.invoke() },
-                    enabled = canUndo && onUndo != null,
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Undo,
-                        contentDescription = stringResource(R.string.cd_undo),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                IconButton(
-                    onClick = { onRedo?.invoke() },
-                    enabled = canRedo && onRedo != null,
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Redo,
-                        contentDescription = stringResource(R.string.cd_redo),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-
-            // 中间：页面导航
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(
-                    onClick = onPrevPage,
-                    enabled = currentPageIndex > 0,
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.KeyboardArrowUp,
-                        contentDescription = stringResource(R.string.cd_prev_page),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                Box {
-                    Surface(
-                        shape = RoundedCornerShape(percent = 50),
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        onClick = { showPagePositionMenu = true }
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Book,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = stringResource(
-                                    R.string.page_position_format,
-                                    currentPageIndex + 1,
-                                    pagesSize
-                                ),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(start = 4.dp)
-                            )
-                        }
-                    }
-                    DropdownMenu(
-                        expanded = showPagePositionMenu,
-                        onDismissRequest = { showPagePositionMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.jump_to_page)) },
-                            onClick = {
-                                showPagePositionMenu = false
-                                onJumpToPage()
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Default.Book,
-                                    contentDescription = null
-                                )
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.edit_page_position)) },
-                            onClick = {
-                                showPagePositionMenu = false
-                                onEditPagePosition()
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Default.Edit,
-                                    contentDescription = null
-                                )
-                            }
-                        )
-                    }
-                }
-                IconButton(
-                    onClick = onNextPage,
-                    enabled = currentPageIndex < pagesSize - 1,
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.KeyboardArrowDown,
-                        contentDescription = stringResource(R.string.cd_next_page),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-        }
-
-        if (pagesSize == 0) {
-            Spacer(modifier = Modifier.weight(1f))
-        }
-
-        // 右侧：页面操作 + 新增页面
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            currentPage?.let {
-                IconButton(
-                    onClick = onAddImage,
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Image,
-                        contentDescription = stringResource(R.string.cd_add_image),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                IconButton(
-                    onClick = onEditIndex,
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = stringResource(R.string.cd_edit_page_index),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                IconButton(
-                    onClick = onGenerateIndex,
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = stringResource(R.string.cd_generate_index),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = stringResource(R.string.cd_delete),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-            IconButton(
-                onClick = onAddPage,
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = stringResource(R.string.add_page),
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun EmptyPagesState() {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 48.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Icon(
-            imageVector = Icons.Default.Book,
-            contentDescription = null,
-            modifier = Modifier.size(80.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = stringResource(R.string.empty_pages_title),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = stringResource(R.string.empty_pages_hint),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-        )
-    }
-}
-
-private enum class ExportRange { CURRENT, ALL, CUSTOM }
-
-@Composable
-private fun ExportPdfRangeDialog(
-    pageCount: Int,
-    currentPageNumber: Int,
-    onDismiss: () -> Unit,
-    onConfirm: (List<Int>, Boolean) -> Unit
-) {
-    var selected by remember { mutableStateOf(ExportRange.CURRENT) }
-    var customText by remember { mutableStateOf("") }
-    var forceWhite by remember { mutableStateOf(true) }
-    val context = LocalContext.current
-
-    LingjiDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.export_pdf_range_title)) },
-        text = {
-            Column {
-                ExportRangeOption(
-                    selected = selected == ExportRange.CURRENT,
-                    text = stringResource(R.string.export_pdf_range_current),
-                    onClick = { selected = ExportRange.CURRENT }
-                )
-                ExportRangeOption(
-                    selected = selected == ExportRange.ALL,
-                    text = stringResource(R.string.export_pdf_range_all, pageCount),
-                    onClick = { selected = ExportRange.ALL }
-                )
-                ExportRangeOption(
-                    selected = selected == ExportRange.CUSTOM,
-                    text = stringResource(R.string.export_pdf_range_custom),
-                    onClick = { selected = ExportRange.CUSTOM }
-                )
-                if (selected == ExportRange.CUSTOM) {
-                    OutlinedTextField(
-                        value = customText,
-                        onValueChange = { customText = it },
-                        label = { Text(stringResource(R.string.export_pdf_range_custom_hint)) },
-                        singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    androidx.compose.material3.Switch(
-                        checked = forceWhite,
-                        onCheckedChange = { forceWhite = it }
-                    )
-                    Spacer(modifier = Modifier.size(8.dp))
-                    Column {
-                        Text(
-                            text = stringResource(R.string.export_pdf_force_white),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Text(
-                            text = stringResource(R.string.export_pdf_force_white_hint),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            LingjiDialogConfirmButton(
-                text = stringResource(R.string.export_pdf),
-                onClick = {
-                    val indices: List<Int> = when (selected) {
-                        ExportRange.CURRENT -> listOf((currentPageNumber - 1).coerceAtLeast(0))
-                        ExportRange.ALL -> (0 until pageCount).toList()
-                        ExportRange.CUSTOM -> parsePageRanges(customText, pageCount)
-                    }
-                    if (indices.isEmpty()) {
-                        Toast.makeText(context, R.string.export_pdf_range_invalid, Toast.LENGTH_SHORT).show()
-                    } else {
-                        onConfirm(indices, forceWhite)
-                    }
-                }
-            )
-        },
-        dismissButton = {
-            LingjiDialogDismissButton(
-                text = stringResource(R.string.cancel),
-                onClick = onDismiss
-            )
-        }
-    )
-}
-
-@Composable
-private fun ExportRangeOption(
-    selected: Boolean,
-    text: String,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .selectable(selected = selected, onClick = onClick)
-            .padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RadioButton(selected = selected, onClick = onClick)
-        Spacer(modifier = Modifier.size(8.dp))
-        Text(text = text, style = MaterialTheme.typography.bodyMedium)
-    }
-}
-
-/**
- * 解析形如 "1-3,5,7" 的页码字符串为 0-based 索引列表（已排序去重，超界自动过滤）。
- * 输入非法或解析后为空则返回空列表。
- */
-private fun parsePageRanges(input: String, pageCount: Int): List<Int> {
-    if (pageCount <= 0) return emptyList()
-    val result = sortedSetOf<Int>()
-    val tokens = input.split(',', '，', ';', '；', ' ', '\t').filter { it.isNotBlank() }
-    if (tokens.isEmpty()) return emptyList()
-    for (raw in tokens) {
-        val token = raw.trim().replace('－', '-')
-        if (token.contains('-')) {
-            val parts = token.split('-').map { it.trim() }
-            if (parts.size != 2) return emptyList()
-            val from = parts[0].toIntOrNull() ?: return emptyList()
-            val to = parts[1].toIntOrNull() ?: return emptyList()
-            if (from <= 0 || to <= 0) return emptyList()
-            val lo = minOf(from, to)
-            val hi = maxOf(from, to)
-            for (n in lo..hi) {
-                val idx = n - 1
-                if (idx in 0 until pageCount) result.add(idx)
-            }
-        } else {
-            val n = token.toIntOrNull() ?: return emptyList()
-            val idx = n - 1
-            if (idx in 0 until pageCount) result.add(idx)
-        }
-    }
-    return result.toList()
-}
