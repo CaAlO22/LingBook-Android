@@ -428,6 +428,14 @@ class SubjectViewModel @Inject constructor(
         viewModelScope.launch { subjectRepository.updateAggregatedNote(subjectId, content) }
     }
 
+    fun updateNoteChatHistory(subjectId: String, history: List<Pair<String, String>>) {
+        _uiState.update { it.copy(noteChatHistories = it.noteChatHistories + (subjectId to history)) }
+    }
+
+    fun clearNoteChatHistory(subjectId: String) {
+        _uiState.update { it.copy(noteChatHistories = it.noteChatHistories - subjectId) }
+    }
+
     fun rollbackAggregatedNote() {
         val subjectId = _uiState.value.currentSubjectId ?: return
         viewModelScope.launch { subjectRepository.rollbackAggregatedNote(subjectId) }

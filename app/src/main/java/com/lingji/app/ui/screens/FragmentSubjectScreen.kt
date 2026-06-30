@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
@@ -69,6 +70,7 @@ import androidx.compose.ui.unit.sp
 import com.lingji.app.R
 import com.lingji.app.domain.model.Fragment
 import com.lingji.app.domain.model.Subject
+import com.lingji.app.ui.components.ClipboardTooLargeDialog
 import com.lingji.app.ui.components.FloatingInputContainer
 import com.lingji.app.ui.components.FragmentList
 import com.lingji.app.ui.components.GlassOutlinedTextField
@@ -82,6 +84,7 @@ import com.lingji.app.ui.components.PageChatBar
 import com.lingji.app.ui.components.TimeDisplay
 import com.lingji.app.ui.theme.NotoSerifCJKsc
 import com.lingji.app.ui.viewmodel.SubjectViewModel
+import com.lingji.app.util.MarkdownPdfExporter
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -129,11 +132,12 @@ fun FragmentSubjectScreen(
     var deadline by remember { mutableStateOf("") }
     var noteChatAnswer by remember { mutableStateOf("") }
     var isNoteChatLoading by remember { mutableStateOf(false) }
-    var noteChatHistory by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    val noteChatHistory = uiState.noteChatHistories[liveSubject.id] ?: emptyList()
     var refineHint by remember { mutableStateOf("") }
     var showRefineDialog by remember { mutableStateOf(false) }
     var planDialogDeadline by remember { mutableStateOf("") }
     var showPlanDialog by remember { mutableStateOf(false) }
+    var showClipboardTooLargeDialog by remember { mutableStateOf(false) }
     var noteText by remember(liveSubject.aggregatedNote) { mutableStateOf(liveSubject.aggregatedNote) }
 
     LaunchedEffect(uiState.aiErrorMessage) {
@@ -182,17 +186,34 @@ fun FragmentSubjectScreen(
                             leadingIcon = { Icon(Icons.Default.FileDownload, contentDescription = null) }
                         )
                         DropdownMenuItem(
+                            text = { Text(stringResource(R.string.export_pdf)) },
+                            onClick = {
+                                showMenu = false
+                                val note = liveSubject.aggregatedNote
+                                if (note.isBlank()) {
+                                    Toast.makeText(context, R.string.export_pdf_note_empty, Toast.LENGTH_SHORT).show()
+                                } else {
+                                    MarkdownPdfExporter.exportToPdf(
+                                        context = context,
+                                        title = liveSubject.title,
+                                        markdown = note,
+                                        forcePrintWhite = true,
+                                        onError = {
+                                            Toast.makeText(context, R.string.export_pdf_failed, Toast.LENGTH_SHORT).show()
+                                        }
+                                    )
+                                }
+                            },
+                            leadingIcon = { Icon(Icons.Default.PictureAsPdf, contentDescription = null) }
+                        )
+                        DropdownMenuItem(
                             text = { Text(stringResource(R.string.copy_to_clipboard)) },
                             onClick = {
                                 scope.launch {
                                     try {
                                         val encoded = viewModel.exportSubjectToText(liveSubject)
                                         if (encoded.length > CLIPBOARD_SIZE_LIMIT) {
-                                            Toast.makeText(
-                                                context,
-                                                context.getString(R.string.copy_too_large),
-                                                Toast.LENGTH_LONG
-                                            ).show()
+                                            showClipboardTooLargeDialog = true
                                         } else {
                                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                             clipboard.setPrimaryClip(android.content.ClipData.newPlainText(liveSubject.title, encoded))
@@ -266,7 +287,7 @@ fun FragmentSubjectScreen(
                                                 noteChatAnswer += token
                                             },
                                             onComplete = { answer ->
-                                                noteChatHistory = noteChatHistory + Pair(question, answer)
+                                                viewModel.updateNoteChatHistory(liveSubject.id, noteChatHistory + Pair(question, answer))
                                                 noteChatAnswer = ""
                                                 isNoteChatLoading = false
                                             },
@@ -277,7 +298,7 @@ fun FragmentSubjectScreen(
                                         )
                                     },
                                     onClearHistory = {
-                                        noteChatHistory = emptyList()
+                                        viewModel.clearNoteChatHistory(liveSubject.id)
                                         noteChatAnswer = ""
                                     },
                                     modifier = Modifier.fillMaxWidth()
@@ -436,9 +457,13 @@ fun FragmentSubjectScreen(
             }
         )
     }
+
+    if (showClipboardTooLargeDialog) {
+        ClipboardTooLargeDialog(onDismiss = { showClipboardTooLargeDialog = false })
+    }
 }
 
-private const val CLIPBOARD_SIZE_LIMIT = 1_000_000
+private const val CLIPBOARD_SIZE_LIMIT = 100_000
 
 @Composable
 private fun PillTabSwitcher(

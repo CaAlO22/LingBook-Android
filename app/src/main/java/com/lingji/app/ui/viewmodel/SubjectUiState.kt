@@ -17,7 +17,9 @@ data class SubjectUiState(
     /** 模型思考内容（仅用于 AI 运行岛展示，不写入最终生成内容）。 */
     val aiIslandReasoning: String = "",
     /** 供 AI 运行岛展示的最新文本行（按换行拆分），包含普通输出与思考内容。 */
-    val aiIslandLines: List<AiIslandLine> = emptyList()
+    val aiIslandLines: List<AiIslandLine> = emptyList(),
+    /** 各碎片笔记与 AI 的对话历史，按 subjectId 索引；退出笔记后仍保留。 */
+    val noteChatHistories: Map<String, List<Pair<String, String>>> = emptyMap()
 ) {
     val currentSubject: Subject? get() = subjects.find { it.id == currentSubjectId }
 }

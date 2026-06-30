@@ -74,6 +74,7 @@ import androidx.compose.ui.unit.sp
 import com.lingji.app.R
 import com.lingji.app.domain.model.Subject
 import com.lingji.app.domain.model.SubjectType
+import com.lingji.app.ui.components.ClipboardTooLargeDialog
 import com.lingji.app.ui.components.GlassOutlinedTextField
 import com.lingji.app.ui.components.LingjiDialog
 import com.lingji.app.ui.components.LingjiDialogConfirmButton
@@ -85,7 +86,7 @@ import com.lingji.app.ui.theme.NotoSerifCJKsc
 import com.lingji.app.ui.viewmodel.SubjectViewModel
 import kotlinx.coroutines.launch
 
-private const val CLIPBOARD_SIZE_LIMIT = 1_000_000
+private const val CLIPBOARD_SIZE_LIMIT = 100_000
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -101,6 +102,7 @@ fun SubjectGalleryScreen(
     var showImportDialog by remember { mutableStateOf(false) }
     var importDialogText by remember { mutableStateOf("") }
     var showImportMenu by remember { mutableStateOf(false) }
+    var showClipboardTooLargeDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -278,11 +280,7 @@ fun SubjectGalleryScreen(
                                     try {
                                         val encoded = viewModel.exportSubjectToText(subject)
                                         if (encoded.length > CLIPBOARD_SIZE_LIMIT) {
-                                            Toast.makeText(
-                                                context,
-                                                context.getString(R.string.copy_too_large),
-                                                Toast.LENGTH_LONG
-                                            ).show()
+                                            showClipboardTooLargeDialog = true
                                         } else {
                                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                             clipboard.setPrimaryClip(android.content.ClipData.newPlainText(subject.title, encoded))
@@ -388,6 +386,10 @@ fun SubjectGalleryScreen(
                 )
             }
         )
+    }
+
+    if (showClipboardTooLargeDialog) {
+        ClipboardTooLargeDialog(onDismiss = { showClipboardTooLargeDialog = false })
     }
 }
 

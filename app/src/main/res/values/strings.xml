@@ -135,7 +135,8 @@
     <string name="copy_to_clipboard">复制到剪贴板</string>
     <string name="copy_success">已复制到剪贴板</string>
     <string name="copy_failed">复制失败</string>
-    <string name="copy_too_large">内容过大，无法复制到剪贴板，请使用文件导出</string>
+    <string name="copy_too_large_title">内容过大</string>
+    <string name="copy_too_large">笔记内容过长，不建议通过剪贴板导出，请改用文件导出或 PDF 导出。</string>
     <string name="page_content_too_large_for_image">当前页面图片过多，无法继续插入图片</string>
 
     <!-- 设置 -->
@@ -239,6 +240,7 @@
     <string name="export_pdf">导出为 PDF</string>
     <string name="export_pdf_success">PDF 已保存</string>
     <string name="export_pdf_failed">PDF 导出失败</string>
+    <string name="export_pdf_note_empty">笔记内容为空，无法导出</string>
     <string name="exporting_pdf">正在生成 PDF…</string>
     <string name="export_pdf_range_title">选择导出范围</string>
     <string name="export_pdf_range_current">当前页</string>

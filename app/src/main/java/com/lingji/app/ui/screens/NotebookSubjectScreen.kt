@@ -77,6 +77,7 @@ import com.lingji.app.domain.model.HorizontalSwipeAction
 import com.lingji.app.domain.model.NotebookPage
 import com.lingji.app.domain.model.PageIndexEntry
 import com.lingji.app.domain.model.Subject
+import com.lingji.app.ui.components.ClipboardTooLargeDialog
 import com.lingji.app.ui.components.FloatingInputContainer
 import com.lingji.app.ui.components.IndexSearchPanel
 import com.lingji.app.ui.components.LingjiDialog
@@ -139,9 +140,11 @@ fun NotebookSubjectScreen(
             currentPageId = null
             return@LaunchedEffect
         }
-        if (currentPageId == null || pages.none { it.id == currentPageId }) {
-            val index = currentPageIndex.coerceIn(0, pages.lastIndex)
-            currentPageId = pages[index].id
+        // 仅在 currentPageId 为 null 时自动选择最后一页。
+        // 不重置非 null 但暂未出现在列表中的 ID——这可能是刚创建、
+        // 尚未通过 Flow 传播的新页面，重置会导致跳回第一页。
+        if (currentPageId == null) {
+            currentPageId = pages.lastOrNull()?.id
         }
     }
 
@@ -163,6 +166,7 @@ fun NotebookSubjectScreen(
     var lastCreatedPageId by remember { mutableStateOf<String?>(null) }
     var showIndexEditorPage by remember { mutableStateOf<NotebookPage?>(null) }
     var showExportPdfDialog by remember { mutableStateOf(false) }
+    var showClipboardTooLargeDialog by remember { mutableStateOf(false) }
 
     val editorHostState = rememberNotebookPageEditorHostState()
     val imagePickerState = rememberImagePickerState()
@@ -269,11 +273,7 @@ fun NotebookSubjectScreen(
                         try {
                             val encoded = viewModel.exportSubjectToText(liveSubject)
                             if (encoded.length > CLIPBOARD_SIZE_LIMIT) {
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.copy_too_large),
-                                    Toast.LENGTH_LONG
-                                ).show()
+                                showClipboardTooLargeDialog = true
                                 return@launch
                             }
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -542,6 +542,10 @@ fun NotebookSubjectScreen(
             }
         )
     }
+
+    if (showClipboardTooLargeDialog) {
+        ClipboardTooLargeDialog(onDismiss = { showClipboardTooLargeDialog = false })
+    }
 }
 
-private const val CLIPBOARD_SIZE_LIMIT = 1_000_000
+private const val CLIPBOARD_SIZE_LIMIT = 100_000
