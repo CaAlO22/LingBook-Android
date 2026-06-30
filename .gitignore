@@ -45,5 +45,8 @@ MIGRATION_PLAN.md
 # Temporary working files
 tmp/
 
+# Compose worktrees (isolated feature development)
+.worktrees/
+
 # Node dependencies for icon generation scripts
 scripts/node_modules/
