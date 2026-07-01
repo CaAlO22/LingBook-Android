@@ -1,9 +1,11 @@
 package com.lingji.app.data.remote
 
 import com.google.gson.Gson
+import com.google.gson.JsonArray
 import com.lingji.app.data.remote.models.ChatError
 import com.lingji.app.data.remote.models.ChatMessage
 import com.lingji.app.data.remote.models.ChatRequest
+import com.lingji.app.data.remote.models.ChatResponse
 import com.lingji.app.data.remote.models.ContentPart
 import com.lingji.app.data.remote.models.ImageContentPart
 import com.lingji.app.data.remote.models.ImageUrl
@@ -103,6 +105,33 @@ class LLMService @Inject constructor() {
                 sanitizeOutput(messageText)
             }
         }
+
+    /** 非流式请求（带 tools），用于 Agent function-calling 循环。返回完整 ChatResponse。 */
+    suspend fun chatWithTools(
+        messages: List<ChatMessage>,
+        tools: JsonArray,
+        settings: AISettings
+    ): ChatResponse = withContext(Dispatchers.IO) {
+        val endpoint = resolveEndpoint(settings.baseUrl)
+        val strategy = RequestStrategyRegistry.get(settings.provider)
+        val body = strategy.buildChatRequestBody(settings, messages, stream = false, tools = tools)
+        val request = buildRequest(endpoint, body, strategy, settings)
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                val text = response.body?.string() ?: ""
+                val detail = parseError(text)?.takeIf { it.isNotBlank() }
+                throw Exception(
+                    buildString {
+                        append("请求失败: ${response.code}")
+                        if (detail != null) append(" - ").append(detail)
+                    }
+                )
+            }
+            val text = response.body?.string() ?: ""
+            gson.fromJson(text, ChatResponse::class.java)
+        }
+    }
 
     suspend fun streamGenerate(
         prompt: String,

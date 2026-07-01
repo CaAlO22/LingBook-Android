@@ -15,6 +15,7 @@ activity-compose = "1.8.2"
 androidx-core = "1.12.0"
 appcompat = "1.6.1"
 material3 = "1.2.0"
+mockk = "1.13.10"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "androidx-core" }
@@ -50,6 +51,7 @@ gson = { group = "com.google.code.gson", name = "gson", version = "2.10.1" }
 
 coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
 coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 
 markwon-core = { group = "io.noties.markwon", name = "core", version.ref = "markwon" }
 markwon-image = { group = "io.noties.markwon", name = "image", version.ref = "markwon" }
@@ -61,6 +63,7 @@ coil-compose = { group = "io.coil-kt", name = "coil-compose", version = "2.6.0" 
 haze-android = { group = "dev.chrisbanes.haze", name = "haze-android", version.ref = "haze" }
 
 junit = { group = "junit", name = "junit", version = "4.13.2" }
+mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version = "1.1.5" }
 androidx-espresso = { group = "androidx.test.espresso", name = "espresso-core", version = "3.5.1" }
 compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }

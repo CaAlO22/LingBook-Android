@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.lingji.app.data.db.LingjiDatabase
+import com.lingji.app.data.db.dao.SubjectSummaryDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -28,7 +29,8 @@ object AppModule {
                 LingjiDatabase.MIGRATION_1_2,
                 LingjiDatabase.MIGRATION_2_3,
                 LingjiDatabase.MIGRATION_3_4,
-                LingjiDatabase.MIGRATION_4_5
+                LingjiDatabase.MIGRATION_4_5,
+                LingjiDatabase.MIGRATION_5_6
             )
             .addCallback(
                 object : RoomDatabase.Callback() {
@@ -53,4 +55,7 @@ object AppModule {
 
     @Provides
     fun provideSettingsDao(database: LingjiDatabase) = database.settingsDao()
+
+    @Provides
+    fun provideSubjectSummaryDao(database: LingjiDatabase) = database.subjectSummaryDao()
 }

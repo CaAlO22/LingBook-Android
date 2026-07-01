@@ -1,6 +1,7 @@
 package com.lingji.app.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,6 +52,8 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.lingji.app.R
 
+enum class ChatMode { ASK, AGENT }
+
 @Composable
 fun PageChatBar(
     targetTitle: String,
@@ -58,7 +61,7 @@ fun PageChatBar(
     conversationHistory: List<Pair<String, String>>,
     currentAnswer: String,
     isLoading: Boolean,
-    onSend: (String) -> Unit,
+    onSend: (String, ChatMode) -> Unit,
     onClearHistory: () -> Unit,
     modifier: Modifier = Modifier,
     placeholder: String = stringResource(R.string.chat_placeholder),
@@ -66,15 +69,22 @@ fun PageChatBar(
 ) {
     var question by remember { mutableStateOf(TextFieldValue("")) }
     var answerExpanded by remember { mutableStateOf(true) }
+    var chatMode by remember { mutableStateOf(ChatMode.ASK) }
+    val agentLabelFormat = stringResource(R.string.chat_agent_target)
     val hasHistory = conversationHistory.isNotEmpty() || currentAnswer.isNotBlank() || isLoading
-    val enabled = question.text.isNotBlank() && targetContent.isNotBlank() && !isLoading
+    val inputReady = if (chatMode == ChatMode.AGENT) {
+        question.text.isNotBlank() && !isLoading
+    } else {
+        question.text.isNotBlank() && targetContent.isNotBlank() && !isLoading
+    }
+    val enabled = inputReady
     val listState = rememberLazyListState()
 
     val submitQuestion: () -> Unit = {
         val text = question.text.trim()
-        if (text.isNotBlank() && targetContent.isNotBlank() && !isLoading) {
+        if (text.isNotBlank() && inputReady) {
             answerExpanded = true
-            onSend(text)
+            onSend(text, chatMode)
             question = TextFieldValue("")
         }
     }
@@ -193,18 +203,33 @@ fun PageChatBar(
                 }
             }
 
+            val displayTitle = targetTitle.takeIf { it.isNotBlank() } ?: stringResource(R.string.unnamed_page)
+            val modeText = when (chatMode) {
+                ChatMode.ASK -> targetLabelFormat.format(displayTitle)
+                ChatMode.AGENT -> agentLabelFormat.format(displayTitle)
+            }
+            val modeColor = when (chatMode) {
+                ChatMode.ASK -> MaterialTheme.colorScheme.onSurfaceVariant
+                ChatMode.AGENT -> MaterialTheme.colorScheme.tertiary
+            }
             Text(
-                text = targetLabelFormat.format(targetTitle.takeIf { it.isNotBlank() } ?: stringResource(R.string.unnamed_page)),
+                text = modeText,
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
+                color = modeColor,
+                modifier = Modifier
+                    .clickable { chatMode = if (chatMode == ChatMode.ASK) ChatMode.AGENT else ChatMode.ASK }
+                    .padding(start = 4.dp, bottom = 4.dp)
             )
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                val inputEnabled = targetContent.isNotBlank() && !isLoading
+                val inputEnabled = if (chatMode == ChatMode.AGENT) {
+                    !isLoading
+                } else {
+                    targetContent.isNotBlank() && !isLoading
+                }
                 BasicTextField(
                     value = question,
                     onValueChange = { question = it },

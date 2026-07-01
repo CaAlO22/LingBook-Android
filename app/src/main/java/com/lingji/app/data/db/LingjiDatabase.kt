@@ -8,19 +8,22 @@ import com.lingji.app.data.db.dao.FragmentDao
 import com.lingji.app.data.db.dao.NotebookPageDao
 import com.lingji.app.data.db.dao.SettingsDao
 import com.lingji.app.data.db.dao.SubjectDao
+import com.lingji.app.data.db.dao.SubjectSummaryDao
 import com.lingji.app.data.db.entities.FragmentEntity
 import com.lingji.app.data.db.entities.NotebookPageEntity
 import com.lingji.app.data.db.entities.SettingsEntity
 import com.lingji.app.data.db.entities.SubjectEntity
+import com.lingji.app.data.db.entities.SubjectSummaryEntity
 
 @Database(
     entities = [
         SubjectEntity::class,
         FragmentEntity::class,
         NotebookPageEntity::class,
-        SettingsEntity::class
+        SettingsEntity::class,
+        SubjectSummaryEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class LingjiDatabase : RoomDatabase() {
@@ -50,9 +53,21 @@ abstract class LingjiDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE settings ADD COLUMN horizontalSwipeAction TEXT NOT NULL DEFAULT 'TOGGLE_PREVIEW'")
             }
         }
+
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS subject_summaries (" +
+                        "subjectId TEXT NOT NULL PRIMARY KEY, " +
+                        "summary TEXT NOT NULL, " +
+                        "summarizedAt INTEGER NOT NULL)"
+                )
+            }
+        }
     }
     abstract fun subjectDao(): SubjectDao
     abstract fun fragmentDao(): FragmentDao
     abstract fun notebookPageDao(): NotebookPageDao
     abstract fun settingsDao(): SettingsDao
+    abstract fun subjectSummaryDao(): SubjectSummaryDao
 }

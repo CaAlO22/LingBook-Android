@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lingji.app.data.file.FileManager
+import com.lingji.app.data.remote.AgentService
 import com.lingji.app.data.remote.IndexService
 import com.lingji.app.data.remote.LLMService
 import com.lingji.app.data.repository.SettingsRepository
@@ -36,6 +37,7 @@ class SubjectViewModel @Inject constructor(
     private val subjectRepository: SubjectRepository,
     private val settingsRepository: SettingsRepository,
     private val llmService: LLMService,
+    private val agentService: AgentService,
     private val indexService: IndexService,
     private val fileManager: FileManager
 ) : ViewModel() {
@@ -411,6 +413,52 @@ class SubjectViewModel @Inject constructor(
                 e.printStackTrace()
                 _uiState.update { it.copy(aiErrorMessage = e.message ?: "请求失败") }
                 onError(e.message ?: "请求失败")
+            } finally {
+                setProcessing(false)
+            }
+        }
+    }
+
+    fun chatWithAgent(
+        subjectId: String,
+        question: String,
+        onToken: (String) -> Unit,
+        onComplete: (String) -> Unit = {},
+        onError: (String) -> Unit = {},
+        conversationHistory: List<Pair<String, String>> = emptyList()
+    ) {
+        if (_uiState.value.isProcessing) return
+        viewModelScope.launch {
+            setProcessing(true, "Agent 思考中…")
+            try {
+                agentService.runAgentLoop(
+                    subjectId = subjectId,
+                    question = question,
+                    conversationHistory = conversationHistory,
+                    onReasoning = { reasoning -> appendReasoning(reasoning) },
+                    onToolCall = { toolName, args, result ->
+                        val display = buildString {
+                            append("🔧 调用工具: $toolName\n")
+                            if (args.isNotBlank() && args != "{}") append("  参数: $args\n")
+                            append("  结果: ${result.take(500)}")
+                            if (result.length > 500) append("…")
+                        }
+                        appendStream(display + "\n\n")
+                    },
+                    onToken = { token ->
+                        appendStream(token)
+                        onToken(token)
+                    },
+                    onComplete = { answer -> onComplete(answer) },
+                    onError = { msg ->
+                        _uiState.update { it.copy(aiErrorMessage = msg) }
+                        onError(msg)
+                    }
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _uiState.update { it.copy(aiErrorMessage = e.message ?: "Agent 请求失败") }
+                onError(e.message ?: "Agent 请求失败")
             } finally {
                 setProcessing(false)
             }

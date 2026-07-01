@@ -70,6 +70,7 @@ import androidx.compose.ui.unit.sp
 import com.lingji.app.R
 import com.lingji.app.domain.model.Fragment
 import com.lingji.app.domain.model.Subject
+import com.lingji.app.ui.components.ChatMode
 import com.lingji.app.ui.components.ClipboardTooLargeDialog
 import com.lingji.app.ui.components.FloatingInputContainer
 import com.lingji.app.ui.components.FragmentList
@@ -276,7 +277,27 @@ fun FragmentSubjectScreen(
                                     isLoading = isNoteChatLoading,
                                     placeholder = stringResource(R.string.note_chat_placeholder),
                                     targetLabelFormat = stringResource(R.string.note_chat_target),
-                                    onSend = { question ->
+                                    onSend = { question, mode ->
+                                        if (mode == ChatMode.AGENT) {
+                                            noteChatAnswer = ""
+                                            isNoteChatLoading = true
+                                            viewModel.chatWithAgent(
+                                                subjectId = liveSubject.id,
+                                                question = question,
+                                                conversationHistory = noteChatHistory,
+                                                onToken = { token -> noteChatAnswer += token },
+                                                onComplete = { answer ->
+                                                    viewModel.updateNoteChatHistory(liveSubject.id, noteChatHistory + Pair(question, answer))
+                                                    noteChatAnswer = ""
+                                                    isNoteChatLoading = false
+                                                },
+                                                onError = { error ->
+                                                    noteChatAnswer = "请求失败: $error"
+                                                    isNoteChatLoading = false
+                                                }
+                                            )
+                                            return@PageChatBar
+                                        }
                                         noteChatAnswer = ""
                                         isNoteChatLoading = true
                                         viewModel.chatWithNote(

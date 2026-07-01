@@ -1,5 +1,6 @@
 package com.lingji.app.data.remote.strategy
 
+import com.google.gson.JsonArray
 import com.lingji.app.data.remote.models.ChatMessage
 import com.lingji.app.data.remote.models.ChatRequest
 import com.lingji.app.domain.model.AISettings
@@ -14,7 +15,8 @@ class DeepSeekRequestStrategy : RequestStrategy {
     override fun buildChatRequestBody(
         settings: AISettings,
         messages: List<ChatMessage>,
-        stream: Boolean
+        stream: Boolean,
+        tools: JsonArray?
     ): ChatRequest = ChatRequest(
         model = settings.modelName.ifBlank { "deepseek-v4-pro" },
         messages = messages,
@@ -23,6 +25,7 @@ class DeepSeekRequestStrategy : RequestStrategy {
         thinking = mapOf(
             "type" to if (settings.enableThinking) "enabled" else "disabled"
         ),
-        reasoningEffort = if (settings.enableThinking) "high" else null
+        reasoningEffort = if (settings.enableThinking) "high" else null,
+        tools = tools
     )
 }

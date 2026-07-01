@@ -77,6 +77,7 @@ import com.lingji.app.domain.model.HorizontalSwipeAction
 import com.lingji.app.domain.model.NotebookPage
 import com.lingji.app.domain.model.PageIndexEntry
 import com.lingji.app.domain.model.Subject
+import com.lingji.app.ui.components.ChatMode
 import com.lingji.app.ui.components.ClipboardTooLargeDialog
 import com.lingji.app.ui.components.FloatingInputContainer
 import com.lingji.app.ui.components.IndexSearchPanel
@@ -146,6 +147,25 @@ fun NotebookSubjectScreen(
         if (currentPageId == null) {
             currentPageId = pages.lastOrNull()?.id
         }
+    }
+
+    // 检测当前页被删除（如 Agent 工具调用）并切换到相邻页。
+    // 通过对比前后 pages 列表区分"被删除"和"尚未传播的新页面"。
+    var prevPages by remember { mutableStateOf(pages) }
+    LaunchedEffect(pages) {
+        val cur = currentPageId
+        if (cur != null && pages.isNotEmpty()) {
+            val inCurrent = pages.any { it.id == cur }
+            val inPrev = prevPages.any { it.id == cur }
+            if (!inCurrent && inPrev) {
+                // 当前页已被删除，切换到同位置的相邻页
+                val prevIndex = prevPages.indexOfFirst { it.id == cur }
+                currentPageId = pages.getOrNull(prevIndex)?.id
+                    ?: pages.getOrNull((prevIndex - 1).coerceAtLeast(0))?.id
+                    ?: pages.lastOrNull()?.id
+            }
+        }
+        prevPages = pages
     }
 
     // 记忆上次打开的页面
@@ -345,7 +365,27 @@ fun NotebookSubjectScreen(
                         conversationHistory = chatHistory,
                         currentAnswer = chatAnswer,
                         isLoading = isChatLoading,
-                        onSend = { question ->
+                        onSend = { question, mode ->
+                            if (mode == ChatMode.AGENT) {
+                                chatAnswer = ""
+                                isChatLoading = true
+                                viewModel.chatWithAgent(
+                                    subjectId = liveSubject.id,
+                                    question = question,
+                                    conversationHistory = chatHistory,
+                                    onToken = { token -> chatAnswer += token },
+                                    onComplete = { answer ->
+                                        chatHistory = chatHistory + Pair(question, answer)
+                                        chatAnswer = ""
+                                        isChatLoading = false
+                                    },
+                                    onError = { error ->
+                                        chatAnswer = "请求失败: $error"
+                                        isChatLoading = false
+                                    }
+                                )
+                                return@PageChatBar
+                            }
                             val page = currentPage ?: return@PageChatBar
                             chatAnswer = ""
                             isChatLoading = true

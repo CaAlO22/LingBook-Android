@@ -1,5 +1,6 @@
 package com.lingji.app.data.remote.strategy
 
+import com.google.gson.JsonArray
 import com.lingji.app.data.remote.models.ChatMessage
 import com.lingji.app.data.remote.models.ChatRequest
 import com.lingji.app.domain.model.AISettings
@@ -13,6 +14,7 @@ interface RequestStrategy {
     fun buildChatRequestBody(
         settings: AISettings,
         messages: List<ChatMessage>,
-        stream: Boolean
+        stream: Boolean,
+        tools: JsonArray? = null
     ): ChatRequest
 }
