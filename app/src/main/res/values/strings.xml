@@ -102,6 +102,7 @@
     <string name="chat_target">询问：%1$s</string>
     <string name="note_chat_placeholder">询问 AI 关于当前笔记…</string>
     <string name="note_chat_target">笔记：%1$s</string>
+    <string name="chat_agent_target">Agent：%1$s</string>
     <string name="unnamed_page">未命名页面</string>
     <string name="cd_search">搜索</string>
     <string name="search_notes">搜索笔记</string>

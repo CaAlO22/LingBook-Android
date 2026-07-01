@@ -1,5 +1,6 @@
 package com.lingji.app.data.remote.strategy
 
+import com.google.gson.JsonArray
 import com.lingji.app.data.remote.models.ChatMessage
 import com.lingji.app.data.remote.models.ChatRequest
 import com.lingji.app.domain.model.AISettings
@@ -21,7 +22,8 @@ class OpenAICompatibleStrategy(
     override fun buildChatRequestBody(
         settings: AISettings,
         messages: List<ChatMessage>,
-        stream: Boolean
+        stream: Boolean,
+        tools: JsonArray?
     ): ChatRequest = ChatRequest(
         model = settings.modelName.ifBlank { "gpt-4o" },
         messages = messages,
@@ -29,6 +31,7 @@ class OpenAICompatibleStrategy(
         stream = stream,
         thinking = if (supportsThinkingField) {
             mapOf("type" to if (settings.enableThinking) "enabled" else "disabled")
-        } else null
+        } else null,
+        tools = tools
     )
 }

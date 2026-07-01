@@ -1,5 +1,6 @@
 package com.lingji.app.data.remote.strategy
 
+import com.google.gson.JsonArray
 import com.lingji.app.data.remote.models.ChatMessage
 import com.lingji.app.data.remote.models.ChatRequest
 import com.lingji.app.domain.model.AISettings
@@ -14,12 +15,14 @@ class MimoRequestStrategy : RequestStrategy {
     override fun buildChatRequestBody(
         settings: AISettings,
         messages: List<ChatMessage>,
-        stream: Boolean
+        stream: Boolean,
+        tools: JsonArray?
     ): ChatRequest = ChatRequest(
         model = settings.modelName.ifBlank { "mimo-v2.5-pro" },
         messages = messages,
         temperature = 0.7,
         stream = stream,
-        thinking = mapOf("type" to if (settings.enableThinking) "enabled" else "disabled")
+        thinking = mapOf("type" to if (settings.enableThinking) "enabled" else "disabled"),
+        tools = tools
     )
 }

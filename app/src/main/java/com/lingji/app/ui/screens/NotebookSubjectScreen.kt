@@ -77,6 +77,7 @@ import com.lingji.app.domain.model.HorizontalSwipeAction
 import com.lingji.app.domain.model.NotebookPage
 import com.lingji.app.domain.model.PageIndexEntry
 import com.lingji.app.domain.model.Subject
+import com.lingji.app.ui.components.ChatMode
 import com.lingji.app.ui.components.ClipboardTooLargeDialog
 import com.lingji.app.ui.components.FloatingInputContainer
 import com.lingji.app.ui.components.IndexSearchPanel
@@ -345,7 +346,27 @@ fun NotebookSubjectScreen(
                         conversationHistory = chatHistory,
                         currentAnswer = chatAnswer,
                         isLoading = isChatLoading,
-                        onSend = { question ->
+                        onSend = { question, mode ->
+                            if (mode == ChatMode.AGENT) {
+                                chatAnswer = ""
+                                isChatLoading = true
+                                viewModel.chatWithAgent(
+                                    subjectId = liveSubject.id,
+                                    question = question,
+                                    conversationHistory = chatHistory,
+                                    onToken = { token -> chatAnswer += token },
+                                    onComplete = { answer ->
+                                        chatHistory = chatHistory + Pair(question, answer)
+                                        chatAnswer = ""
+                                        isChatLoading = false
+                                    },
+                                    onError = { error ->
+                                        chatAnswer = "请求失败: $error"
+                                        isChatLoading = false
+                                    }
+                                )
+                                return@PageChatBar
+                            }
                             val page = currentPage ?: return@PageChatBar
                             chatAnswer = ""
                             isChatLoading = true
