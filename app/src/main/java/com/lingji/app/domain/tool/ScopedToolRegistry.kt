@@ -34,10 +34,10 @@ class ScopedToolRegistry(
         val tool = tools.find { it.name == name }
             ?: return "Error: Unknown tool '$name'"
         val scopedParams = JsonObject().apply {
-            addProperty("subject_id", subjectId)
             params.entrySet().forEach { (key, value) ->
                 add(key, value)
             }
+            addProperty("subject_id", subjectId) // 注入在最后，覆盖 LLM 可能提供的值
         }
         return runCatching { tool.execute(scopedParams) }
             .getOrElse { "Error: ${it.message ?: "Unknown error"}" }

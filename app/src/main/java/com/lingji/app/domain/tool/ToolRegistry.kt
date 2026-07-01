@@ -24,7 +24,7 @@ class ToolRegistry @Inject constructor(
     indexService: IndexService
 ) {
     private val tools: Map<String, Tool> = buildList {
-        addAll(SubjectTools.create(subjectRepository))
+        addAll(SubjectTools.create(subjectRepository, subjectSummaryDao))
         addAll(PageTools.create(subjectRepository))
         addAll(FragmentTools.create(subjectRepository))
         addAll(NoteTools.create(subjectRepository))

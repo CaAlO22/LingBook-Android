@@ -1,6 +1,7 @@
 package com.lingji.app.domain.tool.subject
 
 import com.google.gson.JsonObject
+import com.lingji.app.data.db.dao.SubjectSummaryDao
 import com.lingji.app.data.repository.SubjectRepository
 import com.lingji.app.domain.model.Subject
 import com.lingji.app.domain.model.SubjectType
@@ -16,7 +17,8 @@ import org.junit.Test
 class SubjectToolsTest {
 
     private val repo = mockk<SubjectRepository>()
-    private val tools = SubjectTools.create(repo)
+    private val summaryDao = mockk<SubjectSummaryDao>()
+    private val tools = SubjectTools.create(repo, summaryDao)
     private val toolMap = tools.associateBy { it.name }
 
     @Test
@@ -80,10 +82,12 @@ class SubjectToolsTest {
     @Test
     fun delete_subject_callsRepoDelete() = runTest {
         coEvery { repo.delete("s1") } returns Unit
+        coEvery { summaryDao.deleteBySubjectId("s1") } returns Unit
         val params = JsonObject().apply { addProperty("subject_id", "s1") }
         val result = toolMap["delete_subject"]!!.execute(params)
         assertTrue(result.contains("\"success\":true"))
         coVerify { repo.delete("s1") }
+        coVerify { summaryDao.deleteBySubjectId("s1") }
     }
 
     @Test

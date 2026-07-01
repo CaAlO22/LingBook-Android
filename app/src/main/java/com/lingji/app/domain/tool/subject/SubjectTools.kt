@@ -1,6 +1,7 @@
 package com.lingji.app.domain.tool.subject
 
 import com.google.gson.JsonObject
+import com.lingji.app.data.db.dao.SubjectSummaryDao
 import com.lingji.app.data.repository.SubjectRepository
 import com.lingji.app.domain.model.Subject
 import com.lingji.app.domain.model.SubjectType
@@ -11,11 +12,11 @@ import kotlinx.coroutines.flow.first
 
 object SubjectTools {
 
-    fun create(repo: SubjectRepository): List<Tool> = listOf(
+    fun create(repo: SubjectRepository, summaryDao: SubjectSummaryDao): List<Tool> = listOf(
         ListSubjects(repo),
         GetSubject(repo),
         CreateSubject(repo),
-        DeleteSubject(repo),
+        DeleteSubject(repo, summaryDao),
         RenameSubject(repo)
     )
 
@@ -103,7 +104,10 @@ object SubjectTools {
         }
     }
 
-    private class DeleteSubject(private val repo: SubjectRepository) : Tool {
+    private class DeleteSubject(
+        private val repo: SubjectRepository,
+        private val summaryDao: SubjectSummaryDao
+    ) : Tool {
         override val name = "delete_subject"
         override val description = "删除指定笔记及其所有页面、碎片和摘要。"
         override val parameters = buildJsonObject {
@@ -120,6 +124,7 @@ object SubjectTools {
             val id = params.get("subject_id")?.asString
                 ?: return "Error: Missing required parameter: subject_id"
             repo.delete(id)
+            summaryDao.deleteBySubjectId(id)
             return """{"success":true}"""
         }
     }
