@@ -29,7 +29,8 @@ class AgentService @Inject constructor(
         question: String,
         conversationHistory: List<Pair<String, String>>,
         onToken: (String) -> Unit,
-        onToolCall: (String) -> Unit = {},
+        onReasoning: (String) -> Unit = {},
+        onToolCall: (toolName: String, args: String, result: String) -> Unit = { _, _, _ -> },
         onComplete: (String) -> Unit = {},
         onError: (String) -> Unit = {}
     ) = withContext(Dispatchers.IO) {
@@ -57,6 +58,11 @@ class AgentService @Inject constructor(
                 val response: ChatResponse = llmService.chatWithTools(messages, tools, settings)
                 val message = response.choices?.firstOrNull()?.message
 
+                val reasoning = message?.reasoning_content
+                if (!reasoning.isNullOrBlank()) {
+                    onReasoning(reasoning)
+                }
+
                 val toolCalls = message?.tool_calls
                 if (toolCalls == null || toolCalls.isEmpty()) {
                     val content = message?.content?.let { if (it is String) it else "" } ?: ""
@@ -70,13 +76,14 @@ class AgentService @Inject constructor(
 
                 for (tc in toolCalls) {
                     val toolName = tc.function.name
+                    val argsString = tc.function.arguments
                     val params = try {
-                        gson.fromJson(tc.function.arguments, JsonObject::class.java) ?: JsonObject()
+                        gson.fromJson(argsString, JsonObject::class.java) ?: JsonObject()
                     } catch (e: Exception) {
                         JsonObject()
                     }
-                    onToolCall(toolName)
                     val result = scopedRegistry.executeTool(toolName, params)
+                    onToolCall(toolName, argsString, result)
                     messages.add(ChatMessage(
                         role = "tool",
                         content = result,

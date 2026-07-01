@@ -435,6 +435,16 @@ class SubjectViewModel @Inject constructor(
                     subjectId = subjectId,
                     question = question,
                     conversationHistory = conversationHistory,
+                    onReasoning = { reasoning -> appendReasoning(reasoning) },
+                    onToolCall = { toolName, args, result ->
+                        val display = buildString {
+                            append("🔧 调用工具: $toolName\n")
+                            if (args.isNotBlank() && args != "{}") append("  参数: $args\n")
+                            append("  结果: ${result.take(500)}")
+                            if (result.length > 500) append("…")
+                        }
+                        appendStream(display + "\n\n")
+                    },
                     onToken = { token ->
                         appendStream(token)
                         onToken(token)

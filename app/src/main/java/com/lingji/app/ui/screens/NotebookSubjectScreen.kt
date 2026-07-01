@@ -149,6 +149,25 @@ fun NotebookSubjectScreen(
         }
     }
 
+    // 检测当前页被删除（如 Agent 工具调用）并切换到相邻页。
+    // 通过对比前后 pages 列表区分"被删除"和"尚未传播的新页面"。
+    var prevPages by remember { mutableStateOf(pages) }
+    LaunchedEffect(pages) {
+        val cur = currentPageId
+        if (cur != null && pages.isNotEmpty()) {
+            val inCurrent = pages.any { it.id == cur }
+            val inPrev = prevPages.any { it.id == cur }
+            if (!inCurrent && inPrev) {
+                // 当前页已被删除，切换到同位置的相邻页
+                val prevIndex = prevPages.indexOfFirst { it.id == cur }
+                currentPageId = pages.getOrNull(prevIndex)?.id
+                    ?: pages.getOrNull((prevIndex - 1).coerceAtLeast(0))?.id
+                    ?: pages.lastOrNull()?.id
+            }
+        }
+        prevPages = pages
+    }
+
     // 记忆上次打开的页面
     LaunchedEffect(currentPageId) {
         if (currentPageId != subject.lastOpenedPageId) {
