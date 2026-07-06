@@ -33,6 +33,14 @@
     <string name="move_up">上移</string>
     <string name="move_down">下移</string>
 
+    <!-- 文件夹 -->
+    <string name="new_folder">新建文件夹</string>
+    <string name="new_folder_hint">输入文件夹名称…</string>
+    <string name="folder_count">%1$d 篇笔记</string>
+    <string name="remove_from_folder">从文件夹中移出</string>
+    <string name="cd_more_actions">更多操作</string>
+    <string name="delete_folder_confirm">确定要删除文件夹"%1$s"吗？文件夹内的笔记将移回首页。</string>
+
     <!-- 碎片学科 -->
     <string name="fragments">碎片</string>
     <string name="note">笔记</string>
@@ -251,4 +259,14 @@
     <string name="export_pdf_range_invalid">页码无效，请检查输入</string>
     <string name="export_pdf_force_white">白底（适合打印）</string>
     <string name="export_pdf_force_white_hint">强制白色背景与黑色文字，避免暗色模式下颜色被反相</string>
+
+    <!-- Home Chat -->
+    <string name="home_chat_title">灵记对话</string>
+    <string name="home_chat_placeholder">向灵记提问...</string>
+    <string name="home_chat_new_conversation">新对话</string>
+    <string name="home_chat_history">历史对话</string>
+    <string name="home_chat_delete_confirm">确定删除此对话？</string>
+    <string name="home_chat_empty">开始与灵记对话吧</string>
+    <string name="home_chat_mode_ask">问答</string>
+    <string name="home_chat_mode_agent">Agent</string>
 </resources>

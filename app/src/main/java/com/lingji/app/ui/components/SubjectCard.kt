@@ -2,7 +2,8 @@ package com.lingji.app.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,6 +17,7 @@ import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -32,8 +34,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -60,6 +65,13 @@ fun SubjectCard(
     onMoveDown: () -> Unit,
     canMoveUp: Boolean,
     canMoveDown: Boolean,
+    onDragStart: (Offset) -> Unit = {},
+    onDrag: (Offset) -> Unit = {},
+    onDragEnd: () -> Unit = {},
+    onDragCancel: () -> Unit = {},
+    isDragging: Boolean = false,
+    isDropTarget: Boolean = false,
+    onRemoveFromFolder: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
@@ -70,14 +82,28 @@ fun SubjectCard(
             .fillMaxWidth()
             .heightIn(min = SubjectCardMinHeight)
             .clip(MaterialTheme.shapes.large)
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = { menuExpanded = true }
-            ),
+            .clickable(onClick = onClick)
+            .pointerInput(subject.id) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { offset -> onDragStart(offset) },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        onDrag(dragAmount)
+                    },
+                    onDragEnd = { onDragEnd() },
+                    onDragCancel = { onDragCancel() }
+                )
+            }
+            .alpha(if (isDragging) 0.3f else 1f),
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isDropTarget) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        border = BorderStroke(
+            if (isDropTarget) 2.dp else 1.dp,
+            if (isDropTarget) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+        )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
@@ -114,6 +140,17 @@ fun SubjectCard(
             ) {
                 SubjectStats(subject)
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    IconButton(
+                        onClick = { menuExpanded = true },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = stringResource(R.string.cd_more_actions),
+                            tint = Color(0xFFD6D3D1),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                     IconButton(
                         onClick = { showDeleteDialog = true },
                         modifier = Modifier.size(32.dp)
@@ -165,6 +202,12 @@ fun SubjectCard(
                     onClick = { onMoveDown(); menuExpanded = false },
                     enabled = canMoveDown
                 )
+                if (onRemoveFromFolder != null) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.remove_from_folder)) },
+                        onClick = { onRemoveFromFolder(); menuExpanded = false }
+                    )
+                }
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.delete)) },
                     onClick = {
