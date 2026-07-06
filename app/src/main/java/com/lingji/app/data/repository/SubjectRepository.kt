@@ -1,14 +1,18 @@
 package com.lingji.app.data.repository
 
 import com.lingji.app.data.db.dao.FragmentDao
+import com.lingji.app.data.db.dao.FolderDao
 import com.lingji.app.data.db.dao.NotebookPageDao
 import com.lingji.app.data.db.dao.SubjectDao
 import com.lingji.app.data.db.entities.FragmentEntity
+import com.lingji.app.data.db.entities.FolderEntity
 import com.lingji.app.data.db.entities.NotebookPageEntity
 import com.lingji.app.data.db.entities.SubjectEntity
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.lingji.app.domain.model.Folder
 import com.lingji.app.domain.model.Fragment
+import com.lingji.app.domain.model.HomeItem
 import com.lingji.app.domain.model.NotebookPage
 import com.lingji.app.domain.model.PageIndex
 import com.lingji.app.domain.model.PageIndexEntry
@@ -16,6 +20,7 @@ import com.lingji.app.domain.model.Subject
 import com.lingji.app.domain.model.SubjectType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -24,7 +29,8 @@ import javax.inject.Singleton
 class SubjectRepository @Inject constructor(
     private val subjectDao: SubjectDao,
     private val fragmentDao: FragmentDao,
-    private val pageDao: NotebookPageDao
+    private val pageDao: NotebookPageDao,
+    private val folderDao: FolderDao
 ) {
     private val gson = Gson()
     fun getAllSubjects(): Flow<List<Subject>> = combine(
@@ -154,6 +160,55 @@ class SubjectRepository @Inject constructor(
         subjectDao.updateLastOpenedPageId(subjectId, pageId)
     }
 
+    fun getAllFolders(): Flow<List<Folder>> = folderDao.getAllFolders().map { entities ->
+        entities.map { it.toDomain() }
+    }
+
+    suspend fun createFolder(name: String) {
+        val count = folderDao.getAllFolders().first().size
+        val folder = Folder(name = name, orderIndex = count)
+        folderDao.insert(folder.toEntity())
+    }
+
+    suspend fun deleteFolder(id: String) {
+        // Unlink all subjects in this folder (move them back to home)
+        val subjects = subjectDao.getSubjectsByFolderOnce(id)
+        subjects.forEach { subjectDao.updateFolderId(it.id, null) }
+        val folder = folderDao.getFolderById(id) ?: return
+        folderDao.delete(folder)
+    }
+
+    suspend fun renameFolder(id: String, name: String) = folderDao.rename(id, name)
+
+    suspend fun moveSubjectToFolder(subjectId: String, folderId: String) {
+        subjectDao.updateFolderId(subjectId, folderId)
+        // Assign orderIndex at end of folder's note list
+        val count = subjectDao.getSubjectsByFolderOnce(folderId).size
+        subjectDao.updateOrderIndex(subjectId, count)
+    }
+
+    suspend fun removeSubjectFromFolder(subjectId: String) {
+        subjectDao.updateFolderId(subjectId, null)
+        // Assign orderIndex at end of home page list
+        val homeSubjects = subjectDao.getSubjectsByFolderOnce(null)
+        subjectDao.updateOrderIndex(subjectId, homeSubjects.size)
+    }
+
+    suspend fun reorderHomeItems(orderedItems: List<HomeItem>) {
+        orderedItems.forEachIndexed { index, item ->
+            when (item) {
+                is HomeItem.FolderItem -> folderDao.updateOrderIndex(item.folder.id, index)
+                is HomeItem.NoteItem -> subjectDao.updateOrderIndex(item.subject.id, index)
+            }
+        }
+    }
+
+    suspend fun reorderFolderItems(folderId: String, orderedSubjectIds: List<String>) {
+        orderedSubjectIds.forEachIndexed { index, id ->
+            subjectDao.updateOrderIndex(id, index)
+        }
+    }
+
     private suspend fun loadSubject(entity: SubjectEntity): Subject {
         val fragments = fragmentDao.getFragmentsBySubjectOnce(entity.id)
         val pages = pageDao.getPagesBySubjectOnce(entity.id)
@@ -184,7 +239,8 @@ class SubjectRepository @Inject constructor(
             pages = if (entity.type.equals("notebook", true)) domainPages else null,
             pageIndex = if (entity.type.equals("notebook", true)) domainPages.mapIndexed { idx, p -> PageIndex(p.id, p.title, idx) } else null,
             pageIndexEntries = if (entity.type.equals("notebook", true)) pageIndexEntries else null,
-            lastOpenedPageId = entity.lastOpenedPageId
+            lastOpenedPageId = entity.lastOpenedPageId,
+            folderId = entity.folderId
         )
     }
 
@@ -211,7 +267,8 @@ class SubjectRepository @Inject constructor(
         createdAt = createdAt,
         orderIndex = orderIndex,
         pageIndexJson = pageIndexEntries?.let { gson.toJson(it) } ?: "",
-        lastOpenedPageId = lastOpenedPageId
+        lastOpenedPageId = lastOpenedPageId,
+        folderId = folderId
     )
 
     private fun Fragment.toEntity(subjectId: String, isUnmerged: Boolean) = FragmentEntity(
@@ -236,4 +293,7 @@ class SubjectRepository @Inject constructor(
     )
 
     private fun NotebookPageEntity.toDomain() = NotebookPage(id, title, content, createdAt, updatedAt, indexedAt)
+
+    private fun FolderEntity.toDomain() = Folder(id = id, name = name, orderIndex = orderIndex, createdAt = createdAt)
+    private fun Folder.toEntity() = FolderEntity(id = id, name = name, orderIndex = orderIndex, createdAt = createdAt)
 }
