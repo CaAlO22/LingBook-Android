@@ -1,17 +1,28 @@
 package com.lingji.app.ui.viewmodel
 
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.gson.Gson
+import com.lingji.app.data.db.dao.HomeChatDao
+import com.lingji.app.data.db.entities.HomeConversationEntity
+import com.lingji.app.data.db.entities.HomeFragmentEntity
+import com.lingji.app.data.db.entities.HomeMessageEntity
 import com.lingji.app.data.file.FileManager
 import com.lingji.app.data.remote.AgentService
+import com.lingji.app.data.remote.HomeAgentService
 import com.lingji.app.data.remote.IndexService
 import com.lingji.app.data.remote.LLMService
+import com.lingji.app.data.remote.models.ChatMessage
+import com.lingji.app.data.remote.models.ToolCall
 import com.lingji.app.data.repository.SettingsRepository
 import com.lingji.app.data.repository.SubjectRepository
 import com.lingji.app.domain.model.AISettings
 import com.lingji.app.ui.viewmodel.AiIslandLine
+import com.lingji.app.domain.model.Folder
 import com.lingji.app.domain.model.Fragment
+import com.lingji.app.domain.model.HomeItem
 import com.lingji.app.domain.model.NotebookPage
 import com.lingji.app.domain.model.PageIndex
 import com.lingji.app.domain.model.PageIndexEntry
@@ -19,7 +30,9 @@ import com.lingji.app.domain.model.SearchResult
 import com.lingji.app.domain.model.Subject
 import com.lingji.app.domain.model.SubjectType
 import com.lingji.app.domain.model.generateId
+import com.lingji.app.ui.components.ChatMode
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,6 +43,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.UUID
 import javax.inject.Inject
 
 @HiltViewModel
@@ -38,21 +52,32 @@ class SubjectViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val llmService: LLMService,
     private val agentService: AgentService,
+    private val homeAgentService: HomeAgentService,
     private val indexService: IndexService,
-    private val fileManager: FileManager
+    private val fileManager: FileManager,
+    private val homeChatDao: HomeChatDao
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SubjectUiState())
     val uiState: StateFlow<SubjectUiState> = _uiState.asStateFlow()
 
+    private val homeMessageCache = mutableMapOf<String, List<HomeChatMessage>>()
+    private val homeAgentMessageCache = mutableMapOf<String, List<ChatMessage>>()
+    private var messagesCollectJob: Job? = null
+    private var conversationsCollectJob: Job? = null
+    private var fragmentsCollectJob: Job? = null
+    private var processingJob: Job? = null
+
     init {
         combine(
             subjectRepository.getAllSubjects(),
+            subjectRepository.getAllFolders(),
             settingsRepository.getSettings()
-        ) { subjects, settings ->
+        ) { subjects, folders, settings ->
             _uiState.update {
                 it.copy(
                     subjects = subjects,
+                    folders = folders,
                     settings = settings,
                     isSettingsOpen = it.isSettingsOpen || !settings.isConfigured()
                 )
@@ -64,6 +89,13 @@ class SubjectViewModel @Inject constructor(
     fun closeSettings() = _uiState.update { it.copy(isSettingsOpen = false) }
     fun clearAiError() = _uiState.update { it.copy(aiErrorMessage = null) }
     fun clearAiWarning() = _uiState.update { it.copy(aiWarningMessage = null) }
+
+    fun stopAiProcessing() {
+        processingJob?.cancel()
+        processingJob = null
+        setProcessing(false)
+        _uiState.update { it.copy(homeIsLoading = false, homeStreamLine = "") }
+    }
 
     private fun ensureAiConfigured(): Boolean {
         if (_uiState.value.settings.isConfigured()) return true
@@ -138,6 +170,34 @@ class SubjectViewModel @Inject constructor(
         val target = subjects.find { it.id == id } ?: return
         if (target.orderIndex == minOrder) return
         viewModelScope.launch { subjectRepository.moveSubject(id, minOrder - 1) }
+    }
+
+    fun createFolder(name: String) {
+        viewModelScope.launch { subjectRepository.createFolder(name) }
+    }
+
+    fun deleteFolder(id: String) {
+        viewModelScope.launch { subjectRepository.deleteFolder(id) }
+    }
+
+    fun renameFolder(id: String, name: String) {
+        viewModelScope.launch { subjectRepository.renameFolder(id, name) }
+    }
+
+    fun moveSubjectToFolder(subjectId: String, folderId: String) {
+        viewModelScope.launch { subjectRepository.moveSubjectToFolder(subjectId, folderId) }
+    }
+
+    fun removeSubjectFromFolder(subjectId: String) {
+        viewModelScope.launch { subjectRepository.removeSubjectFromFolder(subjectId) }
+    }
+
+    fun reorderHomeItems(orderedItems: List<HomeItem>) {
+        viewModelScope.launch { subjectRepository.reorderHomeItems(orderedItems) }
+    }
+
+    fun reorderFolderItems(folderId: String, orderedSubjectIds: List<String>) {
+        viewModelScope.launch { subjectRepository.reorderFolderItems(folderId, orderedSubjectIds) }
     }
 
     fun renameSubject(id: String, title: String) {
@@ -428,13 +488,16 @@ class SubjectViewModel @Inject constructor(
         conversationHistory: List<Pair<String, String>> = emptyList()
     ) {
         if (_uiState.value.isProcessing) return
-        viewModelScope.launch {
+        processingJob?.cancel()
+        processingJob = viewModelScope.launch {
             setProcessing(true, "Agent 思考中…")
             try {
                 agentService.runAgentLoop(
                     subjectId = subjectId,
                     question = question,
-                    conversationHistory = conversationHistory,
+                    priorMessages = conversationHistory.flatMap { (q, a) ->
+                        listOf(ChatMessage(role = "user", content = q), ChatMessage(role = "assistant", content = a))
+                    },
                     onReasoning = { reasoning -> appendReasoning(reasoning) },
                     onToolCall = { toolName, args, result ->
                         val display = buildString {
@@ -706,5 +769,238 @@ class SubjectViewModel @Inject constructor(
 
     private fun AISettings.isConfigured(): Boolean {
         return apiKey.isNotBlank() && baseUrl.isNotBlank() && modelName.isNotBlank()
+    }
+
+    // ───────────────────────── Home Chat ─────────────────────────
+
+    fun toggleHomeChat() {
+        val expanding = !_uiState.value.homeChatExpanded
+        Log.d("Fragment", "========== toggleHomeChat | expanding=$expanding ==========")
+        _uiState.update { it.copy(homeChatExpanded = expanding, homeStreamLine = "") }
+        if (expanding) {
+            loadHomeFragments()
+        }
+    }
+
+    private fun loadHomeFragments() {
+        Log.d("Fragment", "loadHomeFragments | starting Flow collection")
+        fragmentsCollectJob?.cancel()
+        fragmentsCollectJob = viewModelScope.launch {
+            homeChatDao.getFragments().collect { entities ->
+                val contents = entities.map { e -> e.content }
+                Log.d("Fragment", "loadHomeFragments -> Flow EMIT | count=${contents.size} contents=$contents")
+                _uiState.update { it.copy(homeFragments = contents) }
+            }
+        }
+    }
+
+    fun setHomeChatMode(mode: ChatMode) {
+        _uiState.update { it.copy(homeChatMode = mode) }
+    }
+
+    fun loadHomeConversations() {
+        conversationsCollectJob?.cancel()
+        conversationsCollectJob = viewModelScope.launch {
+            homeChatDao.getConversations().collect { conversations ->
+                _uiState.update { it.copy(homeConversations = conversations) }
+            }
+        }
+    }
+
+    fun startNewConversation() {
+        setProcessing(false)
+        messagesCollectJob?.cancel()
+        val currentId = _uiState.value.homeCurrentConversationId
+        val currentMessages = _uiState.value.homeMessages
+        if (currentId != null && currentMessages.isNotEmpty()) {
+            homeMessageCache[currentId] = currentMessages
+        }
+        _uiState.update { it.copy(
+            homeCurrentConversationId = null,
+            homeMessages = emptyList(),
+            homeStreamLine = "",
+            homeFragments = emptyList(),
+            homeIsLoading = false
+        ) }
+        viewModelScope.launch { homeChatDao.clearAllFragments() }
+        homeAgentMessageCache.remove("_current")
+    }
+
+    fun loadConversation(id: String) {
+        setProcessing(false)
+        val currentId = _uiState.value.homeCurrentConversationId
+        val currentMessages = _uiState.value.homeMessages
+        if (currentId != null && currentMessages.isNotEmpty()) {
+            homeMessageCache[currentId] = currentMessages
+        }
+        homeMessageCache[id]?.let { cached ->
+            _uiState.update { it.copy(homeCurrentConversationId = id, homeMessages = cached) }
+            return
+        }
+        messagesCollectJob?.cancel()
+        _uiState.update { it.copy(homeCurrentConversationId = id, homeMessages = emptyList()) }
+        messagesCollectJob = viewModelScope.launch {
+            homeChatDao.getMessages(id).collect { entities ->
+                val messages = entities.map { e ->
+                    HomeChatMessage(role = e.role, content = e.content, toolCallsJson = e.tool_calls_json, timestamp = e.timestamp)
+                }
+                homeMessageCache[id] = messages
+                _uiState.update { it.copy(homeMessages = messages) }
+                homeAgentMessageCache["_current"] = entities.map { e ->
+                    if (e.tool_calls_json != null) {
+                        val tc = Gson().fromJson(e.tool_calls_json, Array<ToolCall>::class.java)
+                        ChatMessage(role = e.role, content = e.content, tool_calls = tc?.toList())
+                    } else {
+                        ChatMessage(role = e.role, content = e.content)
+                    }
+                }
+            }
+        }
+    }
+
+    fun deleteConversation(id: String) {
+        viewModelScope.launch {
+            homeChatDao.deleteConversation(id)
+            if (_uiState.value.homeCurrentConversationId == id) {
+                startNewConversation()
+            }
+        }
+    }
+
+    fun addHomeFragment(text: String) {
+        val current = _uiState.value.homeFragments
+        val updated = current + text
+        Log.d("Fragment", "addHomeFragment | BEFORE count=${current.size} | ADDING '$text' | AFTER count=${updated.size}")
+        viewModelScope.launch { persistHomeFragments(updated) }
+    }
+
+    fun removeHomeFragment(index: Int) {
+        val current = _uiState.value.homeFragments
+        val updated = current.filterIndexed { i, _ -> i != index }
+        Log.d("Fragment", "removeHomeFragment | index=$index | BEFORE count=${current.size} | AFTER count=${updated.size}")
+        viewModelScope.launch { persistHomeFragments(updated) }
+    }
+
+    fun organizeHomeFragments() {
+        val fragments = _uiState.value.homeFragments
+        Log.d("Fragment", "========== organizeHomeFragments | count=${fragments.size} ==========")
+        Log.d("Fragment", "organizeHomeFragments | fragments=$fragments")
+        if (fragments.isEmpty() || !ensureAiConfigured()) {
+            Log.d("Fragment", "organizeHomeFragments | ABORT empty=${fragments.isEmpty()}")
+            return
+        }
+
+        val prompt = buildString {
+            append("请阅读以下碎片知识，先提出一个整理方案（说明每条碎片应归入哪个已有主题或创建新主题），")
+            append("等待用户确认后再执行。不要直接修改笔记。\n\n")
+            append("步骤：\n")
+            append("1. 先用 summarize_all_notes 查看所有笔记的标题和摘要，了解现有笔记内容\n")
+            append("2. 根据碎片内容与笔记摘要的匹配程度，制定整理方案\n")
+            append("3. 向用户展示方案，等待确认\n\n")
+            append("碎片列表：\n")
+            fragments.forEachIndexed { i, f ->
+                append("[碎片${i + 1}] $f\n")
+            }
+        }
+
+        Log.d("Fragment", "organizeHomeFragments | switching to AGENT mode")
+        _uiState.update { it.copy(homeChatMode = ChatMode.AGENT) }
+        Log.d("Fragment", "organizeHomeFragments | clearing DB fragments")
+        viewModelScope.launch { homeChatDao.clearAllFragments() }
+        Log.d("Fragment", "organizeHomeFragments | sending organize prompt to Agent")
+        sendHomeMessage(prompt)
+    }
+
+    private suspend fun persistHomeFragments(fragments: List<String>) {
+        Log.d("Fragment", "persistHomeFragments -> CLEAR_ALL count=${fragments.size}")
+        homeChatDao.clearAllFragments()
+        fragments.forEachIndexed { i, content ->
+            Log.d("Fragment", "persistHomeFragments -> INSERT pos=$i content='${content.take(40)}'")
+            homeChatDao.insertFragment(HomeFragmentEntity(position = i, content = content))
+        }
+        Log.d("Fragment", "persistHomeFragments -> DONE count=${fragments.size}")
+    }
+
+    fun sendHomeMessage(text: String) {
+        val mode = _uiState.value.homeChatMode
+        Log.d("Fragment", "sendHomeMessage | mode=$mode text='${text.take(50)}'")
+        if (text.isBlank()) return
+
+        if (mode == ChatMode.FRAGMENT) {
+            addHomeFragment(text)
+            return
+        }
+
+        if (_uiState.value.homeIsLoading) return
+        if (!ensureAiConfigured()) return
+
+        val timestamp = System.currentTimeMillis()
+        val userMessage = HomeChatMessage(role = "user", content = text, timestamp = timestamp)
+
+        processingJob?.cancel()
+        processingJob = viewModelScope.launch {
+            var convId = _uiState.value.homeCurrentConversationId
+            if (convId == null) {
+                convId = UUID.randomUUID().toString()
+                val title = text.take(50).replace("\n", " ")
+                try {
+                    homeChatDao.insertConversation(HomeConversationEntity(id = convId, title = title, created_at = timestamp, updated_at = timestamp))
+                } catch (e: Exception) {
+                    Log.e("HomeChat", "insertConversation FAILED: ${e.message}", e)
+                }
+                _uiState.update { it.copy(homeCurrentConversationId = convId) }
+            }
+
+            try {
+                homeChatDao.insertMessageRaw(id = UUID.randomUUID().toString(), conversationId = convId, role = "user", content = text, toolCallsJson = null, timestamp = timestamp)
+            } catch (e: Exception) {
+                Log.e("HomeChat", "insertMessageRaw FAILED: ${e.message}", e)
+            }
+
+            setProcessing(true, "AI 回答中…")
+            _uiState.update { it.copy(homeMessages = it.homeMessages + userMessage, homeStreamLine = "", homeIsLoading = true, aiErrorMessage = null) }
+            homeMessageCache[convId] = _uiState.value.homeMessages
+            runHomeAgent(text, convId)
+        }
+    }
+
+    private suspend fun runHomeAgent(question: String, convId: String) {
+        val priorMessages = homeAgentMessageCache["_current"] ?: emptyList()
+        val collectedMessages = mutableListOf<ChatMessage>()
+        homeAgentService.runHomeAgentLoop(
+            question = question,
+            priorMessages = priorMessages,
+            onReasoning = { appendReasoning(it) },
+            onToolCall = { toolName, args, result ->
+                val display = buildString {
+                    append("\uD83D\uDD27 调用工具: $toolName\n")
+                    if (args.isNotBlank() && args != "{}") append("  参数: $args\n")
+                    append("  结果: ${result.take(500)}")
+                    if (result.length > 500) append("\u2026")
+                }
+                appendStream(display + "\n\n")
+                _uiState.update { it.copy(homeStreamLine = it.homeStreamLine + display + "\n\n") }
+            },
+            onToken = { token ->
+                appendStream(token)
+                _uiState.update { it.copy(homeStreamLine = it.homeStreamLine + token) }
+            },
+            onAgentMessages = { messages ->
+                collectedMessages.clear(); collectedMessages.addAll(messages)
+                homeAgentMessageCache["_current"] = messages
+            },
+            onComplete = { answer ->
+                setProcessing(false)
+                val assistantMsg = HomeChatMessage(role = "assistant", content = answer)
+                _uiState.update { it.copy(homeMessages = it.homeMessages + assistantMsg, homeStreamLine = "", homeIsLoading = false) }
+                homeMessageCache[convId] = _uiState.value.homeMessages
+                val entities = collectedMessages.filter { m -> m.content != null && (m.content is String && (m.content as String).isNotBlank()) }.map { m ->
+                    val tcJson = if (!m.tool_calls.isNullOrEmpty()) Gson().toJson(m.tool_calls) else null
+                    HomeMessageEntity(id = UUID.randomUUID().toString(), conversation_id = convId, role = m.role, content = (m.content as? String) ?: "", tool_calls_json = tcJson, timestamp = System.currentTimeMillis())
+                }
+                viewModelScope.launch { homeChatDao.insertMessages(entities); homeChatDao.updateConversationTimestamp(id = convId, title = question.take(50).replace("\n", " "), updatedAt = System.currentTimeMillis()) }
+            },
+            onError = { msg -> setProcessing(false); _uiState.update { it.copy(aiErrorMessage = msg, homeIsLoading = false) } }
+        )
     }
 }

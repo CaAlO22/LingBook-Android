@@ -1,7 +1,18 @@
 package com.lingji.app.ui.viewmodel
 
+import com.lingji.app.data.db.entities.HomeConversationEntity
 import com.lingji.app.domain.model.AISettings
+import com.lingji.app.domain.model.Folder
+import com.lingji.app.domain.model.HomeItem
 import com.lingji.app.domain.model.Subject
+import com.lingji.app.ui.components.ChatMode
+
+data class HomeChatMessage(
+    val role: String,
+    val content: String,
+    val toolCallsJson: String? = null,
+    val timestamp: Long = System.currentTimeMillis()
+)
 
 data class SubjectUiState(
     val subjects: List<Subject> = emptyList(),
@@ -19,9 +30,38 @@ data class SubjectUiState(
     /** 供 AI 运行岛展示的最新文本行（按换行拆分），包含普通输出与思考内容。 */
     val aiIslandLines: List<AiIslandLine> = emptyList(),
     /** 各碎片笔记与 AI 的对话历史，按 subjectId 索引；退出笔记后仍保留。 */
-    val noteChatHistories: Map<String, List<Pair<String, String>>> = emptyMap()
+    val noteChatHistories: Map<String, List<Pair<String, String>>> = emptyMap(),
+    // Home chat state
+    val homeChatExpanded: Boolean = false,
+    val homeChatMode: ChatMode = ChatMode.FRAGMENT,
+    val homeCurrentConversationId: String? = null,
+    val homeConversations: List<HomeConversationEntity> = emptyList(),
+    val homeMessages: List<HomeChatMessage> = emptyList(),
+    val homeStreamLine: String = "",
+    val homeIsLoading: Boolean = false,
+    /** 碎片输入模式下收集的碎片列表。 */
+    val homeFragments: List<String> = emptyList(),
+    val folders: List<Folder> = emptyList(),
+    val currentFolderId: String? = null,
 ) {
     val currentSubject: Subject? get() = subjects.find { it.id == currentSubjectId }
+
+    /**
+     * 首页展示项：合并文件夹与无文件夹归属的碎片笔记，按 orderIndex 降序排列。
+     */
+    val homeItems: List<HomeItem>
+        get() {
+            val folderItems = folders.map { folder ->
+                HomeItem.FolderItem(folder, subjects.count { it.folderId == folder.id })
+            }
+            val noteItems = subjects.filter { it.folderId == null }.map { HomeItem.NoteItem(it) }
+            return (folderItems + noteItems).sortedByDescending { item ->
+                when (item) {
+                    is HomeItem.FolderItem -> item.folder.orderIndex
+                    is HomeItem.NoteItem -> item.subject.orderIndex
+                }
+            }
+        }
 }
 
 /**
