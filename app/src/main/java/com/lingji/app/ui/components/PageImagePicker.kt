@@ -232,10 +232,13 @@ private fun uriToBase64(context: Context, uri: Uri): String? {
         context.contentResolver.openInputStream(uri)?.use { input ->
             val bitmap = BitmapFactory.decodeStream(input, null, options) ?: return null
             val scaled = scaleBitmap(bitmap, 720)
-            val bytes = compressToTargetSize(scaled, 320 * 1024)
+            // 无损 PNG 压缩，彻底消除 JPEG 块状伪影；PNG 通用性最好，所有视觉模型均支持
+            val output = ByteArrayOutputStream()
+            scaled.compress(Bitmap.CompressFormat.PNG, 100, output)
+            val bytes = output.toByteArray()
             if (scaled !== bitmap) scaled.recycle()
             bitmap.recycle()
-            "data:image/jpeg;base64,${Base64.encodeToString(bytes, Base64.NO_WRAP)}"
+            "data:image/png;base64,${Base64.encodeToString(bytes, Base64.NO_WRAP)}"
         }
     } catch (e: Throwable) {
         e.printStackTrace()
@@ -268,16 +271,4 @@ private fun scaleBitmap(bitmap: Bitmap, maxDimension: Int): Bitmap {
         newWidth = max(1, (maxDimension * ratio).toInt())
     }
     return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
-}
-
-private fun compressToTargetSize(bitmap: Bitmap, maxBytes: Int): ByteArray {
-    var quality = 80
-    var bytes: ByteArray
-    do {
-        val output = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, quality, output)
-        bytes = output.toByteArray()
-        quality -= 10
-    } while (bytes.size > maxBytes && quality >= 40)
-    return bytes
 }
