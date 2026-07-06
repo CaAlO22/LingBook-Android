@@ -58,30 +58,63 @@ object AgentLoopAssessor {
             ChatMessage("user", "用户原始需求：$previousUserQuestion\n\n以下是完整对话历史，请裁决：\n${summarizeForReview(messages)}")
         )
 
+        // 关闭 thinking：裁决是简单分类任务，避免 reasoning_content 干扰 content 字段
+        val assessSettings = settings.copy(enableThinking = false)
+
         return try {
-            val response = llmService.chatWithTools(reviewMessages, JsonArray(), settings)
-            val content = response.choices?.firstOrNull()?.message?.content
-            val text = content?.let { if (it is String) it else "" } ?: ""
-            val cleaned = LLMService.sanitizeOutput(text).trim()
+            val response = llmService.chatWithTools(reviewMessages, JsonArray(), assessSettings)
+            val msg = response.choices?.firstOrNull()?.message
+            val content = msg?.content?.let { if (it is String) it else "" } ?: ""
+            // 某些 thinking 模型把答案放在 reasoning_content 里，做后备
+            val reasoning = msg?.reasoning_content ?: ""
+            val text = if (content.isBlank()) reasoning else content
 
-            try {
-                val json = gson.fromJson(cleaned, JsonObject::class.java)
-                val decisionStr = json.get("decision")?.asString?.uppercase() ?: "STOP"
-                val reason = json.get("reason")?.asString ?: ""
-                val extraSteps = json.get("extra_steps")?.asInt ?: 0
-
-                Assessment(
-                    decision = if (decisionStr == "CONTINUE") Decision.CONTINUE else Decision.STOP,
-                    reason = reason,
-                    extraSteps = extraSteps.coerceIn(1, 10)
-                )
-            } catch (e: Exception) {
-                // JSON 解析失败，保守终止
-                Assessment(Decision.STOP, "评估响应解析失败", 0)
-            }
+            parseAssessment(text)
         } catch (e: Exception) {
-            // LLM 调用失败，保守终止
             Assessment(Decision.STOP, "评估请求失败: ${e.message}", 0)
+        }
+    }
+
+    /**
+     * 从 LLM 响应文本中提取 JSON 并解析为 Assessment。
+     * 依次尝试：直接解析 → markdown 代码块提取 → 首尾花括号截取。
+     */
+    private fun parseAssessment(text: String): Assessment {
+        if (text.isBlank()) return Assessment(Decision.STOP, "评估响应为空", 0)
+
+        // 1. 直接解析（LLM 严格遵循了"只回复 JSON"的指令）
+        tryParseJson(text)?.let { return it }
+
+        // 2. 从 markdown 代码块中提取
+        val fenceRegex = Regex("```(?:json)?\\s*\\n?(\\{[\\s\\S]*?})\\s*\\n?```", RegexOption.IGNORE_CASE)
+        fenceRegex.find(text)?.groupValues?.getOrNull(1)?.let { fenced ->
+            tryParseJson(fenced)?.let { return it }
+        }
+
+        // 3. 截取第一个 '{' 到最后一个 '}' 之间的内容（处理 LLM 在 JSON 前后加说明文字的情况）
+        val firstBrace = text.indexOf('{')
+        val lastBrace = text.lastIndexOf('}')
+        if (firstBrace != -1 && lastBrace > firstBrace) {
+            val extracted = text.substring(firstBrace, lastBrace + 1)
+            tryParseJson(extracted)?.let { return it }
+        }
+
+        return Assessment(Decision.STOP, "评估响应解析失败: ${text.take(80)}", 0)
+    }
+
+    private fun tryParseJson(text: String): Assessment? {
+        return try {
+            val json = gson.fromJson(text.trim(), JsonObject::class.java) ?: return null
+            val decisionStr = json.get("decision")?.asString?.uppercase() ?: return null
+            val reason = json.get("reason")?.asString ?: ""
+            val extraSteps = json.get("extra_steps")?.asInt ?: 0
+            Assessment(
+                decision = if (decisionStr == "CONTINUE") Decision.CONTINUE else Decision.STOP,
+                reason = reason,
+                extraSteps = extraSteps.coerceIn(1, 10)
+            )
+        } catch (e: Exception) {
+            null
         }
     }
 

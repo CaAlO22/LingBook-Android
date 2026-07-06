@@ -6,6 +6,7 @@ import com.lingji.app.domain.model.Fragment
 import com.lingji.app.domain.tool.Tool
 import com.lingji.app.domain.tool.buildJsonArray
 import com.lingji.app.domain.tool.buildJsonObject
+import kotlinx.coroutines.flow.first
 
 object FragmentTools {
 
@@ -13,7 +14,8 @@ object FragmentTools {
         ListFragments(repo),
         AddFragment(repo),
         UpdateFragment(repo),
-        DeleteFragment(repo)
+        DeleteFragment(repo),
+        SearchFragments(repo)
     )
 
     private class ListFragments(private val repo: SubjectRepository) : Tool {
@@ -110,6 +112,78 @@ object FragmentTools {
                 ?: return "Error: Missing required parameter: fragment_id"
             repo.deleteFragment(subjectId, fragmentId)
             return """{"success":true}"""
+        }
+    }
+
+    private class SearchFragments(private val repo: SubjectRepository) : Tool {
+        override val name = "search_fragments"
+        override val description = "按关键词搜索笔记碎片内容。可指定 subject_id 搜索特定笔记，不传则搜索全部笔记的碎片。返回匹配碎片的内容片段和匹配度。"
+        override val parameters = buildJsonObject {
+            "type" to "object"
+            "properties" to buildJsonObject {
+                "query" to buildJsonObject {
+                    "type" to "string"
+                    "description" to "搜索关键词"
+                }
+                "subject_id" to buildJsonObject {
+                    "type" to "string"
+                    "description" to "可选：限定搜索的笔记 ID"
+                }
+            }
+            "required" to buildJsonArray { +"query" }
+        }
+        override suspend fun execute(params: JsonObject): String {
+            val query = params.get("query")?.asString
+                ?: return "Error: Missing required parameter: query"
+            val subjectId = params.get("subject_id")?.asString
+
+            val subjects = if (subjectId != null) {
+                listOfNotNull(repo.getSubjectByIdOnce(subjectId))
+            } else {
+                repo.getAllSubjects().first()
+            }
+
+            val queryLower = query.lowercase()
+            val queryWords = queryLower.split(Regex("\\s+")).filter { it.length > 1 }
+            val useWords = queryWords.isNotEmpty()
+
+            val results = mutableListOf<String>()
+            for (s in subjects) {
+                val allFragments = s.fragments + s.unmergedFragments
+                for (f in allFragments) {
+                    val contentLower = f.content.lowercase()
+                    val matched = if (useWords) {
+                        queryWords.count { contentLower.contains(it) }
+                    } else {
+                        if (contentLower.contains(queryLower)) 1 else 0
+                    }
+                    if (matched > 0) {
+                        val score = if (useWords) {
+                            matched.toFloat() / queryWords.size
+                        } else 1f
+                        results.add(buildJsonObject {
+                            "subject_id" to s.id
+                            "subject_title" to s.title
+                            "fragment_id" to f.id
+                            "snippet" to buildSnippet(f.content, query)
+                            "is_merged" to f.isMerged
+                            "score" to score
+                        }.toString())
+                    }
+                }
+            }
+            if (results.isEmpty()) return "[]"
+            return "[" + results.joinToString(",") + "]"
+        }
+
+        private fun buildSnippet(content: String, query: String, radius: Int = 50): String {
+            val idx = content.indexOf(query, ignoreCase = true)
+            if (idx < 0) return content.take(radius * 2)
+            val start = (idx - radius).coerceAtLeast(0)
+            val end = (idx + query.length + radius).coerceAtMost(content.length)
+            val prefix = if (start > 0) "…" else ""
+            val suffix = if (end < content.length) "…" else ""
+            return prefix + content.substring(start, end) + suffix
         }
     }
 }

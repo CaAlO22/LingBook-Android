@@ -287,7 +287,13 @@ fun SubjectGalleryScreen(
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(160.dp),
                     state = gridState,
-                    contentPadding = PaddingValues(16.dp),
+                    // 底部预留悬浮对话胶囊的高度，使最后一排笔记可滚动到其上方。
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        end = 16.dp,
+                        top = 16.dp,
+                        bottom = 100.dp
+                    ),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     modifier = Modifier.fillMaxSize()

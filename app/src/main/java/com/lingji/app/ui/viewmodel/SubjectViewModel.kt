@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
+import com.google.gson.JsonObject
 import com.lingji.app.data.db.dao.HomeChatDao
 import com.lingji.app.data.db.entities.HomeConversationEntity
 import com.lingji.app.data.db.entities.HomeFragmentEntity
@@ -61,6 +62,7 @@ class SubjectViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(SubjectUiState())
     val uiState: StateFlow<SubjectUiState> = _uiState.asStateFlow()
 
+    private val gson = Gson()
     private val homeMessageCache = mutableMapOf<String, List<HomeChatMessage>>()
     private val homeAgentMessageCache = mutableMapOf<String, List<ChatMessage>>()
     private var messagesCollectJob: Job? = null
@@ -499,7 +501,7 @@ class SubjectViewModel @Inject constructor(
                         listOf(ChatMessage(role = "user", content = q), ChatMessage(role = "assistant", content = a))
                     },
                     onReasoning = { reasoning -> appendReasoning(reasoning) },
-                    onToolCall = { toolName, args, result ->
+            onToolCall = { toolName, args, result ->
                         val display = buildString {
                             append("🔧 调用工具: $toolName\n")
                             if (args.isNotBlank() && args != "{}") append("  参数: $args\n")
@@ -516,6 +518,14 @@ class SubjectViewModel @Inject constructor(
                     onError = { msg ->
                         _uiState.update { it.copy(aiErrorMessage = msg) }
                         onError(msg)
+                    },
+                    onAssessment = { decision, reason, extraSteps ->
+                        val display = if (decision == "CONTINUE") {
+                            "🔄 监督者判断任务未完成，追加 $extraSteps 轮工具调用（$reason）\n\n"
+                        } else {
+                            "⏹️ 监督者判断应终止：$reason\n\n"
+                        }
+                        appendStream(display)
                     }
                 )
             } catch (e: Exception) {
@@ -967,19 +977,25 @@ class SubjectViewModel @Inject constructor(
     private suspend fun runHomeAgent(question: String, convId: String) {
         val priorMessages = homeAgentMessageCache["_current"] ?: emptyList()
         val collectedMessages = mutableListOf<ChatMessage>()
+        val toolCallDescriptions = mutableListOf<HomeChatMessage>()
         homeAgentService.runHomeAgentLoop(
             question = question,
             priorMessages = priorMessages,
             onReasoning = { appendReasoning(it) },
             onToolCall = { toolName, args, result ->
-                val display = buildString {
-                    append("\uD83D\uDD27 调用工具: $toolName\n")
+                // AI 岛显示原始工具调用信息（工具名 + 参数 + 结果）
+                val islandDisplay = buildString {
+                    append("🔧 调用工具: $toolName\n")
                     if (args.isNotBlank() && args != "{}") append("  参数: $args\n")
                     append("  结果: ${result.take(500)}")
-                    if (result.length > 500) append("\u2026")
+                    if (result.length > 500) append("…")
                 }
-                appendStream(display + "\n\n")
-                _uiState.update { it.copy(homeStreamLine = it.homeStreamLine + display + "\n\n") }
+                appendStream(islandDisplay + "\n\n")
+                // 聊天列表保持简洁显示
+                val chatDisplay = formatToolCall(toolName, args)
+                val toolMsg = HomeChatMessage(role = "tool", content = chatDisplay)
+                toolCallDescriptions.add(toolMsg)
+                _uiState.update { it.copy(homeMessages = it.homeMessages + toolMsg) }
             },
             onToken = { token ->
                 appendStream(token)
@@ -994,13 +1010,61 @@ class SubjectViewModel @Inject constructor(
                 val assistantMsg = HomeChatMessage(role = "assistant", content = answer)
                 _uiState.update { it.copy(homeMessages = it.homeMessages + assistantMsg, homeStreamLine = "", homeIsLoading = false) }
                 homeMessageCache[convId] = _uiState.value.homeMessages
-                val entities = collectedMessages.filter { m -> m.content != null && (m.content is String && (m.content as String).isNotBlank()) }.map { m ->
-                    val tcJson = if (!m.tool_calls.isNullOrEmpty()) Gson().toJson(m.tool_calls) else null
-                    HomeMessageEntity(id = UUID.randomUUID().toString(), conversation_id = convId, role = m.role, content = (m.content as? String) ?: "", tool_calls_json = tcJson, timestamp = System.currentTimeMillis())
-                }
-                viewModelScope.launch { homeChatDao.insertMessages(entities); homeChatDao.updateConversationTimestamp(id = convId, title = question.take(50).replace("\n", " "), updatedAt = System.currentTimeMillis()) }
+                // 保存用户可见的消息：工具调用描述 + 最终回答（跳过原始 tool 结果和空内容消息）
+                val visibleEntities = toolCallDescriptions.map { msg ->
+                    HomeMessageEntity(id = UUID.randomUUID().toString(), conversation_id = convId, role = msg.role, content = msg.content, tool_calls_json = null, timestamp = msg.timestamp)
+                } + listOf(HomeMessageEntity(id = UUID.randomUUID().toString(), conversation_id = convId, role = "assistant", content = answer, tool_calls_json = null, timestamp = System.currentTimeMillis()))
+                viewModelScope.launch { homeChatDao.insertMessages(visibleEntities); homeChatDao.updateConversationTimestamp(id = convId, title = question.take(50).replace("\n", " "), updatedAt = System.currentTimeMillis()) }
             },
-            onError = { msg -> setProcessing(false); _uiState.update { it.copy(aiErrorMessage = msg, homeIsLoading = false) } }
+            onError = { msg -> setProcessing(false); _uiState.update { it.copy(aiErrorMessage = msg, homeIsLoading = false) } },
+            onAssessment = { decision, reason, extraSteps ->
+                val display = if (decision == "CONTINUE") {
+                    "🔄 监督者判断任务未完成，追加 $extraSteps 轮工具调用（$reason）\n"
+                } else {
+                    "⏹️ 监督者判断应终止：$reason\n"
+                }
+                appendStream(display)
+                val assessMsg = HomeChatMessage(role = "system", content = display.trim())
+                _uiState.update { it.copy(homeMessages = it.homeMessages + assessMsg) }
+            }
         )
+    }
+
+    /**
+     * 将工具调用转换为用户可读的中文描述。
+     * 例如：create_subject + {"title":"日记"} → "创建笔记：日记"
+     */
+    private fun formatToolCall(toolName: String, args: String): String {
+        val params = try {
+            gson.fromJson(args, JsonObject::class.java) ?: JsonObject()
+        } catch (e: Exception) {
+            JsonObject()
+        }
+        fun p(key: String): String? = params.get(key)?.takeIf { !it.isJsonNull }?.asString
+        return when (toolName) {
+            "list_subjects" -> "查询笔记列表"
+            "get_subject" -> "查询笔记信息"
+            "create_subject" -> "创建笔记：${p("title") ?: ""}"
+            "delete_subject" -> "删除笔记"
+            "rename_subject" -> "重命名笔记为：${p("new_title") ?: ""}"
+            "list_pages" -> "查询页面列表"
+            "get_page" -> "查询页面内容"
+            "create_page" -> "创建页面：${p("title") ?: ""}"
+            "update_page" -> "更新页面内容"
+            "delete_page" -> "删除页面"
+            "list_fragments" -> "查询碎片列表"
+            "add_fragment" -> "添加碎片：${(p("content") ?: "").take(30)}"
+            "update_fragment" -> "修改碎片内容"
+            "delete_fragment" -> "删除碎片"
+            "search_fragments" -> "搜索碎片：${p("query") ?: ""}"
+            "get_aggregated_note" -> "查询聚合笔记"
+            "update_aggregated_note" -> "更新聚合笔记"
+            "get_study_plan" -> "查询学习计划"
+            "update_study_plan" -> "更新学习计划"
+            "get_page_index" -> "查询页面索引"
+            "search_pages" -> "搜索页面：${p("query") ?: ""}"
+            "summarize_all_notes" -> "生成笔记摘要"
+            else -> "调用工具：$toolName"
+        }
     }
 }

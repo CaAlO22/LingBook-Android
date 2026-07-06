@@ -44,11 +44,11 @@ class ScopedToolRegistry(
     }
 
     companion object {
-        /** 单笔记 Agent 可用的 17 个工具（排除 list/create/delete_subject + summarize_all_notes）。 */
+        /** 单笔记 Agent 可用的 18 个工具（排除 list/create/delete_subject + summarize_all_notes）。 */
         val SINGLE_NOTE_TOOLS = setOf(
             "get_subject", "rename_subject",
             "list_pages", "get_page", "create_page", "update_page", "delete_page",
-            "list_fragments", "add_fragment", "update_fragment", "delete_fragment",
+            "list_fragments", "add_fragment", "update_fragment", "delete_fragment", "search_fragments",
             "get_aggregated_note", "update_aggregated_note",
             "get_study_plan", "update_study_plan",
             "get_page_index", "search_pages"

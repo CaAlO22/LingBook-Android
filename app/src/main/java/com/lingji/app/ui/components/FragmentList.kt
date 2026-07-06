@@ -14,6 +14,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -54,7 +60,20 @@ fun FragmentList(
         return
     }
 
+    val listState = rememberLazyListState()
+    // 记录上一次的碎片数量，仅在新碎片加入（数量增加）时滚动到底部，
+    // 初始加载或删除碎片时不触发。
+    var prevSize by remember { mutableIntStateOf(fragments.size) }
+
+    LaunchedEffect(fragments.size) {
+        if (fragments.size > prevSize) {
+            listState.animateScrollToItem(fragments.size - 1)
+        }
+        prevSize = fragments.size
+    }
+
     LazyColumn(
+        state = listState,
         modifier = modifier
             .fillMaxSize()
             .padding(horizontal = 12.dp),

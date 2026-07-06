@@ -33,7 +33,8 @@ class AgentService @Inject constructor(
         onToolCall: (toolName: String, args: String, result: String) -> Unit = { _, _, _ -> },
         onComplete: (String) -> Unit = {},
         onError: (String) -> Unit = {},
-        onAgentMessages: (List<ChatMessage>) -> Unit = {}
+        onAgentMessages: (List<ChatMessage>) -> Unit = {},
+        onAssessment: (decision: String, reason: String, extraSteps: Int) -> Unit = { _, _, _ -> }
     ) = withContext(Dispatchers.IO) {
         try {
             val settings = settingsRepository.getSettingsOnce()
@@ -45,7 +46,7 @@ class AgentService @Inject constructor(
             val systemPrompt = """你是一个笔记管理助手，可以帮用户管理当前笔记的内容。
 笔记有两种类型：notebook（笔记本，有页面 page 功能）和 fragment（碎片，只有碎片 fragment 功能，没有页面）。
 你可以通过工具读取和修改笔记的页面、碎片、聚合笔记和学习计划。
-注意：页面操作（create_page/update_page/delete_page/list_pages/get_page）仅适用于 notebook 类型笔记，碎片笔记不可用。
+注意：页面操作（create_page/update_page/delete_page/list_pages/get_page）仅适用于 notebook 类型笔记。fragment 类型笔记没有页面，请改用 list_fragments/search_fragments/add_fragment 等碎片工具读取和管理其内容。
 请根据用户需求选择合适的工具。操作完成后用简洁的中文总结你做了什么。"""
 
             val messages = mutableListOf<ChatMessage>(
@@ -60,21 +61,19 @@ class AgentService @Inject constructor(
 
             while (budget > 0) {
                 total++
-                val response: ChatResponse = llmService.chatWithTools(messages, tools, settings)
+                // 流式调用：onToken / onReasoning 在调用过程中逐 token 推送
+                val response: ChatResponse = llmService.streamChatWithTools(
+                    messages, tools, settings, onToken, onReasoning
+                )
                 val message = response.choices?.firstOrNull()?.message
-
-                val reasoning = message?.reasoning_content
-                if (!reasoning.isNullOrBlank()) {
-                    onReasoning(reasoning)
-                }
 
                 val toolCalls = message?.tool_calls
                 if (toolCalls == null || toolCalls.isEmpty()) {
+                    // 最终回答：content 已在流式过程中推送，这里只需收尾
                     val content = message?.content?.let { if (it is String) it else "" } ?: ""
                     val cleaned = LLMService.sanitizeOutput(content)
                     messages.add(ChatMessage("assistant", cleaned))
                     onAgentMessages(messages.toList())
-                    onToken(cleaned)
                     onComplete(cleaned)
                     return@withContext
                 }
@@ -106,6 +105,11 @@ class AgentService @Inject constructor(
 
                 if (budget == 0 && !hasAssessed && total < MAX_TOTAL_ITERATIONS) {
                     val assessment = AgentLoopAssessor.assess(messages, question, llmService, settings)
+                    onAssessment(
+                        assessment.decision.name,
+                        assessment.reason,
+                        assessment.extraSteps
+                    )
                     if (assessment.decision == AgentLoopAssessor.Decision.CONTINUE) {
                         budget = assessment.extraSteps.coerceAtMost(MAX_TOTAL_ITERATIONS - total)
                     }

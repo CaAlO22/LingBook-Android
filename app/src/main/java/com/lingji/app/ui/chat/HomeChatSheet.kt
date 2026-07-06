@@ -404,29 +404,53 @@ fun HomeChatSheet(
                     ) {
                     items(messages) { msg ->
                         val isUser = msg.role == "user"
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            horizontalAlignment = if (isUser) Alignment.End
-                                else Alignment.Start
-                        ) {
-                            Text(
-                                text = if (isUser) "你" else "灵记",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (isUser) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                    else MaterialTheme.colorScheme.tertiary.copy(alpha = 0.8f),
-                                modifier = Modifier.padding(start = 6.dp, bottom = 2.dp)
-                            )
-                            GlassSurface(
-                                shape = RoundedCornerShape(16.dp),
-                                modifier = Modifier.widthIn(max = 320.dp)
+                        val isTool = msg.role == "tool"
+                        if (isTool) {
+                            // 工具调用：简洁的单行样式，不显示头像
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 2.dp, horizontal = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                MarkdownView(
-                                    markdown = msg.content,
-                                    textSizeSp = if (isUser) 13f else 15f,
-                                    modifier = Modifier.padding(14.dp)
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    modifier = Modifier.widthIn(max = 320.dp)
+                                ) {
+                                    Text(
+                                        text = "🔧 ${msg.content}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                    )
+                                }
+                            }
+                        } else {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                horizontalAlignment = if (isUser) Alignment.End
+                                    else Alignment.Start
+                            ) {
+                                Text(
+                                    text = if (isUser) "你" else "灵记",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (isUser) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                        else MaterialTheme.colorScheme.tertiary.copy(alpha = 0.8f),
+                                    modifier = Modifier.padding(start = 6.dp, bottom = 2.dp)
                                 )
+                                GlassSurface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    modifier = Modifier.widthIn(max = 320.dp)
+                                ) {
+                                    MarkdownView(
+                                        markdown = msg.content,
+                                        textSizeSp = if (isUser) 13f else 15f,
+                                        modifier = Modifier.padding(14.dp)
+                                    )
+                                }
                             }
                         }
                     }

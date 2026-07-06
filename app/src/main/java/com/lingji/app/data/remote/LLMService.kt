@@ -2,14 +2,18 @@ package com.lingji.app.data.remote
 
 import com.google.gson.Gson
 import com.google.gson.JsonArray
+import com.google.gson.JsonObject
 import com.lingji.app.data.remote.models.ChatError
 import com.lingji.app.data.remote.models.ChatMessage
 import com.lingji.app.data.remote.models.ChatRequest
 import com.lingji.app.data.remote.models.ChatResponse
+import com.lingji.app.data.remote.models.Choice
 import com.lingji.app.data.remote.models.ContentPart
 import com.lingji.app.data.remote.models.ImageContentPart
 import com.lingji.app.data.remote.models.ImageUrl
 import com.lingji.app.data.remote.models.TextContentPart
+import com.lingji.app.data.remote.models.ToolCall
+import com.lingji.app.data.remote.models.ToolCallFunction
 import com.lingji.app.data.remote.strategy.RequestStrategy
 import com.lingji.app.data.remote.strategy.RequestStrategyRegistry
 import com.lingji.app.domain.model.AISettings
@@ -131,6 +135,115 @@ class LLMService @Inject constructor() {
             val text = response.body?.string() ?: ""
             gson.fromJson(text, ChatResponse::class.java)
         }
+    }
+
+    /**
+     * 流式请求（带 tools），用于 Agent function-calling 循环。
+     * 逐 token 推送 content 和 reasoning，同时累积 tool_calls delta。
+     * 流结束后返回完整 ChatResponse（含 content 和/或 tool_calls）。
+     */
+    suspend fun streamChatWithTools(
+        messages: List<ChatMessage>,
+        tools: JsonArray,
+        settings: AISettings,
+        onToken: (String) -> Unit,
+        onReasoning: (String) -> Unit
+    ): ChatResponse = withContext(Dispatchers.IO) {
+        val endpoint = resolveEndpoint(settings.baseUrl)
+        val strategy = RequestStrategyRegistry.get(settings.provider)
+        val body = strategy.buildChatRequestBody(settings, messages, stream = true, tools = tools)
+        val request = buildRequest(endpoint, body, strategy, settings)
+
+        val contentBuilder = StringBuilder()
+        val reasoningBuilder = StringBuilder()
+        // index -> [id, name, argumentsBuilder]
+        val toolCallMap = mutableMapOf<Int, Array<Any?>>()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                val text = response.body?.string() ?: ""
+                val detail = parseError(text)?.takeIf { it.isNotBlank() }
+                throw Exception(
+                    buildString {
+                        append("请求失败: ${response.code}")
+                        if (detail != null) append(" - ").append(detail)
+                    }
+                )
+            }
+            val source = response.body?.source() ?: throw Exception("AI 响应为空")
+            while (!source.exhausted()) {
+                val line = source.readUtf8Line() ?: break
+                if (!line.startsWith("data: ")) continue
+                val payload = line.removePrefix("data: ").trim()
+                if (payload == "[DONE]") continue
+                try {
+                    val obj = gson.fromJson(payload, JsonObject::class.java) ?: continue
+                    val choices = obj.getAsJsonArray("choices")
+                    if (choices == null || choices.isEmpty) continue
+                    val choiceObj = choices[0].asJsonObject
+                    val delta = choiceObj.getAsJsonObject("delta") ?: continue
+
+                    // content 逐 token 推送
+                    val content = delta.get("content")?.takeIf { !it.isJsonNull }?.asString
+                    if (!content.isNullOrEmpty()) {
+                        onToken(content)
+                        contentBuilder.append(content)
+                    }
+
+                    // reasoning_content 推送（delta 级 + choice 级）
+                    val reasoning = delta.get("reasoning_content")?.takeIf { !it.isJsonNull }?.asString
+                        ?: choiceObj.get("reasoning_content")?.takeIf { !it.isJsonNull }?.asString
+                    if (!reasoning.isNullOrEmpty()) {
+                        onReasoning(reasoning)
+                        reasoningBuilder.append(reasoning)
+                    }
+
+                    // tool_calls delta 累积
+                    val tcArray = delta.getAsJsonArray("tool_calls")
+                    if (tcArray != null) {
+                        for (tcElem in tcArray) {
+                            val tc = tcElem.asJsonObject
+                            val index = tc.get("index")?.takeIf { !it.isJsonNull }?.asInt ?: 0
+                            val id = tc.get("id")?.takeIf { !it.isJsonNull }?.asString
+                            val func = tc.getAsJsonObject("function")
+                            val name = func?.get("name")?.takeIf { !it.isJsonNull }?.asString
+                            val args = func?.get("arguments")?.takeIf { !it.isJsonNull }?.asString ?: ""
+
+                            val entry = toolCallMap[index]
+                            if (entry == null) {
+                                toolCallMap[index] = arrayOf(id, name, StringBuilder(args))
+                            } else {
+                                if (id != null) entry[0] = id
+                                if (name != null) entry[1] = name
+                                (entry[2] as StringBuilder).append(args)
+                            }
+                        }
+                    }
+                } catch (_: Exception) {
+                }
+            }
+        }
+
+        val toolCalls = if (toolCallMap.isNotEmpty()) {
+            toolCallMap.toSortedMap().map { (index, entry) ->
+                ToolCall(
+                    id = (entry[0] as? String) ?: "call_$index",
+                    type = "function",
+                    function = ToolCallFunction(
+                        name = (entry[1] as? String) ?: "",
+                        arguments = (entry[2] as StringBuilder).toString()
+                    )
+                )
+            }
+        } else null
+
+        val message = ChatMessage(
+            role = "assistant",
+            content = contentBuilder.toString(),
+            reasoning_content = reasoningBuilder.toString().ifBlank { null },
+            tool_calls = toolCalls
+        )
+        ChatResponse(choices = listOf(Choice(message = message)))
     }
 
     suspend fun streamGenerate(
