@@ -19,7 +19,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.lingji.app.R
 import com.lingji.app.data.remote.UpdateInfo
@@ -59,13 +58,13 @@ fun UpdateDialog(
                             .heightIn(max = 240.dp)
                             .verticalScroll(rememberScrollState())
                     ) {
-                        Text(
-                            text = updateInfo.releaseNotes,
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontFamily = FontFamily.Monospace
-                            ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(vertical = 4.dp)
+                        MarkdownView(
+                            markdown = updateInfo.releaseNotes,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            textColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textSizeSp = 14f
                         )
                     }
                 }
