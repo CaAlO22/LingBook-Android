@@ -14,5 +14,6 @@ data class SubjectEntity(
     val createdAt: Long,
     val orderIndex: Int = 0,
     val pageIndexJson: String = "",
-    val lastOpenedPageId: String? = null
+    val lastOpenedPageId: String? = null,
+    val folderId: String? = null  // null = 在首页, 非 null = 在对应文件夹内
 )

@@ -14,7 +14,9 @@ data class AISettings(
     val apiKey: String = "",
     val modelName: String = "gpt-4o",
     val enableThinking: Boolean = false,
-    val horizontalSwipeAction: HorizontalSwipeAction = HorizontalSwipeAction.TOGGLE_PREVIEW
+    val horizontalSwipeAction: HorizontalSwipeAction = HorizontalSwipeAction.TOGGLE_PREVIEW,
+    /** 按供应商名缓存的 API Key，切换供应商时自动保存/恢复。 */
+    val providerApiKeys: Map<String, String> = emptyMap()
 )
 
 data class Fragment(
@@ -69,7 +71,8 @@ data class Subject(
     val pages: List<NotebookPage>? = null,
     val pageIndex: List<PageIndex>? = null,
     val pageIndexEntries: List<PageIndexEntry>? = null,
-    val lastOpenedPageId: String? = null
+    val lastOpenedPageId: String? = null,
+    val folderId: String? = null
 ) {
     companion object {
         fun create(title: String, type: SubjectType): Subject = Subject(
@@ -81,6 +84,18 @@ data class Subject(
             pageIndex = if (type == SubjectType.NOTEBOOK) emptyList() else null
         )
     }
+}
+
+data class Folder(
+    val id: String = generateId(),
+    val name: String,
+    val orderIndex: Int = 0,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+sealed interface HomeItem {
+    data class FolderItem(val folder: Folder, val noteCount: Int) : HomeItem
+    data class NoteItem(val subject: Subject) : HomeItem
 }
 
 fun Subject.defaultPages(): List<NotebookPage> = pages ?: emptyList()

@@ -41,6 +41,9 @@ interface SubjectDao {
     @Query("UPDATE subjects SET lastOpenedPageId = :pageId WHERE id = :id")
     suspend fun updateLastOpenedPageId(id: String, pageId: String?)
 
+    @Query("UPDATE subjects SET folderId = :folderId WHERE id = :id")
+    suspend fun updateFolderId(id: String, folderId: String?)
+
     @Transaction
     suspend fun upsert(subject: SubjectEntity) = insert(subject)
 }

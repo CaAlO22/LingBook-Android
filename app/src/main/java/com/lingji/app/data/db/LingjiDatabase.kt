@@ -5,11 +5,17 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.lingji.app.data.db.dao.FragmentDao
+import com.lingji.app.data.db.dao.FolderDao
+import com.lingji.app.data.db.dao.HomeChatDao
 import com.lingji.app.data.db.dao.NotebookPageDao
 import com.lingji.app.data.db.dao.SettingsDao
 import com.lingji.app.data.db.dao.SubjectDao
 import com.lingji.app.data.db.dao.SubjectSummaryDao
 import com.lingji.app.data.db.entities.FragmentEntity
+import com.lingji.app.data.db.entities.FolderEntity
+import com.lingji.app.data.db.entities.HomeConversationEntity
+import com.lingji.app.data.db.entities.HomeFragmentEntity
+import com.lingji.app.data.db.entities.HomeMessageEntity
 import com.lingji.app.data.db.entities.NotebookPageEntity
 import com.lingji.app.data.db.entities.SettingsEntity
 import com.lingji.app.data.db.entities.SubjectEntity
@@ -21,9 +27,13 @@ import com.lingji.app.data.db.entities.SubjectSummaryEntity
         FragmentEntity::class,
         NotebookPageEntity::class,
         SettingsEntity::class,
-        SubjectSummaryEntity::class
+        SubjectSummaryEntity::class,
+        HomeConversationEntity::class,
+        HomeMessageEntity::class,
+        HomeFragmentEntity::class,
+        FolderEntity::class
     ],
-    version = 6,
+    version = 10,
     exportSchema = false
 )
 abstract class LingjiDatabase : RoomDatabase() {
@@ -64,10 +74,65 @@ abstract class LingjiDatabase : RoomDatabase() {
                 )
             }
         }
+
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE settings ADD COLUMN providerApiKeys TEXT NOT NULL DEFAULT '{}'")
+            }
+        }
+
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS home_conversations (" +
+                        "id TEXT NOT NULL PRIMARY KEY, " +
+                        "title TEXT NOT NULL, " +
+                        "created_at INTEGER NOT NULL, " +
+                        "updated_at INTEGER NOT NULL)"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS home_messages (" +
+                        "id TEXT NOT NULL PRIMARY KEY, " +
+                        "conversation_id TEXT NOT NULL, " +
+                        "role TEXT NOT NULL, " +
+                        "content TEXT NOT NULL, " +
+                        "tool_calls_json TEXT, " +
+                        "timestamp INTEGER NOT NULL, " +
+                        "FOREIGN KEY(conversation_id) REFERENCES home_conversations(id) ON DELETE CASCADE)"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_home_messages_conversation_id ON home_messages(conversation_id)")
+            }
+        }
+
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS home_fragments (" +
+                        "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " +
+                        "position INTEGER NOT NULL, " +
+                        "content TEXT NOT NULL)"
+                )
+            }
+        }
+
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS folders (" +
+                        "id TEXT NOT NULL PRIMARY KEY, " +
+                        "name TEXT NOT NULL, " +
+                        "orderIndex INTEGER NOT NULL DEFAULT 0, " +
+                        "createdAt INTEGER NOT NULL)"
+                )
+                db.execSQL("ALTER TABLE subjects ADD COLUMN folderId TEXT")
+            }
+        }
     }
     abstract fun subjectDao(): SubjectDao
     abstract fun fragmentDao(): FragmentDao
     abstract fun notebookPageDao(): NotebookPageDao
     abstract fun settingsDao(): SettingsDao
     abstract fun subjectSummaryDao(): SubjectSummaryDao
+    abstract fun homeChatDao(): HomeChatDao
+    abstract fun folderDao(): FolderDao
 }
