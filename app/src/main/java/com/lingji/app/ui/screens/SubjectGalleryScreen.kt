@@ -290,7 +290,7 @@ fun SubjectGalleryScreen(
                 ) {
                     item(key = "__add__") {
                         AddSubjectCard(
-                            onAdd = { title, type ->
+                            onAdd = { title, type, _ ->
                                 viewModel.addSubject(title, type)
                             }
                         )
@@ -625,8 +625,9 @@ private fun EmptySubjectState(onCreate: () -> Unit) {
 }
 
 @Composable
-private fun AddSubjectCard(
-    onAdd: (String, SubjectType) -> Unit,
+fun AddSubjectCard(
+    onAdd: (String, SubjectType, String?) -> Unit,
+    folderId: String? = null,
     modifier: Modifier = Modifier
 ) {
     var isCreating by remember { mutableStateOf(false) }
@@ -724,7 +725,7 @@ private fun AddSubjectCard(
                         TextButton(
                             onClick = {
                                 if (title.isNotBlank()) {
-                                    onAdd(title.trim(), type)
+                                    onAdd(title.trim(), type, folderId)
                                     isCreating = false
                                     title = ""
                                     type = SubjectType.FRAGMENT

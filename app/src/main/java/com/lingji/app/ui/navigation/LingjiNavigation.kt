@@ -14,6 +14,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.lingji.app.ui.components.AiRunningIsland
+import com.lingji.app.ui.screens.FolderScreen
 import com.lingji.app.ui.screens.FragmentSubjectScreen
 import com.lingji.app.ui.viewmodel.UpdateViewModel
 import com.lingji.app.ui.screens.NotebookSubjectScreen
@@ -40,6 +41,9 @@ fun LingjiNavigation(updateViewModel: UpdateViewModel) {
                         viewModel.setCurrentSubject(id)
                         navController.navigate("subject/$id")
                     },
+                    onFolderClick = { folderId ->
+                        navController.navigate("folder/$folderId")
+                    },
                     onOpenSettings = { navController.navigate("settings") }
                 )
             }
@@ -65,6 +69,21 @@ fun LingjiNavigation(updateViewModel: UpdateViewModel) {
                         )
                 }
             }
+            composable(
+                "folder/{folderId}",
+                arguments = listOf(navArgument("folderId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val folderId = backStackEntry.arguments?.getString("folderId") ?: return@composable
+                FolderScreen(
+                    viewModel = viewModel,
+                    folderId = folderId,
+                    onSubjectClick = { id ->
+                        viewModel.setCurrentSubject(id)
+                        navController.navigate("subject/$id")
+                    },
+                    onBack = { navController.popBackStack() }
+                )
+            }
             composable("settings") {
                 SettingsScreen(
                     viewModel = viewModel,
@@ -78,6 +97,7 @@ fun LingjiNavigation(updateViewModel: UpdateViewModel) {
             visible = uiState.isProcessing,
             title = uiState.processingMessage ?: "AI 运行中…",
             lines = uiState.aiIslandLines,
+            onStop = { viewModel.stopAiProcessing() },
             modifier = Modifier.align(Alignment.TopCenter)
         )
     }

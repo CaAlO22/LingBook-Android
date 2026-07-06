@@ -113,9 +113,9 @@ class SubjectViewModel @Inject constructor(
         }
     }
 
-    fun addSubject(title: String, type: SubjectType) {
+    fun addSubject(title: String, type: SubjectType, folderId: String? = null) {
         viewModelScope.launch {
-            val subject = Subject.create(title, type)
+            val subject = Subject.create(title, type).copy(folderId = folderId)
             subjectRepository.insert(subject)
             _uiState.update { it.copy(currentSubjectId = subject.id) }
         }
