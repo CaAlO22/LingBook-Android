@@ -94,8 +94,8 @@ fun FloatingInputContainer(
                     style = HazeStyle(
                         backgroundColor = MaterialTheme.colorScheme.background,
                         tint = HazeTint(Color.White.copy(alpha = 0.22f)),
-                        blurRadius = 18.dp,
-                        noiseFactor = 0.10f
+                        blurRadius = 24.dp,
+                        noiseFactor = 0.15f
                     )
                 )
         ) {

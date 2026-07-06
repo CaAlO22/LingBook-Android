@@ -1104,14 +1104,20 @@ private fun handleDragEnd(
             }
         }
         is DragResult.Reorder -> {
+            val hoverId = result.hoverId ?: return
             val mutableList = homeItems.toMutableList()
             val draggedIndex = mutableList.indexOf(item)
-            if (draggedIndex >= 0 && draggedIndex != result.targetIndex) {
-                mutableList.removeAt(draggedIndex)
-                val insertPos = if (result.targetIndex > draggedIndex) result.targetIndex - 1 else result.targetIndex
-                mutableList.add(insertPos.coerceIn(0, mutableList.size), item)
-                viewModel.reorderHomeItems(mutableList)
+            if (draggedIndex < 0) return
+            // Find the hovered note's position in the full homeItems list
+            val hoverIndex = mutableList.indexOfFirst { homeItem ->
+                homeItem is HomeItem.NoteItem && homeItem.subject.id == hoverId
             }
+            if (hoverIndex < 0 || hoverIndex == draggedIndex) return
+            // Remove dragged item, then insert at the hovered position
+            mutableList.removeAt(draggedIndex)
+            val adjustedHover = if (hoverIndex > draggedIndex) hoverIndex - 1 else hoverIndex
+            mutableList.add(adjustedHover.coerceIn(0, mutableList.size), item)
+            viewModel.reorderHomeItems(mutableList)
         }
         is DragResult.None -> { }
     }

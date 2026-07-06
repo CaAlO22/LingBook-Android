@@ -63,10 +63,12 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.lingji.app.R
 import com.lingji.app.domain.model.Fragment
 import com.lingji.app.domain.model.Subject
@@ -81,8 +83,10 @@ import com.lingji.app.ui.components.LingjiDialogConfirmButton
 import com.lingji.app.ui.components.LingjiDialogDismissButton
 import com.lingji.app.ui.components.MarkdownView
 import com.lingji.app.ui.components.NoteEditor
+import com.lingji.app.ui.components.NoteEditorHostState
 import com.lingji.app.ui.components.PageChatBar
 import com.lingji.app.ui.components.TimeDisplay
+import com.lingji.app.ui.components.rememberNoteEditorHostState
 import com.lingji.app.ui.theme.NotoSerifCJKsc
 import com.lingji.app.ui.viewmodel.SubjectViewModel
 import com.lingji.app.util.MarkdownPdfExporter
@@ -140,6 +144,54 @@ fun FragmentSubjectScreen(
     var showPlanDialog by remember { mutableStateOf(false) }
     var showClipboardTooLargeDialog by remember { mutableStateOf(false) }
     var noteText by remember(liveSubject.aggregatedNote) { mutableStateOf(liveSubject.aggregatedNote) }
+
+    // ── 调试：光标Y与悬浮栏高度 ──
+    var debugCursorY by remember { mutableStateOf(0f) }
+    var debugBarTopY by remember { mutableStateOf(0f) }
+    var debugBarHeight by remember { mutableStateOf(0f) }
+    var debugVpTop by remember { mutableStateOf(0f) }
+    var debugScrollInfo by remember { mutableStateOf("") }
+    var debugTrigger by remember { mutableStateOf("—") }
+    var debugDir by remember { mutableStateOf("—") }
+    var debugAmount by remember { mutableStateOf("—") }
+
+    val noteEditorHostState = rememberNoteEditorHostState()
+    val density = LocalDensity.current
+
+    // 跟踪 viewportTop
+    LaunchedEffect(noteEditorHostState.scrollViewportTop) {
+        debugVpTop = noteEditorHostState.scrollViewportTop
+    }
+
+    // ── 光标跟随：确保光标始终在可视区域内 ──
+    var lastAutoScrollMs by remember { mutableStateOf(0L) }
+    LaunchedEffect(debugCursorY, debugBarTopY, debugBarHeight, debugVpTop) {
+        val margin = with(density) { 4.dp.toPx() }
+        val vpTop = debugVpTop
+        val barTop = debugBarTopY
+        val cursorY = debugCursorY
+        if (barTop <= 0f || vpTop <= 0f || cursorY <= 0f) return@LaunchedEffect
+
+        val now = System.currentTimeMillis()
+        if (now - lastAutoScrollMs < 300) return@LaunchedEffect
+
+        // 光标进入对话框遮挡区域（barTop 以下）即上滚，而非等到超出屏幕底部才触发
+        if (cursorY > barTop - 60f + margin) {
+            val delta = cursorY - barTop + 60f + margin
+            lastAutoScrollMs = now
+            debugTrigger = "cursorBelowBar"
+            debugDir = "↓上滚(${delta.toInt()}px)"
+            debugAmount = ""
+            noteEditorHostState.scrollBy(delta)
+        } else if (cursorY < vpTop - margin) {
+            val delta = cursorY - vpTop + margin
+            lastAutoScrollMs = now
+            debugTrigger = "cursorAboveVp"
+            debugDir = "↑下滚(${delta.toInt()}px)"
+            debugAmount = ""
+            noteEditorHostState.scrollBy(delta)
+        }
+    }
 
     LaunchedEffect(uiState.aiErrorMessage) {
         uiState.aiErrorMessage?.let { message ->
@@ -284,7 +336,6 @@ fun FragmentSubjectScreen(
                                             viewModel.chatWithAgent(
                                                 subjectId = liveSubject.id,
                                                 question = question,
-                                                conversationHistory = noteChatHistory,
                                                 onToken = { token -> noteChatAnswer += token },
                                                 onComplete = { answer ->
                                                     viewModel.updateNoteChatHistory(liveSubject.id, noteChatHistory + Pair(question, answer))
@@ -322,7 +373,12 @@ fun FragmentSubjectScreen(
                                         viewModel.clearNoteChatHistory(liveSubject.id)
                                         noteChatAnswer = ""
                                     },
-                                    modifier = Modifier.fillMaxWidth()
+                                    modifier = Modifier.fillMaxWidth(),
+                                    onCollapsedTopYChange = { debugBarTopY = it },
+                                    onBarLayoutChange = { top, height ->
+                                        debugBarTopY = top
+                                        debugBarHeight = height
+                                    }
                                 )
                             }
                         }
@@ -351,7 +407,10 @@ fun FragmentSubjectScreen(
                                         value = noteText,
                                         onValueChange = { noteText = it },
                                         modifier = Modifier.fillMaxSize(),
-                                        bottomContentPadding = 100.dp
+                                        bottomContentPadding = 100.dp,
+                                        onCursorYChange = { debugCursorY = it },
+                                        onDebugInfo = { debugScrollInfo = it },
+                                        hostState = noteEditorHostState
                                     )
                                 }
                                 2 -> PlanPage(
@@ -368,6 +427,38 @@ fun FragmentSubjectScreen(
                     }
                 }
             )
+                // ── 调试悬浮窗 ──
+                /*
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 4.dp)
+                        .zIndex(999f)
+                ) {
+                    Surface(
+                        color = Color.Black.copy(alpha = 0.7f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                            Text(
+                                text = "cY=${debugCursorY.toInt()} barT=${debugBarTopY.toInt()} barH=${debugBarHeight.toInt()} vp=${debugVpTop.toInt()}",
+                                color = Color.White,
+                                fontSize = 11.sp
+                            )
+                            Text(
+                                text = debugScrollInfo,
+                                color = Color.Yellow,
+                                fontSize = 10.sp
+                            )
+                            Text(
+                                text = "触发:${debugTrigger}  方向:${debugDir}  量:${debugAmount}",
+                                color = Color(0xFFFF6B6B),
+                                fontSize = 10.sp
+                            )
+                        }
+                    }
+                }
+                */
             }
         }
     }
@@ -501,7 +592,7 @@ private fun PillTabSwitcher(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.Center
     ) {
         Surface(
@@ -529,7 +620,7 @@ private fun PillTabSwitcher(
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
                         ) {
                             Icon(
                                 imageVector = icon,
@@ -650,7 +741,7 @@ private fun FragmentPageToolbar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {

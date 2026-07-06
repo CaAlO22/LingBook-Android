@@ -207,7 +207,14 @@ fun SettingsScreen(
                 )
                 ApiKeyField(
                     value = settings.apiKey,
-                    onValueChange = { viewModel.saveSettings(settings.copy(apiKey = it)) },
+                    onValueChange = {
+                        viewModel.saveSettings(settings.copy(
+                            apiKey = it,
+                            providerApiKeys = settings.providerApiKeys.toMutableMap().apply {
+                                if (it.isNotBlank()) put(settings.provider.name, it) else remove(settings.provider.name)
+                            }
+                        ))
+                    },
                     onCopy = {
                         val key = settings.apiKey
                         if (key.isBlank()) {
@@ -506,11 +513,19 @@ private fun HorizontalSwipeSetting(
 
 private fun applyProviderPreset(settings: AISettings, provider: APIProvider): AISettings {
     val config = ProviderRegistry.config(provider)
+    // 保存当前供应商的 key 到缓存，加载目标供应商的缓存 key
+    val updatedKeys = settings.providerApiKeys.toMutableMap().apply {
+        if (settings.apiKey.isNotBlank()) {
+            put(settings.provider.name, settings.apiKey)
+        }
+    }
     return settings.copy(
         provider = provider,
         baseUrl = config.defaultBaseUrl,
         modelName = config.defaultModelId,
-        enableThinking = if (config.supportsThinking) settings.enableThinking else false
+        enableThinking = if (config.supportsThinking) settings.enableThinking else false,
+        apiKey = updatedKeys[provider.name] ?: "",
+        providerApiKeys = updatedKeys
     )
 }
 

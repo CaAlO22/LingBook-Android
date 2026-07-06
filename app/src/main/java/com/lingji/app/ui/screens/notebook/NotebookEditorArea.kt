@@ -22,7 +22,9 @@ fun NotebookEditorArea(
     editorHostState: NotebookPageEditorHostState,
     lastCreatedPageId: String?,
     onUpdate: (NotebookPage) -> Unit,
-    onPageChange: (String) -> Unit
+    onPageChange: (String) -> Unit,
+    onCursorYChange: ((Float) -> Unit)? = null,
+    onDebugInfo: ((String) -> Unit)? = null
 ) {
     when (swipeAction) {
         HorizontalSwipeAction.TOGGLE_PREVIEW -> {
@@ -56,7 +58,9 @@ fun NotebookEditorArea(
                     hostState = editorHostState,
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(start = 12.dp, end = 12.dp, top = 8.dp)
+                        .padding(start = 12.dp, end = 12.dp, top = 8.dp),
+                    onCursorYChange = onCursorYChange,
+                    onDebugInfo = onDebugInfo
                 )
             }
         }
@@ -92,7 +96,9 @@ fun NotebookEditorArea(
                     hostState = editorHostState,
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(start = 12.dp, end = 12.dp, top = 8.dp)
+                        .padding(start = 12.dp, end = 12.dp, top = 8.dp),
+                    onCursorYChange = onCursorYChange,
+                    onDebugInfo = onDebugInfo
                 )
             }
         }
@@ -106,7 +112,9 @@ fun NotebookEditorArea(
                 hostState = editorHostState,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(start = 12.dp, end = 12.dp, top = 8.dp)
+                    .padding(start = 12.dp, end = 12.dp, top = 8.dp),
+                onCursorYChange = onCursorYChange,
+                onDebugInfo = onDebugInfo
             )
         }
     }

@@ -12,6 +12,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,6 +27,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -54,6 +59,7 @@ fun AiRunningIsland(
     visible: Boolean,
     title: String,
     lines: List<AiIslandLine>,
+    onStop: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     AnimatedVisibility(
@@ -68,13 +74,13 @@ fun AiRunningIsland(
                 .padding(top = 48.dp, start = 24.dp, end = 24.dp),
             contentAlignment = Alignment.TopCenter
         ) {
-            IslandContent(title = title, lines = lines)
+            IslandContent(title = title, lines = lines, onStop = onStop)
         }
     }
 }
 
 @Composable
-private fun IslandContent(title: String, lines: List<AiIslandLine>) {
+private fun IslandContent(title: String, lines: List<AiIslandLine>, onStop: () -> Unit) {
     val listState = rememberLazyListState()
     val pulse = rememberInfiniteTransition(label = "island_pulse")
     val pulseAlpha by pulse.animateFloat(
@@ -115,8 +121,20 @@ private fun IslandContent(title: String, lines: List<AiIslandLine>) {
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
                 )
+                IconButton(
+                    onClick = onStop,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Stop,
+                        contentDescription = "停止",
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
 
             if (lines.isNotEmpty()) {

@@ -27,9 +27,72 @@ class PageToolsTest {
         )
     )
 
+    private val fragmentSubject = Subject(
+        id = "s2", title = "Random Notes", type = SubjectType.FRAGMENT
+    )
+
     @Test
     fun create_returnsFiveTools() {
         assertEquals(5, tools.size)
+    }
+
+    @Test
+    fun list_pages_fragmentType_returnsError() = runTest {
+        coEvery { repo.getSubjectByIdOnce("s2") } returns fragmentSubject
+        val params = JsonObject().apply { addProperty("subject_id", "s2") }
+        val result = toolMap["list_pages"]!!.execute(params)
+        assertTrue(result.startsWith("Error:"))
+        assertTrue(result.contains("碎片笔记不支持页面操作"))
+    }
+
+    @Test
+    fun get_page_fragmentType_returnsError() = runTest {
+        coEvery { repo.getSubjectByIdOnce("s2") } returns fragmentSubject
+        val params = JsonObject().apply {
+            addProperty("subject_id", "s2")
+            addProperty("page_id", "p1")
+        }
+        val result = toolMap["get_page"]!!.execute(params)
+        assertTrue(result.startsWith("Error:"))
+        assertTrue(result.contains("碎片笔记不支持页面操作"))
+    }
+
+    @Test
+    fun create_page_fragmentType_returnsError() = runTest {
+        coEvery { repo.getSubjectByIdOnce("s2") } returns fragmentSubject
+        val params = JsonObject().apply {
+            addProperty("subject_id", "s2")
+            addProperty("title", "New Page")
+        }
+        val result = toolMap["create_page"]!!.execute(params)
+        assertTrue(result.startsWith("Error:"))
+        assertTrue(result.contains("碎片笔记不支持页面操作"))
+    }
+
+    @Test
+    fun update_page_fragmentType_returnsError() = runTest {
+        coEvery { repo.getSubjectByIdOnce("s2") } returns fragmentSubject
+        val params = JsonObject().apply {
+            addProperty("subject_id", "s2")
+            addProperty("page_id", "p1")
+            addProperty("content", "Updated content")
+        }
+        val result = toolMap["update_page"]!!.execute(params)
+        assertTrue(result.startsWith("Error:"))
+        assertTrue(result.contains("碎片笔记不支持页面操作"))
+    }
+
+    @Test
+    fun delete_page_fragmentType_returnsError() = runTest {
+        coEvery { repo.getSubjectByIdOnce("s2") } returns fragmentSubject
+        coEvery { repo.deletePage("s2", "p1") } returns Unit
+        val params = JsonObject().apply {
+            addProperty("subject_id", "s2")
+            addProperty("page_id", "p1")
+        }
+        val result = toolMap["delete_page"]!!.execute(params)
+        assertTrue(result.startsWith("Error:"))
+        assertTrue(result.contains("碎片笔记不支持页面操作"))
     }
 
     @Test
@@ -66,6 +129,7 @@ class PageToolsTest {
 
     @Test
     fun create_page_callsAddPage() = runTest {
+        coEvery { repo.getSubjectByIdOnce("s1") } returns testSubject
         coEvery { repo.addPage("s1", any()) } returns Unit
         val params = JsonObject().apply {
             addProperty("subject_id", "s1")

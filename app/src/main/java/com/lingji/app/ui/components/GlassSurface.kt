@@ -33,10 +33,10 @@ fun GlassSurface(
     Box(
         modifier = modifier
             .clip(shape)
-            .background(MaterialTheme.colorScheme.background.copy(alpha = 0.18f))
+            .background(MaterialTheme.colorScheme.background.copy(alpha = 0.08f))
             .border(
                 width = 1.dp,
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f),
                 shape = shape
             )
     ) {

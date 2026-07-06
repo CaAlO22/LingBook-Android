@@ -51,8 +51,8 @@ class DragState {
     fun endDrag(): DragResult {
         val result = if (dropTargetFolderId != null) {
             DragResult.MoveToFolder(dropTargetFolderId!!)
-        } else if (reorderTargetIndex >= 0) {
-            DragResult.Reorder(reorderTargetIndex)
+        } else if (reorderHoverId != null) {
+            DragResult.Reorder(reorderHoverId)
         } else {
             DragResult.None
         }
@@ -78,5 +78,5 @@ class DragState {
 sealed interface DragResult {
     data object None : DragResult
     data class MoveToFolder(val folderId: String) : DragResult
-    data class Reorder(val targetIndex: Int) : DragResult
+    data class Reorder(val hoverId: String?) : DragResult
 }

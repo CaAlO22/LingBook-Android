@@ -1,5 +1,6 @@
 package com.lingji.app.ui.components
 
+import android.view.KeyEvent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -41,18 +42,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isCtrlPressed
-import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.lingji.app.R
 
-enum class ChatMode { ASK, AGENT }
+enum class ChatMode { ASK, AGENT, FRAGMENT }
 
 @Composable
 fun PageChatBar(
@@ -65,9 +66,12 @@ fun PageChatBar(
     onClearHistory: () -> Unit,
     modifier: Modifier = Modifier,
     placeholder: String = stringResource(R.string.chat_placeholder),
-    targetLabelFormat: String = stringResource(R.string.chat_target)
+    targetLabelFormat: String = stringResource(R.string.chat_target),
+    onCollapsedTopYChange: ((Float) -> Unit)? = null,
+    onBarLayoutChange: ((Float, Float) -> Unit)? = null
 ) {
     var question by remember { mutableStateOf(TextFieldValue("")) }
+    var ctrlDown by remember { mutableStateOf(false) }
     var answerExpanded by remember { mutableStateOf(true) }
     var chatMode by remember { mutableStateOf(ChatMode.ASK) }
     val agentLabelFormat = stringResource(R.string.chat_agent_target)
@@ -96,7 +100,16 @@ fun PageChatBar(
     }
 
     GlassSurface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .onGloballyPositioned { coordinates ->
+                val top = coordinates.positionInRoot().y
+                val height = coordinates.size.height.toFloat()
+                onBarLayoutChange?.invoke(top, height)
+                if (!answerExpanded || !hasHistory) {
+                    onCollapsedTopYChange?.invoke(top)
+                }
+            },
         shape = RoundedCornerShape(24.dp)
     ) {
         Column(
@@ -207,16 +220,19 @@ fun PageChatBar(
             val modeText = when (chatMode) {
                 ChatMode.ASK -> targetLabelFormat.format(displayTitle)
                 ChatMode.AGENT -> agentLabelFormat.format(displayTitle)
+                ChatMode.FRAGMENT -> displayTitle
             }
             val modeColor = when (chatMode) {
                 ChatMode.ASK -> MaterialTheme.colorScheme.onSurfaceVariant
                 ChatMode.AGENT -> MaterialTheme.colorScheme.tertiary
+                ChatMode.FRAGMENT -> MaterialTheme.colorScheme.onSurfaceVariant
             }
             Text(
                 text = modeText,
                 style = MaterialTheme.typography.labelSmall,
                 color = modeColor,
                 modifier = Modifier
+                    .clip(RoundedCornerShape(3.dp))
                     .clickable { chatMode = if (chatMode == ChatMode.ASK) ChatMode.AGENT else ChatMode.ASK }
                     .padding(start = 4.dp, bottom = 4.dp)
             )
@@ -237,27 +253,21 @@ fun PageChatBar(
                         .weight(1f)
                         .padding(horizontal = 12.dp, vertical = 10.dp)
                         .onPreviewKeyEvent { event ->
+                            val keyCode = event.nativeKeyEvent.keyCode
+                            if (keyCode == KeyEvent.KEYCODE_CTRL_LEFT || keyCode == KeyEvent.KEYCODE_CTRL_RIGHT) {
+                                ctrlDown = event.type == KeyEventType.KeyDown
+                                return@onPreviewKeyEvent false
+                            }
                             if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                             if (event.key != Key.Enter && event.key != Key.NumPadEnter) {
                                 return@onPreviewKeyEvent false
                             }
-                            if (event.isCtrlPressed || event.isShiftPressed) {
-                                // Ctrl/Shift+Enter 插入换行，由系统行为接管
-                                val current = question
-                                val newText = current.text.replaceRange(
-                                    current.selection.start,
-                                    current.selection.end,
-                                    "\n"
-                                )
-                                val cursor = current.selection.start + 1
-                                question = TextFieldValue(
-                                    text = newText,
-                                    selection = TextRange(cursor)
-                                )
-                                true
-                            } else {
+                            if (ctrlDown) {
+                                ctrlDown = false
                                 submitQuestion()
                                 true
+                            } else {
+                                false
                             }
                         },
                     enabled = inputEnabled,

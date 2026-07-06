@@ -194,18 +194,23 @@ class SubjectRepository @Inject constructor(
     }
 
     suspend fun reorderHomeItems(orderedItems: List<HomeItem>) {
+        val size = orderedItems.size
         orderedItems.forEachIndexed { index, item ->
+            // Assign descending orderIndex: first item (index 0) gets highest value
+            // because display sorts by orderIndex DESC
+            val orderIndex = size - 1 - index
             when (item) {
-                is HomeItem.FolderItem -> folderDao.updateOrderIndex(item.folder.id, index)
-                is HomeItem.NoteItem -> subjectDao.updateOrderIndex(item.subject.id, index)
+                is HomeItem.FolderItem -> folderDao.updateOrderIndex(item.folder.id, orderIndex)
+                is HomeItem.NoteItem -> subjectDao.updateOrderIndex(item.subject.id, orderIndex)
             }
         }
     }
 
     @Suppress("UNUSED_PARAMETER")
     suspend fun reorderFolderItems(folderId: String, orderedSubjectIds: List<String>) {
+        val size = orderedSubjectIds.size
         orderedSubjectIds.forEachIndexed { index, id ->
-            subjectDao.updateOrderIndex(id, index)
+            subjectDao.updateOrderIndex(id, size - 1 - index)
         }
     }
 

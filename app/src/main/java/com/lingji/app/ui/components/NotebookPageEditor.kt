@@ -2,6 +2,7 @@ package com.lingji.app.ui.components
 
 import android.graphics.BitmapFactory
 import android.util.Base64
+import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
@@ -35,7 +36,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,13 +48,18 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.lingji.app.R
 import com.lingji.app.domain.model.NotebookPage
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private data class PageEditState(val title: String, val content: String)
@@ -122,9 +130,17 @@ class NotebookPageEditorHostState internal constructor() {
         internal set
     var cursorPosition by mutableStateOf(0)
         internal set
+    var scrollByOp by mutableStateOf<((Float) -> Unit)?>(null)
+        internal set
+    var scrollViewportTop by mutableStateOf(0f)
+        internal set
 
     fun setPreview(value: Boolean) {
         isPreview = value
+    }
+
+    fun scrollBy(delta: Float) {
+        scrollByOp?.invoke(delta)
     }
 }
 
@@ -140,7 +156,9 @@ fun NotebookPageEditor(
     autoFocusContent: Boolean = false,
     fillHeight: Boolean = false,
     hostState: NotebookPageEditorHostState = remember { NotebookPageEditorHostState() },
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onCursorYChange: ((Float) -> Unit)? = null,
+    onDebugInfo: ((String) -> Unit)? = null
 ) {
     val undoManager = remember(page.id) { UndoManager(PageEditState(page.title, page.content)) }
     val editState = undoManager.value
@@ -153,6 +171,9 @@ fun NotebookPageEditor(
     val textFieldValues = remember { mutableStateMapOf<Int, TextFieldValue>() }
     var focusedTextIndex by remember { mutableStateOf<Int?>(null) }
     val firstTextFocusRequester = remember { FocusRequester() }
+    val layoutResults = remember { mutableStateMapOf<Int, TextLayoutResult>() }
+    var focusedCoordsY by remember { mutableStateOf(0f) }
+    var focusedSelection by remember { mutableStateOf(0) }
 
     // 当外部传入的页面数据与当前编辑状态不一致时（如从其他端同步），重置历史。
     LaunchedEffect(page.title, page.content) {
@@ -170,7 +191,7 @@ fun NotebookPageEditor(
                 if (existing == null || existing.text != segment.text) {
                     textFieldValues[index] = TextFieldValue(
                         segment.text,
-                        selection = TextRange(segment.text.length)
+                        selection = TextRange(0)
                     )
                 }
             }
@@ -199,6 +220,20 @@ fun NotebookPageEditor(
         } ?: content.length
     }
 
+    // 聚焦段的光标 Y 坐标变化时，通过回调对外汇报。
+    LaunchedEffect(focusedTextIndex, focusedCoordsY, focusedSelection, layoutResults) {
+        val index = focusedTextIndex ?: return@LaunchedEffect
+        val layout = layoutResults[index] ?: return@LaunchedEffect
+        onCursorYChange?.invoke(focusedCoordsY + layout.getCursorRect(focusedSelection).top)
+    }
+
+    // 聚焦段的光标 Y 坐标变化时，通过回调对外汇报。
+    LaunchedEffect(focusedTextIndex, focusedCoordsY, focusedSelection, layoutResults) {
+        val index = focusedTextIndex ?: return@LaunchedEffect
+        val layout = layoutResults[index] ?: return@LaunchedEffect
+        onCursorYChange?.invoke(focusedCoordsY + layout.getCursorRect(focusedSelection).top)
+    }
+
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
@@ -206,19 +241,67 @@ fun NotebookPageEditor(
             .padding(16.dp)
     ) {
         val scrollState = rememberScrollState()
+        val scope = rememberCoroutineScope()
+        val focusManager = LocalFocusManager.current
+        // 标记是否为程序化滚动（光标跟随），与用户手动滚动区分。
+        var isProgrammaticScroll by remember { mutableStateOf(false) }
+        // 跟踪上一次的 scroll 值，用于判断是否发生用户拖动
+        var lastScrollValue by remember { mutableStateOf(0) }
+        // 记录焦点被设定的时间，用于抑制获焦后惯性滚动导致的误清除
+        var lastFocusTimeMs by remember { mutableStateOf(0L) }
         // 文本区至少撑满剩余可视空间，保证内容短时也能沉浸在输入栏后方。
         val contentHeight = if (fillHeight) {
             (maxHeight - 80.dp).coerceAtLeast(220.dp)
         } else {
             220.dp
         }
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(scrollState)
-                .imePadding()
-                .padding(bottom = 160.dp)
-        ) {
+
+        // ── 调试：监控滚动状态 ──
+        var debugMaxHeightDp by remember { mutableStateOf(0f) }
+        SideEffect { debugMaxHeightDp = maxHeight.value }
+        LaunchedEffect(Unit) {
+            snapshotFlow {
+                floatArrayOf(
+                    scrollState.value.toFloat(), scrollState.maxValue.toFloat(),
+                    debugMaxHeightDp,
+                    (focusedTextIndex ?: -1).toFloat(),
+                    if (scrollState.isScrollInProgress) 1f else 0f
+                )
+            }.collect { arr ->
+                val msg = "scroll=${arr[0].toInt()}/${arr[1].toInt()} maxH=${arr[2].toInt()}dp focus=${arr[3].toInt()} prog=${arr[4].toInt()}"
+                onDebugInfo?.invoke(msg)
+                Log.d("NbEditorDebug", msg)
+            }
+        }
+
+        // 将平滑滚动能力暴露给宿主（光标跟随功能）。
+        SideEffect {
+            hostState.scrollByOp = { delta ->
+                isProgrammaticScroll = true
+                scope.launch {
+                    val target = (scrollState.value + delta.toInt()).coerceIn(0, scrollState.maxValue)
+                    Log.d("NbEditorDebug", "scrollBy delta=$delta target=$target current=${scrollState.value} max=${scrollState.maxValue}")
+                    scrollState.animateScrollTo(target)
+                }
+            }
+        }
+
+        // 用户手动拖拽滚动时取消焦点，避免光标跟随冲突。
+        // 用增量检测区分用户拖拽（大增量）和惯性滚动（小增量）。
+        LaunchedEffect(Unit) {
+            snapshotFlow { scrollState.value }
+                .collect { current ->
+                    val delta = current - lastScrollValue
+                    if ((delta > 8 || delta < -8) && !isProgrammaticScroll) {
+                        if (focusedTextIndex != null && System.currentTimeMillis() - lastFocusTimeMs > 500) {
+                            focusManager.clearFocus()
+                        }
+                    }
+                    lastScrollValue = current
+                }
+        }
+
+        Column(modifier = Modifier.fillMaxSize()) {
             UnderlinedTitleField(
                 value = title,
                 onValueChange = {
@@ -238,7 +321,16 @@ fun NotebookPageEditor(
                 }
             }
 
-            Box(
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .onGloballyPositioned { coords ->
+                        hostState.scrollViewportTop = coords.positionInRoot().y
+                    }
+                    .verticalScroll(scrollState)
+                    .padding(bottom = 160.dp)
+            ) {
+                Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = contentHeight)
@@ -247,18 +339,19 @@ fun NotebookPageEditor(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                            .padding(start = 12.dp, end = 12.dp, bottom = 10.dp)
                     ) {
                         MarkdownView(
                             markdown = content,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            compact = true
                         )
                     }
                 } else {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                            .padding(start = 12.dp, end = 12.dp, bottom = 10.dp)
                     ) {
                         var textFieldCount = 0
                         segments.forEachIndexed { index, segment ->
@@ -272,6 +365,9 @@ fun NotebookPageEditor(
                                         value = value,
                                         onValueChange = { newValue ->
                                             textFieldValues[index] = newValue
+                                            if (focusedTextIndex == index) {
+                                                focusedSelection = newValue.selection.start
+                                            }
                                             val newContent = segments.mapIndexed { i, seg ->
                                                 when {
                                                     i == index && seg is PageSegment.Text -> newValue.text
@@ -305,13 +401,25 @@ fun NotebookPageEditor(
                                                 }
                                             )
                                             .onFocusChanged { focusState ->
+                                                Log.d("NbEditorDebug", "focusChanged: idx=$index focused=${focusState.isFocused} scrollVal=${scrollState.value}")
                                                 if (focusState.isFocused) {
+                                                    lastFocusTimeMs = System.currentTimeMillis()
                                                     focusedTextIndex = index
                                                     onFocus()
                                                 } else if (focusedTextIndex == index) {
                                                     focusedTextIndex = null
                                                 }
+                                            }
+                                            .onGloballyPositioned { coords ->
+                                                val y = coords.positionInRoot().y
+                                                Log.d("NbEditorDebug", "tf positioned: idx=$index y=$y scrollVal=${scrollState.value}")
+                                                if (focusedTextIndex == index) {
+                                                    focusedCoordsY = y
+                                                }
                                             },
+                                        onTextLayout = { result ->
+                                            layoutResults[index] = result
+                                        },
                                         textStyle = MaterialTheme.typography.bodyMedium.copy(
                                             color = MaterialTheme.colorScheme.onSurface
                                         ),
@@ -362,6 +470,7 @@ fun NotebookPageEditor(
                 }
             }
         }
+    }
     }
 }
 

@@ -68,10 +68,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.graphics.Color
 import com.lingji.app.R
 import com.lingji.app.domain.model.HorizontalSwipeAction
 import com.lingji.app.domain.model.NotebookPage
@@ -188,12 +191,59 @@ fun NotebookSubjectScreen(
     var showExportPdfDialog by remember { mutableStateOf(false) }
     var showClipboardTooLargeDialog by remember { mutableStateOf(false) }
 
+    var debugCursorY by remember { mutableStateOf(0f) }
+    var debugBarTopY by remember { mutableStateOf(0f) }
+    var debugBarHeight by remember { mutableStateOf(0f) }
+    var debugVpTop by remember { mutableStateOf(0f) }
+    var debugScrollInfo by remember { mutableStateOf("") }
+    // 持久化调试：上次滚动的触发条件、方向、量（保持到下次触发才更新）
+    var debugTrigger by remember { mutableStateOf("—") }
+    var debugDir by remember { mutableStateOf("—") }
+    var debugAmount by remember { mutableStateOf("—") }
+
     val editorHostState = rememberNotebookPageEditorHostState()
     val imagePickerState = rememberImagePickerState()
 
     // 切换笔记页面时重置为编辑模式
     LaunchedEffect(currentPageId) {
         editorHostState.setPreview(false)
+    }
+
+    // 跟踪 viewportTop
+    LaunchedEffect(editorHostState.scrollViewportTop) {
+        debugVpTop = editorHostState.scrollViewportTop
+    }
+
+    // ── 光标跟随：确保光标始终在可视区域内 ──
+    val density = LocalDensity.current
+    var lastAutoScrollMs by remember { mutableStateOf(0L) }
+    LaunchedEffect(debugCursorY, debugBarTopY, debugBarHeight, debugVpTop) {
+        val margin = with(density) { 4.dp.toPx() }
+        val vpTop = debugVpTop
+        val barTop = debugBarTopY
+        val cursorY = debugCursorY
+        if (barTop <= 0f || vpTop <= 0f || cursorY <= 0f) return@LaunchedEffect
+
+        val now = System.currentTimeMillis()
+        if (now - lastAutoScrollMs < 300) return@LaunchedEffect
+
+        if (cursorY > barTop - 60f + margin) {
+            // 光标进入对话框遮挡区域（barTop 以下）→ 上滚
+            val delta = cursorY - barTop + 60f + margin
+            lastAutoScrollMs = now
+            debugTrigger = "cursorBelowBar"
+            debugDir = "↓上滚(${delta.toInt()}px)"
+            debugAmount = ""
+            editorHostState.scrollBy(delta)
+        } else if (cursorY < vpTop - margin) {
+            // 光标在编辑区上方 → 下滚
+            val delta = cursorY - vpTop + margin
+            lastAutoScrollMs = now
+            debugTrigger = "cursorAboveVp"
+            debugDir = "↑下滚(${delta.toInt()}px)"
+            debugAmount = ""
+            editorHostState.scrollBy(delta)
+        }
     }
 
     val indexEntries = remember(liveSubject.pageIndexEntries) {
@@ -354,6 +404,38 @@ fun NotebookSubjectScreen(
                 onDelete = { currentPage?.let { deleteConfirmPage = it } }
             )
             Box(modifier = Modifier.weight(1f)) {
+                // ── 调试悬浮窗 ──
+                /*
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 4.dp)
+                        .zIndex(999f)
+                ) {
+                    Surface(
+                        color = Color.Black.copy(alpha = 0.7f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                            Text(
+                                text = "cY=${debugCursorY.toInt()} barT=${debugBarTopY.toInt()} barH=${debugBarHeight.toInt()} vp=${debugVpTop.toInt()}",
+                                color = Color.White,
+                                fontSize = 11.sp
+                            )
+                            Text(
+                                text = debugScrollInfo,
+                                color = Color.Yellow,
+                                fontSize = 10.sp
+                            )
+                            Text(
+                                text = "触发:${debugTrigger}  方向:${debugDir}  量:${debugAmount}",
+                                color = Color(0xFFFF6B6B),
+                                fontSize = 10.sp
+                            )
+                        }
+                    }
+                }
+                */
                 FloatingInputContainer(
                     bottomOffset = 16.dp,
                     horizontalMargin = 24.dp,
@@ -372,7 +454,6 @@ fun NotebookSubjectScreen(
                                 viewModel.chatWithAgent(
                                     subjectId = liveSubject.id,
                                     question = question,
-                                    conversationHistory = chatHistory,
                                     onToken = { token -> chatAnswer += token },
                                     onComplete = { answer ->
                                         chatHistory = chatHistory + Pair(question, answer)
@@ -410,6 +491,11 @@ fun NotebookSubjectScreen(
                         onClearHistory = {
                             chatHistory = emptyList()
                             chatAnswer = ""
+                        },
+                        onCollapsedTopYChange = { debugBarTopY = it },
+                        onBarLayoutChange = { top, height ->
+                            debugBarTopY = top
+                            debugBarHeight = height
                         }
                     )
                 },
@@ -428,7 +514,9 @@ fun NotebookSubjectScreen(
                             onUpdate = { updated ->
                                 viewModel.updatePage(liveSubject.id, updated)
                             },
-                            onPageChange = { pageId -> currentPageId = pageId }
+                            onPageChange = { pageId -> currentPageId = pageId },
+                            onCursorYChange = { debugCursorY = it },
+                            onDebugInfo = { debugScrollInfo = it }
                         )
                     }
                 }

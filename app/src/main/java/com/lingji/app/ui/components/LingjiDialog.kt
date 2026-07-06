@@ -22,7 +22,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -79,7 +78,6 @@ fun LingjiDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(max = 380.dp)
-                            .clip(MaterialTheme.shapes.medium)
                     ) {
                         CompositionLocalProvider(
                             LocalTextStyle provides MaterialTheme.typography.bodyMedium

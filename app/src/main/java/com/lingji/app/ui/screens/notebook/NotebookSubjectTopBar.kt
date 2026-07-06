@@ -100,7 +100,7 @@ fun NotebookSubjectTopBar(
             ) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier.padding(3.dp)
+                    modifier = Modifier.padding(2.dp)
                 ) {
                     ModeChip(
                         label = stringResource(R.string.mode_edit),

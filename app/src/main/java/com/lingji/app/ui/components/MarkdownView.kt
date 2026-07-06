@@ -18,7 +18,7 @@ import io.noties.markwon.inlineparser.MarkwonInlineParser
 import io.noties.markwon.inlineparser.MarkwonInlineParserPlugin
 
 /**
- * 将编辑器中的“双换行”折叠为“硬换行”，使预览效果符合用户直觉：
+ * 将编辑器中的"双换行"折叠为"硬换行"，使预览效果符合用户直觉：
  * - 编辑里单换行 → 预览不换行（CommonMark 默认软换行行为）
  * - 编辑里双换行（空一行） → 预览单换行（不再产生空段落）
  *
@@ -44,7 +44,8 @@ fun MarkdownView(
     markdown: String,
     modifier: Modifier = Modifier,
     textColor: Color? = null,
-    textSizeSp: Float? = null
+    textSizeSp: Float? = null,
+    compact: Boolean = false
 ) {
     val context = LocalContext.current
     val markwon = remember(context) {
@@ -65,7 +66,7 @@ fun MarkdownView(
             .usePlugin(StrikethroughPlugin.create())
             .build()
     }
-    val rendered = foldBlankLines(markdown)
+    val rendered = if (compact) foldBlankLines(markdown) else markdown
     AndroidView(
         factory = { ctx -> TextView(ctx) },
         update = { textView ->

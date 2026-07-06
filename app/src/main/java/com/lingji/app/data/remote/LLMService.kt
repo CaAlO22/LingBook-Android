@@ -181,7 +181,7 @@ class LLMService @Inject constructor() {
                     val reasoning = choice?.reasoning_content
                         ?: delta?.reasoning_content
                     val deltaText = delta?.content?.let { if (it is String) it else "" } ?: ""
-                    if (settings.enableThinking && reasoning != null && reasoning.isNotEmpty()) {
+                    if (reasoning != null && reasoning.isNotEmpty()) {
                         onReasoning(reasoning)
                     }
                     if (deltaText.isNotEmpty()) {
@@ -332,7 +332,7 @@ class LLMService @Inject constructor() {
                     val reasoning = choice?.reasoning_content
                         ?: delta?.reasoning_content
                     val deltaText = delta?.content?.let { if (it is String) it else "" } ?: ""
-                    if (settings.enableThinking && reasoning != null && reasoning.isNotEmpty()) {
+                    if (reasoning != null && reasoning.isNotEmpty()) {
                         onReasoning(reasoning)
                     }
                     if (deltaText.isNotEmpty()) {
