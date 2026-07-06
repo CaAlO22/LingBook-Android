@@ -374,7 +374,8 @@ fun SubjectGalleryScreen(
                                         handleDragEnd(result, draggedItem, viewModel, uiState.homeItems)
                                     },
                                     onDragCancel = { dragState.cancelDrag() },
-                                    isDragging = isDragging
+                                    isDragging = isDragging,
+                                    isReorderTarget = dragState.reorderHoverId == subject.id
                                 )
                             }
                         }
@@ -1061,15 +1062,31 @@ private fun handleDragHitTest(
         val folderId = (folderTarget.key as String).removePrefix("folder_")
         dragState.setDropTarget(folderId)
         dragState.setReorderTarget(-1)
+        dragState.setReorderHover(null)
     } else {
         dragState.setDropTarget(null)
         val noteItems = visibleItems.filter {
             it.key is String && (it.key as String).startsWith("note_")
         }
-        val insertIndex = noteItems.indexOfFirst { itemInfo ->
-            globalPos.y < itemInfo.offset.y + itemInfo.size.height / 2
+        // Find the closest note item by center distance
+        val closest = noteItems.minByOrNull { itemInfo ->
+            val cx = itemInfo.offset.x + itemInfo.size.width / 2
+            val cy = itemInfo.offset.y + itemInfo.size.height / 2
+            val dx = globalPos.x - cx
+            val dy = globalPos.y - cy
+            dx * dx + dy * dy
         }
-        dragState.setReorderTarget(if (insertIndex >= 0) insertIndex else noteItems.size)
+        if (closest != null) {
+            val noteId = (closest.key as String).removePrefix("note_")
+            dragState.setReorderHover(noteId)
+            val insertIndex = noteItems.indexOfFirst { itemInfo ->
+                globalPos.y < itemInfo.offset.y + itemInfo.size.height / 2
+            }
+            dragState.setReorderTarget(if (insertIndex >= 0) insertIndex else noteItems.size)
+        } else {
+            dragState.setReorderHover(null)
+            dragState.setReorderTarget(-1)
+        }
     }
 }
 

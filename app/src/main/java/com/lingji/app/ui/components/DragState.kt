@@ -19,6 +19,8 @@ class DragState {
         private set
     var reorderTargetIndex by mutableStateOf(-1)
         private set
+    var reorderHoverId by mutableStateOf<String?>(null)
+        private set
 
     fun startDrag(item: HomeItem, startPos: Offset) {
         isDragging = true
@@ -27,6 +29,7 @@ class DragState {
         dragOffset = Offset.Zero
         dropTargetFolderId = null
         reorderTargetIndex = -1
+        reorderHoverId = null
     }
 
     fun updateDrag(delta: Offset) {
@@ -39,6 +42,10 @@ class DragState {
 
     fun setReorderTarget(index: Int) {
         reorderTargetIndex = index
+    }
+
+    fun setReorderHover(id: String?) {
+        reorderHoverId = id
     }
 
     fun endDrag(): DragResult {
@@ -64,6 +71,7 @@ class DragState {
         dragStartPos = Offset.Zero
         dropTargetFolderId = null
         reorderTargetIndex = -1
+        reorderHoverId = null
     }
 }
 

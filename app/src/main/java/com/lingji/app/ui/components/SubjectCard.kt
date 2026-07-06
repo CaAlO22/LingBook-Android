@@ -2,12 +2,16 @@ package com.lingji.app.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -71,6 +75,7 @@ fun SubjectCard(
     onDragCancel: () -> Unit = {},
     isDragging: Boolean = false,
     isDropTarget: Boolean = false,
+    isReorderTarget: Boolean = false,
     onRemoveFromFolder: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -106,6 +111,16 @@ fun SubjectCard(
         )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
+            if (isReorderTarget) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .clip(MaterialTheme.shapes.small)
+                        .background(MaterialTheme.colorScheme.primary)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
             Text(
                 text = subject.title,
                 style = MaterialTheme.typography.titleMedium,
