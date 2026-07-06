@@ -30,6 +30,8 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -78,6 +80,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lingji.app.R
@@ -376,8 +380,13 @@ fun SubjectGalleryScreen(
                         }
                     }
                 }
-                // Drag overlay — capture touches during drag
+                // Drag overlay — floating card following finger + capture touches
                 if (dragState.isDragging && dragState.draggedItem != null) {
+                    val draggedTitle = when (val item = dragState.draggedItem) {
+                        is HomeItem.NoteItem -> item.subject.title
+                        is HomeItem.FolderItem -> item.folder.name
+                        null -> ""
+                    }
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -389,7 +398,34 @@ fun SubjectGalleryScreen(
                                     onDragCancel = { }
                                 )
                             }
-                    )
+                    ) {
+                        Card(
+                            modifier = Modifier
+                                .offset {
+                                    IntOffset(
+                                        (dragState.dragStartPos.x + dragState.dragOffset.x).toInt(),
+                                        (dragState.dragStartPos.y + dragState.dragOffset.y).toInt()
+                                    )
+                                }
+                                .width(160.dp)
+                                .alpha(0.85f),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surface
+                            ),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    text = draggedTitle,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
