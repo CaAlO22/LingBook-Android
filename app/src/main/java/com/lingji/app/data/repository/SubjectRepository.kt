@@ -172,8 +172,7 @@ class SubjectRepository @Inject constructor(
 
     suspend fun deleteFolder(id: String) {
         // Unlink all subjects in this folder (move them back to home)
-        val subjects = subjectDao.getSubjectsByFolderOnce(id)
-        subjects.forEach { subjectDao.updateFolderId(it.id, null) }
+        subjectDao.clearFolderAssociation(id)
         val folder = folderDao.getFolderById(id) ?: return
         folderDao.delete(folder)
     }
@@ -182,14 +181,14 @@ class SubjectRepository @Inject constructor(
 
     suspend fun moveSubjectToFolder(subjectId: String, folderId: String) {
         subjectDao.updateFolderId(subjectId, folderId)
-        // Assign orderIndex at end of folder's note list
+        // Assign orderIndex at top of folder's note list
         val count = subjectDao.getSubjectsByFolderOnce(folderId).size
         subjectDao.updateOrderIndex(subjectId, count)
     }
 
     suspend fun removeSubjectFromFolder(subjectId: String) {
         subjectDao.updateFolderId(subjectId, null)
-        // Assign orderIndex at end of home page list
+        // Assign orderIndex at top of home page list
         val homeSubjects = subjectDao.getSubjectsByFolderOnce(null)
         subjectDao.updateOrderIndex(subjectId, homeSubjects.size)
     }
@@ -203,6 +202,7 @@ class SubjectRepository @Inject constructor(
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     suspend fun reorderFolderItems(folderId: String, orderedSubjectIds: List<String>) {
         orderedSubjectIds.forEachIndexed { index, id ->
             subjectDao.updateOrderIndex(id, index)

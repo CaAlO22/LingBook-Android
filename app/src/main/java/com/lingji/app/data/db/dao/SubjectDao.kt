@@ -47,6 +47,9 @@ interface SubjectDao {
     @Query("SELECT * FROM subjects WHERE folderId IS :folderId ORDER BY orderIndex DESC, createdAt DESC")
     suspend fun getSubjectsByFolderOnce(folderId: String?): List<SubjectEntity>
 
+    @Query("UPDATE subjects SET folderId = NULL WHERE folderId = :folderId")
+    suspend fun clearFolderAssociation(folderId: String)
+
     @Transaction
     suspend fun upsert(subject: SubjectEntity) = insert(subject)
 }
