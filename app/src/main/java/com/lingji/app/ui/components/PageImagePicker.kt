@@ -227,11 +227,11 @@ private fun uriToBase64(context: Context, uri: Uri): String? {
             BitmapFactory.decodeStream(input, null, bounds)
         }
         val options = BitmapFactory.Options().apply {
-            inSampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight, 720)
+            inSampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight, 960)
         }
         context.contentResolver.openInputStream(uri)?.use { input ->
             val bitmap = BitmapFactory.decodeStream(input, null, options) ?: return null
-            val scaled = scaleBitmap(bitmap, 720)
+            val scaled = scaleBitmap(bitmap, 960)
             // 无损 PNG 压缩，彻底消除 JPEG 块状伪影；PNG 通用性最好，所有视觉模型均支持
             val output = ByteArrayOutputStream()
             scaled.compress(Bitmap.CompressFormat.PNG, 100, output)
