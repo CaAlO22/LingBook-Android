@@ -3,6 +3,7 @@ package com.lingji.app.ui.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,8 +29,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -46,9 +53,16 @@ fun FolderCard(
     onRename: () -> Unit,
     onDelete: () -> Unit,
     isDropTarget: Boolean = false,
+    onDragStart: (Offset) -> Unit = {},
+    onDrag: (Offset) -> Unit = {},
+    onDragEnd: () -> Unit = {},
+    onDragCancel: () -> Unit = {},
+    isDragging: Boolean = false,
+    isReorderTarget: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    var cardCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val containerColor = if (isDropTarget) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
 
     Card(
@@ -56,11 +70,32 @@ fun FolderCard(
             .fillMaxWidth()
             .heightIn(min = SubjectCardMinHeight)
             .clip(MaterialTheme.shapes.large)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .onGloballyPositioned { cardCoords = it }
+            .pointerInput(folder.id) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { offset ->
+                        val rootPos = cardCoords?.let { it.positionInRoot() + offset } ?: offset
+                        onDragStart(rootPos)
+                    },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        onDrag(dragAmount)
+                    },
+                    onDragEnd = { onDragEnd() },
+                    onDragCancel = { onDragCancel() }
+                )
+            }
+            .alpha(if (isDragging) 0.3f else 1f),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = containerColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        border = BorderStroke(if (isDropTarget) 2.dp else 1.dp, if (isDropTarget) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
+        border = BorderStroke(
+            if (isReorderTarget || isDropTarget) 2.dp else 1.dp,
+            if (isReorderTarget) MaterialTheme.colorScheme.primary
+            else if (isDropTarget) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.outlineVariant
+        )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(

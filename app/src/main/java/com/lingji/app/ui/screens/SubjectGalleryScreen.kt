@@ -322,6 +322,8 @@ fun SubjectGalleryScreen(
                         when (homeItem) {
                             is HomeItem.FolderItem -> {
                                 val isDropTarget = dragState.dropTargetFolderId == homeItem.folder.id
+                                val isDragging = dragState.draggedItem is HomeItem.FolderItem &&
+                                    (dragState.draggedItem as HomeItem.FolderItem).folder.id == homeItem.folder.id
                                 FolderCard(
                                     folder = homeItem.folder,
                                     noteCount = homeItem.noteCount,
@@ -332,7 +334,22 @@ fun SubjectGalleryScreen(
                                         renameFolderDefault = homeItem.folder.name
                                     },
                                     onDelete = { deleteFolderId = homeItem.folder.id },
-                                    isDropTarget = isDropTarget
+                                    isDropTarget = isDropTarget,
+                                    onDragStart = { offset -> dragState.startDrag(homeItem, offset) },
+                                    onDrag = { dragAmount ->
+                                        dragState.updateDrag(dragAmount)
+                                        val containerPos = containerCoords?.positionInRoot() ?: Offset.Zero
+                                        val globalPos = dragState.dragStartPos + dragState.dragOffset - containerPos
+                                        handleDragHitTest(globalPos, gridState, uiState.homeItems, dragState)
+                                    },
+                                    onDragEnd = {
+                                        val draggedItem = dragState.draggedItem
+                                        val result = dragState.endDrag()
+                                        handleDragEnd(result, draggedItem, viewModel, uiState.homeItems)
+                                    },
+                                    onDragCancel = { dragState.cancelDrag() },
+                                    isDragging = isDragging,
+                                    isReorderTarget = dragState.reorderHoverId == homeItem.folder.id
                                 )
                             }
                             is HomeItem.NoteItem -> {
@@ -1063,43 +1080,56 @@ private fun handleDragHitTest(
     dragState: DragState
 ) {
     val visibleItems = gridState.layoutInfo.visibleItemsInfo
-    val folderTarget = visibleItems.firstOrNull { itemInfo ->
-        val key = itemInfo.key
-        key is String && key.startsWith("folder_") &&
-            globalPos.x >= itemInfo.offset.x &&
-            globalPos.x <= itemInfo.offset.x + itemInfo.size.width &&
-            globalPos.y >= itemInfo.offset.y &&
-            globalPos.y <= itemInfo.offset.y + itemInfo.size.height
-    }
-    if (folderTarget != null) {
-        val folderId = (folderTarget.key as String).removePrefix("folder_")
-        dragState.setDropTarget(folderId)
-        dragState.setReorderTarget(-1)
-        dragState.setReorderHover(null)
-    } else {
-        dragState.setDropTarget(null)
-        val noteItems = visibleItems.filter {
-            it.key is String && (it.key as String).startsWith("note_")
+    val isDraggingFolder = dragState.draggedItem is HomeItem.FolderItem
+
+    // Only check folder drop-target when dragging a NOTE (folders can't nest)
+    if (!isDraggingFolder) {
+        val folderTarget = visibleItems.firstOrNull { itemInfo ->
+            val key = itemInfo.key
+            key is String && key.startsWith("folder_") &&
+                globalPos.x >= itemInfo.offset.x &&
+                globalPos.x <= itemInfo.offset.x + itemInfo.size.width &&
+                globalPos.y >= itemInfo.offset.y &&
+                globalPos.y <= itemInfo.offset.y + itemInfo.size.height
         }
-        // Find the closest note item by center distance
-        val closest = noteItems.minByOrNull { itemInfo ->
-            val cx = itemInfo.offset.x + itemInfo.size.width / 2
-            val cy = itemInfo.offset.y + itemInfo.size.height / 2
-            val dx = globalPos.x - cx
-            val dy = globalPos.y - cy
-            dx * dx + dy * dy
-        }
-        if (closest != null) {
-            val noteId = (closest.key as String).removePrefix("note_")
-            dragState.setReorderHover(noteId)
-            val insertIndex = noteItems.indexOfFirst { itemInfo ->
-                globalPos.y < itemInfo.offset.y + itemInfo.size.height / 2
-            }
-            dragState.setReorderTarget(if (insertIndex >= 0) insertIndex else noteItems.size)
-        } else {
-            dragState.setReorderHover(null)
+        if (folderTarget != null) {
+            val folderId = (folderTarget.key as String).removePrefix("folder_")
+            dragState.setDropTarget(folderId)
             dragState.setReorderTarget(-1)
+            dragState.setReorderHover(null)
+            return
         }
+    }
+
+    dragState.setDropTarget(null)
+    // Reorder among ALL visible items (folders + notes) when dragging a folder,
+    // or among notes only when dragging a note.
+    val reorderItems = if (isDraggingFolder) {
+        visibleItems.filter {
+            it.key is String && ((it.key as String).startsWith("folder_") || (it.key as String).startsWith("note_"))
+        }
+    } else {
+        visibleItems.filter { it.key is String && (it.key as String).startsWith("note_") }
+    }
+    // Find the closest item by center distance
+    val closest = reorderItems.minByOrNull { itemInfo ->
+        val cx = itemInfo.offset.x + itemInfo.size.width / 2
+        val cy = itemInfo.offset.y + itemInfo.size.height / 2
+        val dx = globalPos.x - cx
+        val dy = globalPos.y - cy
+        dx * dx + dy * dy
+    }
+    if (closest != null) {
+        val rawKey = closest.key as String
+        val hoverId = rawKey.removePrefix("folder_").removePrefix("note_")
+        dragState.setReorderHover(hoverId)
+        val insertIndex = reorderItems.indexOfFirst { itemInfo ->
+            globalPos.y < itemInfo.offset.y + itemInfo.size.height / 2
+        }
+        dragState.setReorderTarget(if (insertIndex >= 0) insertIndex else reorderItems.size)
+    } else {
+        dragState.setReorderHover(null)
+        dragState.setReorderTarget(-1)
     }
 }
 
@@ -1121,9 +1151,12 @@ private fun handleDragEnd(
             val mutableList = homeItems.toMutableList()
             val draggedIndex = mutableList.indexOf(item)
             if (draggedIndex < 0) return
-            // Find the hovered note's position in the full homeItems list
+            // Find the hovered item's position — could be a folder or a note
             val hoverIndex = mutableList.indexOfFirst { homeItem ->
-                homeItem is HomeItem.NoteItem && homeItem.subject.id == hoverId
+                when (homeItem) {
+                    is HomeItem.FolderItem -> homeItem.folder.id == hoverId
+                    is HomeItem.NoteItem -> homeItem.subject.id == hoverId
+                }
             }
             if (hoverIndex < 0 || hoverIndex == draggedIndex) return
             // Remove dragged item, then insert at the hovered position
