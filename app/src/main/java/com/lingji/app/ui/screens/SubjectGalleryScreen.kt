@@ -77,6 +77,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -133,6 +136,7 @@ fun SubjectGalleryScreen(
     val scope = rememberCoroutineScope()
     val hazeState = remember { HazeState() }
     val dragState = remember { DragState() }
+    var containerCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
     var showAddFolderDialog by remember { mutableStateOf(false) }
     var renameFolderId by remember { mutableStateOf<String?>(null) }
     var renameFolderDefault by remember { mutableStateOf("") }
@@ -280,6 +284,7 @@ fun SubjectGalleryScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .onGloballyPositioned { containerCoords = it }
         ) {
             if (uiState.subjects.isEmpty() && uiState.folders.isEmpty()) {
                 EmptySubjectState(onCreate = { showAddDialog = true })
@@ -371,7 +376,8 @@ fun SubjectGalleryScreen(
                                     onDragStart = { offset -> dragState.startDrag(homeItem, offset) },
                                     onDrag = { dragAmount ->
                                         dragState.updateDrag(dragAmount)
-                                        val globalPos = dragState.dragStartPos + dragState.dragOffset
+                                        val containerPos = containerCoords?.positionInRoot() ?: Offset.Zero
+                                        val globalPos = dragState.dragStartPos + dragState.dragOffset - containerPos
                                         handleDragHitTest(globalPos, gridState, uiState.homeItems, dragState)
                                     },
                                     onDragEnd = {
@@ -409,9 +415,10 @@ fun SubjectGalleryScreen(
                         Card(
                             modifier = Modifier
                                 .offset {
+                                    val containerPos = containerCoords?.positionInRoot() ?: Offset.Zero
                                     IntOffset(
-                                        (dragState.dragStartPos.x + dragState.dragOffset.x).toInt(),
-                                        (dragState.dragStartPos.y + dragState.dragOffset.y).toInt()
+                                        (dragState.dragStartPos.x + dragState.dragOffset.x - containerPos.x).toInt(),
+                                        (dragState.dragStartPos.y + dragState.dragOffset.y - containerPos.y).toInt()
                                     )
                                 }
                                 .width(160.dp)

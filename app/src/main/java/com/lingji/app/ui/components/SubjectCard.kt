@@ -43,6 +43,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -81,6 +84,7 @@ fun SubjectCard(
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var cardCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
 
     Card(
         modifier = modifier
@@ -88,9 +92,13 @@ fun SubjectCard(
             .heightIn(min = SubjectCardMinHeight)
             .clip(MaterialTheme.shapes.large)
             .clickable(onClick = onClick)
+            .onGloballyPositioned { cardCoords = it }
             .pointerInput(subject.id) {
                 detectDragGesturesAfterLongPress(
-                    onDragStart = { offset -> onDragStart(offset) },
+                    onDragStart = { offset ->
+                        val rootPos = cardCoords?.let { it.positionInRoot() + offset } ?: offset
+                        onDragStart(rootPos)
+                    },
                     onDrag = { change, dragAmount ->
                         change.consume()
                         onDrag(dragAmount)
