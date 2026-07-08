@@ -29,6 +29,8 @@ sealed class UpdateCheckResult {
     data class Failed(val reason: String) : UpdateCheckResult()
 }
 
+enum class UpdateSource { GITHUB, GITEE }
+
 @Singleton
 class UpdateChecker @Inject constructor(
     @ApplicationContext private val context: Context
@@ -55,24 +57,57 @@ class UpdateChecker @Inject constructor(
         .dns(ipv4PreferredDns)
         .build()
 
-    private val gson = Gson()
-
-    private companion object {
-        const val GITHUB_API = "https://api.github.com/repos/CaAlO22/LingBook-Android/releases/latest"
-        const val GITHUB_LATEST_HTML = "https://github.com/CaAlO22/LingBook-Android/releases/latest"
-        const val GITHUB_REPO_RELEASES = "https://github.com/CaAlO22/LingBook-Android/releases"
-    }
-
     /**
-     * 不跟随重定向的 client：用于回退路径从 ``github.com/.../releases/latest`` 的
-     * 302 Location 头解析最新 tag，绕开 ``api.github.com`` 在某些 VPN 出口 IP 被 403/429 拦截的情况。
+     * 不跟随重定向的 client：用于 GitHub 回退路径从
+     * ``github.com/.../releases/latest`` 的 302 Location 头解析最新 tag，
+     * 绕开 ``api.github.com`` 在某些 VPN 出口 IP 被 403/429 拦截的情况。
      */
     private val noRedirectClient: OkHttpClient = client.newBuilder()
         .followRedirects(false)
         .followSslRedirects(false)
         .build()
 
+    private val gson = Gson()
+
+    private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    private companion object {
+        const val PREFS_NAME = "update_prefs"
+        const val KEY_SOURCE = "update_source"
+
+        // GitHub
+        const val GITHUB_API = "https://api.github.com/repos/CaAlO22/LingBook-Android/releases/latest"
+        const val GITHUB_LATEST_HTML = "https://github.com/CaAlO22/LingBook-Android/releases/latest"
+        const val GITHUB_REPO_RELEASES = "https://github.com/CaAlO22/LingBook-Android/releases"
+
+        // Gitee
+        const val GITEE_API_LATEST =
+            "https://gitee.com/api/v5/repos/caalo22/ling-book-android/releases/latest"
+        const val GITEE_API_TAGS =
+            "https://gitee.com/api/v5/repos/caalo22/ling-book-android/tags"
+        const val GITEE_RELEASES_PAGE =
+            "https://gitee.com/caalo22/ling-book-android/releases"
+    }
+
+    fun getUpdateSource(): UpdateSource {
+        val name = prefs.getString(KEY_SOURCE, UpdateSource.GITEE.name) ?: UpdateSource.GITEE.name
+        return runCatching { UpdateSource.valueOf(name) }.getOrDefault(UpdateSource.GITEE)
+    }
+
+    fun setUpdateSource(source: UpdateSource) {
+        prefs.edit().putString(KEY_SOURCE, source.name).apply()
+    }
+
     suspend fun checkForUpdate(): UpdateCheckResult = withContext(Dispatchers.IO) {
+        when (getUpdateSource()) {
+            UpdateSource.GITHUB -> checkGithub()
+            UpdateSource.GITEE -> checkGitee()
+        }
+    }
+
+    // ── GitHub ─────────────────────────────────────────────────────────────
+
+    private suspend fun checkGithub(): UpdateCheckResult = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder()
                 .url(GITHUB_API)
@@ -86,7 +121,7 @@ class UpdateChecker @Inject constructor(
                     // 403/429/451 通常是 GitHub API 对该出口 IP 限速或封禁；
                     // 退化到不需要认证的 github.com 重定向抓取，仍可拿到最新 tag。
                     if (response.code == 403 || response.code == 429 || response.code == 451) {
-                        return@withContext fallbackViaHtmlRedirect(response.code)
+                        return@withContext githubFallbackViaHtmlRedirect(response.code)
                     }
                     return@withContext UpdateCheckResult.Failed(
                         "HTTP ${response.code} ${response.message.ifBlank { "" }}".trim()
@@ -95,7 +130,7 @@ class UpdateChecker @Inject constructor(
                 val json = response.body?.string()
                     ?: return@withContext UpdateCheckResult.Failed("响应内容为空")
                 val release = try {
-                    gson.fromJson(json, GitHubRelease::class.java)
+                    gson.fromJson(json, GithubRelease::class.java)
                 } catch (e: Exception) {
                     return@withContext UpdateCheckResult.Failed(
                         "解析响应失败：${e.message ?: e.javaClass.simpleName}"
@@ -138,10 +173,9 @@ class UpdateChecker @Inject constructor(
     /**
      * 当 ``api.github.com`` 返回 403/429/451 时的回退路径：
      * 访问 ``https://github.com/<repo>/releases/latest``，GitHub 会用 302 重定向到
-     * ``/releases/tag/v<x.y.z>``。从 Location 头里解析出 tag，再构造下载链接（直接指向
-     * 仓库 release 页，由用户在浏览器中下载 APK）。
+     * ``/releases/tag/v<x.y.z>``。从 Location 头里解析出 tag，再构造下载链接。
      */
-    private fun fallbackViaHtmlRedirect(originalCode: Int): UpdateCheckResult {
+    private fun githubFallbackViaHtmlRedirect(originalCode: Int): UpdateCheckResult {
         return try {
             val request = Request.Builder()
                 .url(GITHUB_LATEST_HTML)
@@ -177,6 +211,117 @@ class UpdateChecker @Inject constructor(
         } catch (e: Exception) {
             UpdateCheckResult.Failed(
                 "HTTP $originalCode（GitHub API 限流），回退也失败：${e.message ?: e.javaClass.simpleName}"
+            )
+        }
+    }
+
+    // ── Gitee ──────────────────────────────────────────────────────────────
+
+    private suspend fun checkGitee(): UpdateCheckResult = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder()
+                .url(GITEE_API_LATEST)
+                .header("Accept", "application/json")
+                .header("User-Agent", "LingBook-Android")
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    // 404 表示 Gitee 上还没有创建 Release，退化到 Tags API 获取最新标签
+                    if (response.code == 404) {
+                        return@withContext giteeFallbackViaTags()
+                    }
+                    return@withContext UpdateCheckResult.Failed(
+                        "HTTP ${response.code} ${response.message.ifBlank { "" }}".trim()
+                    )
+                }
+                val json = response.body?.string()
+                    ?: return@withContext UpdateCheckResult.Failed("响应内容为空")
+                val release = try {
+                    gson.fromJson(json, GiteeRelease::class.java)
+                } catch (e: Exception) {
+                    return@withContext UpdateCheckResult.Failed(
+                        "解析响应失败：${e.message ?: e.javaClass.simpleName}"
+                    )
+                } ?: return@withContext UpdateCheckResult.Failed("响应格式异常")
+
+                val tagName = release.tagName?.removePrefix("v")
+                    ?: return@withContext UpdateCheckResult.Failed("Release 缺少 tag_name 字段")
+
+                val currentVersion = getCurrentVersionName()
+                val hasUpdate = isNewerVersion(tagName, currentVersion)
+
+                val apkUrl = release.assets?.firstOrNull { asset ->
+                    asset.name?.endsWith(".apk", ignoreCase = true) == true
+                }?.browserDownloadUrl ?: GITEE_RELEASES_PAGE
+
+                UpdateCheckResult.Success(
+                    UpdateInfo(
+                        versionName = tagName,
+                        downloadUrl = apkUrl,
+                        releaseNotes = release.body ?: "",
+                        hasUpdate = hasUpdate
+                    )
+                )
+            }
+        } catch (e: UnknownHostException) {
+            UpdateCheckResult.Failed("DNS 解析失败：${e.message ?: "gitee.com"}")
+        } catch (e: SocketTimeoutException) {
+            UpdateCheckResult.Failed("连接超时：${e.message ?: "网络无响应"}")
+        } catch (e: SSLException) {
+            UpdateCheckResult.Failed("TLS 握手失败：${e.message ?: e.javaClass.simpleName}")
+        } catch (e: java.io.IOException) {
+            UpdateCheckResult.Failed("网络错误：${e.message ?: e.javaClass.simpleName}")
+        } catch (e: Exception) {
+            UpdateCheckResult.Failed("${e.javaClass.simpleName}: ${e.message ?: ""}".trim().trimEnd(':'))
+        }
+    }
+
+    /**
+     * 当 Gitee Releases API 返回 404（尚未创建 Release）时的回退路径：
+     * 通过 Tags API 获取最新标签名，推导版本号并指向 Gitee 发布页。
+     */
+    private fun giteeFallbackViaTags(): UpdateCheckResult {
+        return try {
+            val request = Request.Builder()
+                .url(GITEE_API_TAGS)
+                .header("User-Agent", "LingBook-Android")
+                .header("Accept", "application/json")
+                .get()
+                .build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return UpdateCheckResult.Failed(
+                        "Gitee 上暂无 Release，Tags API 也失败：HTTP ${response.code}"
+                    )
+                }
+                val json = response.body?.string()
+                    ?: return UpdateCheckResult.Failed("Tags 响应内容为空")
+                val tags = try {
+                    gson.fromJson(json, Array<GiteeTag>::class.java).orEmpty()
+                } catch (e: Exception) {
+                    return UpdateCheckResult.Failed(
+                        "解析 Tags 响应失败：${e.message ?: e.javaClass.simpleName}"
+                    )
+                }
+                val latestTag = tags.firstOrNull()?.name
+                    ?: return UpdateCheckResult.Failed("Gitee 上暂无标签")
+                val tagName = latestTag.removePrefix("v")
+                val currentVersion = getCurrentVersionName()
+                val hasUpdate = isNewerVersion(tagName, currentVersion)
+                UpdateCheckResult.Success(
+                    UpdateInfo(
+                        versionName = tagName,
+                        downloadUrl = GITEE_RELEASES_PAGE,
+                        releaseNotes = "（Gitee 上暂无 Release 详情，请到发布页查看。）",
+                        hasUpdate = hasUpdate
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            UpdateCheckResult.Failed(
+                "Gitee 上暂无 Release，Tags 回退也失败：${e.message ?: e.javaClass.simpleName}"
             )
         }
     }
@@ -238,15 +383,31 @@ class UpdateChecker @Inject constructor(
     }
 
     // GitHub API response models
-    private data class GitHubRelease(
+    private data class GithubRelease(
         @SerializedName("tag_name") val tagName: String?,
         @SerializedName("body") val body: String?,
         @SerializedName("html_url") val htmlUrl: String?,
-        @SerializedName("assets") val assets: List<GitHubAsset>?
+        @SerializedName("assets") val assets: List<GithubAsset>?
     )
 
-    private data class GitHubAsset(
+    private data class GithubAsset(
         @SerializedName("name") val name: String?,
         @SerializedName("browser_download_url") val browserDownloadUrl: String?
+    )
+
+    // Gitee API response models
+    private data class GiteeRelease(
+        @SerializedName("tag_name") val tagName: String?,
+        @SerializedName("body") val body: String?,
+        @SerializedName("assets") val assets: List<GiteeAsset>?
+    )
+
+    private data class GiteeAsset(
+        @SerializedName("name") val name: String?,
+        @SerializedName("browser_download_url") val browserDownloadUrl: String?
+    )
+
+    private data class GiteeTag(
+        @SerializedName("name") val name: String?
     )
 }

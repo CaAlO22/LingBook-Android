@@ -35,6 +35,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -58,6 +59,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lingji.app.R
+import com.lingji.app.data.remote.UpdateSource
 import com.lingji.app.domain.model.APIProvider
 import com.lingji.app.domain.model.AISettings
 import com.lingji.app.domain.model.HorizontalSwipeAction
@@ -331,6 +333,31 @@ fun SettingsScreen(
                         Icon(Icons.Default.SystemUpdate, contentDescription = null)
                         Text(stringResource(R.string.check_update), modifier = Modifier.padding(start = 8.dp))
                     }
+                }
+                // 更新检查源切换
+                val updateSource by updateViewModel.updateSource.collectAsState()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.update_source_label),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    FilterChip(
+                        selected = updateSource == UpdateSource.GITEE,
+                        onClick = { updateViewModel.setUpdateSource(UpdateSource.GITEE) },
+                        label = { Text("Gitee", style = MaterialTheme.typography.labelSmall) }
+                    )
+                    FilterChip(
+                        selected = updateSource == UpdateSource.GITHUB,
+                        onClick = { updateViewModel.setUpdateSource(UpdateSource.GITHUB) },
+                        label = { Text("GitHub", style = MaterialTheme.typography.labelSmall) }
+                    )
                 }
                 Row(
                     modifier = Modifier

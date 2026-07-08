@@ -233,6 +233,7 @@
     <string name="update_now">立即更新</string>
     <string name="update_later">稍后再说</string>
     <string name="update_downloading">下载中… %1$d%%</string>
+    <string name="update_source_label">更新源</string>
 
     <!-- 设置：API Key 显隐与复制 -->
     <string name="cd_toggle_api_key_visibility">显示/隐藏 API Key</string>

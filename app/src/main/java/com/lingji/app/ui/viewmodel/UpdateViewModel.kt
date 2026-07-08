@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.lingji.app.data.remote.UpdateCheckResult
 import com.lingji.app.data.remote.UpdateChecker
 import com.lingji.app.data.remote.UpdateInfo
+import com.lingji.app.data.remote.UpdateSource
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +35,14 @@ class UpdateViewModel @Inject constructor(
     /** 检查更新的一次性结果消息（已是最新 / 失败 / 等）。UI 消费后调用 [clearCheckMessage]。 */
     private val _checkMessage = MutableStateFlow<CheckMessage?>(null)
     val checkMessage: StateFlow<CheckMessage?> = _checkMessage.asStateFlow()
+
+    private val _updateSource = MutableStateFlow(updateChecker.getUpdateSource())
+    val updateSource: StateFlow<UpdateSource> = _updateSource.asStateFlow()
+
+    fun setUpdateSource(source: UpdateSource) {
+        updateChecker.setUpdateSource(source)
+        _updateSource.value = source
+    }
 
     fun checkForUpdate() {
         if (_isChecking.value) return
@@ -67,7 +76,7 @@ class UpdateViewModel @Inject constructor(
 
     fun downloadAndInstallApk() {
         val info = _updateInfo.value ?: return
-        // 回退路径下 downloadUrl 是 GitHub 网页（非 .apk），无法直接下载安装；
+        // 回退路径下 downloadUrl 是发布页（非 .apk），无法直接下载安装；
         // 改为用系统浏览器打开发布页，由用户手动下载。
         if (!info.downloadUrl.endsWith(".apk", ignoreCase = true)) {
             try {
