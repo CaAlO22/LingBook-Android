@@ -50,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -103,6 +104,10 @@ fun HomeChatSheet(
     val listState = rememberLazyListState()
     val dateFormat = remember { SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()) }
 
+    // Responsive bubble width: 72% of screen, clamped between 320dp (phone) and 560dp (tablet)
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val maxBubbleWidth = (screenWidthDp * 0.72f).coerceIn(320f, 560f).dp
+
     val submitInput: () -> Unit = {
         val text = inputText.text.trim()
         if (text.isNotBlank() && !isLoading) {
@@ -147,6 +152,8 @@ fun HomeChatSheet(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .widthIn(max = 720.dp)
+                .align(Alignment.Center)
                 .statusBarsPadding()
                 .imePadding()
         ) {
@@ -416,7 +423,7 @@ fun HomeChatSheet(
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
                                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                    modifier = Modifier.widthIn(max = 320.dp)
+                                    modifier = Modifier.widthIn(max = maxBubbleWidth)
                                 ) {
                                     Text(
                                         text = "🔧 ${msg.content}",
@@ -443,7 +450,7 @@ fun HomeChatSheet(
                                 )
                                 GlassSurface(
                                     shape = RoundedCornerShape(16.dp),
-                                    modifier = Modifier.widthIn(max = 320.dp)
+                                    modifier = Modifier.widthIn(max = maxBubbleWidth)
                                 ) {
                                     MarkdownView(
                                         markdown = msg.content,
@@ -468,7 +475,10 @@ fun HomeChatSheet(
                                     color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.8f),
                                     modifier = Modifier.padding(start = 6.dp, bottom = 2.dp)
                                 )
-                                GlassSurface(shape = RoundedCornerShape(16.dp)) {
+                                GlassSurface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    modifier = Modifier.widthIn(max = maxBubbleWidth)
+                                ) {
                                     MarkdownView(
                                         markdown = streamLine,
                                         textSizeSp = 15f,

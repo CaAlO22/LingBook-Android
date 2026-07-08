@@ -73,6 +73,7 @@ import com.lingji.app.R
 import com.lingji.app.domain.model.Fragment
 import com.lingji.app.domain.model.Subject
 import com.lingji.app.ui.components.ChatMode
+import com.lingji.app.ui.components.ChatScope
 import com.lingji.app.ui.components.ClipboardTooLargeDialog
 import com.lingji.app.ui.components.FloatingInputContainer
 import com.lingji.app.ui.components.FragmentList
@@ -324,18 +325,18 @@ fun FragmentSubjectScreen(
                                 PageChatBar(
                                     targetTitle = liveSubject.title,
                                     targetContent = liveSubject.aggregatedNote,
+                                    initialScope = ChatScope.NOTE,
                                     conversationHistory = noteChatHistory,
                                     currentAnswer = noteChatAnswer,
                                     isLoading = isNoteChatLoading,
-                                    placeholder = stringResource(R.string.note_chat_placeholder),
-                                    targetLabelFormat = stringResource(R.string.note_chat_target),
-                                    onSend = { question, mode ->
+                                    onSend = { question, mode, _ ->
                                         if (mode == ChatMode.AGENT) {
                                             noteChatAnswer = ""
                                             isNoteChatLoading = true
                                             viewModel.chatWithAgent(
                                                 subjectId = liveSubject.id,
                                                 question = question,
+                                                conversationHistory = noteChatHistory,
                                                 onToken = { token -> noteChatAnswer += token },
                                                 onComplete = { answer ->
                                                     viewModel.updateNoteChatHistory(liveSubject.id, noteChatHistory + Pair(question, answer))

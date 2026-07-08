@@ -145,7 +145,10 @@ class SubjectRepository @Inject constructor(
     }
 
     suspend fun savePageIndexEntries(subjectId: String, entries: List<PageIndexEntry>) {
-        subjectDao.updatePageIndexJson(subjectId, gson.toJson(entries))
+        val current = getSubjectByIdOnce(subjectId)?.pageIndexEntries ?: emptyList()
+        val newPageIds = entries.map { it.pageId }.toSet()
+        val merged = current.filter { it.pageId !in newPageIds } + entries
+        subjectDao.updatePageIndexJson(subjectId, gson.toJson(merged))
     }
 
     suspend fun updatePageIndexEntry(subjectId: String, pageId: String, entry: PageIndexEntry) {

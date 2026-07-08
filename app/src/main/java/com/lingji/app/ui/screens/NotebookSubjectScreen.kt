@@ -81,6 +81,7 @@ import com.lingji.app.domain.model.NotebookPage
 import com.lingji.app.domain.model.PageIndexEntry
 import com.lingji.app.domain.model.Subject
 import com.lingji.app.ui.components.ChatMode
+import com.lingji.app.ui.components.ChatScope
 import com.lingji.app.ui.components.ClipboardTooLargeDialog
 import com.lingji.app.ui.components.FloatingInputContainer
 import com.lingji.app.ui.components.IndexSearchPanel
@@ -444,16 +445,20 @@ fun NotebookSubjectScreen(
                         targetTitle = currentPage?.title?.takeIf { it.isNotBlank() }
                             ?: stringResource(R.string.unnamed_page),
                         targetContent = currentPage?.content ?: "",
+                        noteTitle = liveSubject.title,
+                        noteContent = liveSubject.aggregatedNote,
+                        enableScopeToggle = true,
                         conversationHistory = chatHistory,
                         currentAnswer = chatAnswer,
                         isLoading = isChatLoading,
-                        onSend = { question, mode ->
+                        onSend = { question, mode, scope ->
                             if (mode == ChatMode.AGENT) {
                                 chatAnswer = ""
                                 isChatLoading = true
                                 viewModel.chatWithAgent(
                                     subjectId = liveSubject.id,
                                     question = question,
+                                    conversationHistory = chatHistory,
                                     onToken = { token -> chatAnswer += token },
                                     onComplete = { answer ->
                                         chatHistory = chatHistory + Pair(question, answer)
@@ -467,26 +472,45 @@ fun NotebookSubjectScreen(
                                 )
                                 return@PageChatBar
                             }
-                            val page = currentPage ?: return@PageChatBar
-                            chatAnswer = ""
-                            isChatLoading = true
-                            viewModel.chatWithPage(
-                                page = page,
-                                question = question,
-                                conversationHistory = chatHistory,
-                                onToken = { token ->
-                                    chatAnswer += token
-                                },
-                                onComplete = { answer ->
-                                    chatHistory = chatHistory + Pair(question, answer)
-                                    chatAnswer = ""
-                                    isChatLoading = false
-                                },
-                                onError = { error ->
-                                    chatAnswer = "请求失败: $error"
-                                    isChatLoading = false
-                                }
-                            )
+                            // ASK 模式：根据范围选择内容源
+                            if (scope == ChatScope.NOTE) {
+                                chatAnswer = ""
+                                isChatLoading = true
+                                viewModel.chatWithNote(
+                                    subject = liveSubject,
+                                    question = question,
+                                    conversationHistory = chatHistory,
+                                    onToken = { token -> chatAnswer += token },
+                                    onComplete = { answer ->
+                                        chatHistory = chatHistory + Pair(question, answer)
+                                        chatAnswer = ""
+                                        isChatLoading = false
+                                    },
+                                    onError = { error ->
+                                        chatAnswer = "请求失败: $error"
+                                        isChatLoading = false
+                                    }
+                                )
+                            } else {
+                                val page = currentPage ?: return@PageChatBar
+                                chatAnswer = ""
+                                isChatLoading = true
+                                viewModel.chatWithPage(
+                                    page = page,
+                                    question = question,
+                                    conversationHistory = chatHistory,
+                                    onToken = { token -> chatAnswer += token },
+                                    onComplete = { answer ->
+                                        chatHistory = chatHistory + Pair(question, answer)
+                                        chatAnswer = ""
+                                        isChatLoading = false
+                                    },
+                                    onError = { error ->
+                                        chatAnswer = "请求失败: $error"
+                                        isChatLoading = false
+                                    }
+                                )
+                            }
                         },
                         onClearHistory = {
                             chatHistory = emptyList()

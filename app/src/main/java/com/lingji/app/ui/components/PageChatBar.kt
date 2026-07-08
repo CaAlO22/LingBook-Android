@@ -24,6 +24,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,10 +51,12 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lingji.app.R
 
 enum class ChatMode { ASK, AGENT, FRAGMENT }
+enum class ChatScope { PAGE, NOTE }
 
 @Composable
 fun PageChatBar(
@@ -62,11 +65,13 @@ fun PageChatBar(
     conversationHistory: List<Pair<String, String>>,
     currentAnswer: String,
     isLoading: Boolean,
-    onSend: (String, ChatMode) -> Unit,
+    onSend: (String, ChatMode, ChatScope) -> Unit,
     onClearHistory: () -> Unit,
     modifier: Modifier = Modifier,
-    placeholder: String = stringResource(R.string.chat_placeholder),
-    targetLabelFormat: String = stringResource(R.string.chat_target),
+    noteTitle: String = "",
+    noteContent: String = "",
+    enableScopeToggle: Boolean = false,
+    initialScope: ChatScope = ChatScope.PAGE,
     onCollapsedTopYChange: ((Float) -> Unit)? = null,
     onBarLayoutChange: ((Float, Float) -> Unit)? = null
 ) {
@@ -74,12 +79,27 @@ fun PageChatBar(
     var ctrlDown by remember { mutableStateOf(false) }
     var answerExpanded by remember { mutableStateOf(true) }
     var chatMode by remember { mutableStateOf(ChatMode.ASK) }
-    val agentLabelFormat = stringResource(R.string.chat_agent_target)
+    var chatScope by remember { mutableStateOf(initialScope) }
     val hasHistory = conversationHistory.isNotEmpty() || currentAnswer.isNotBlank() || isLoading
+
+    val modeAskLabel = stringResource(R.string.chat_mode_ask)
+    val modeAgentLabel = stringResource(R.string.chat_mode_agent)
+    val scopeNoteLabel = stringResource(R.string.chat_scope_note)
+    val unnamedPage = stringResource(R.string.unnamed_page)
+    val pagePlaceholder = stringResource(R.string.chat_placeholder)
+    val notePlaceholder = stringResource(R.string.note_chat_placeholder)
+    val agentPlaceholder = stringResource(R.string.chat_agent_placeholder)
+
+    // 根据模式和范围选择有效内容
+    val effectiveContent = when {
+        chatMode == ChatMode.AGENT -> ""  // Agent 不需要静态内容
+        chatScope == ChatScope.NOTE -> noteContent
+        else -> targetContent
+    }
     val inputReady = if (chatMode == ChatMode.AGENT) {
         question.text.isNotBlank() && !isLoading
     } else {
-        question.text.isNotBlank() && targetContent.isNotBlank() && !isLoading
+        question.text.isNotBlank() && effectiveContent.isNotBlank() && !isLoading
     }
     val enabled = inputReady
     val listState = rememberLazyListState()
@@ -88,7 +108,7 @@ fun PageChatBar(
         val text = question.text.trim()
         if (text.isNotBlank() && inputReady) {
             answerExpanded = true
-            onSend(text, chatMode)
+            onSend(text, chatMode, chatScope)
             question = TextFieldValue("")
         }
     }
@@ -97,6 +117,13 @@ fun PageChatBar(
         if (conversationHistory.isNotEmpty() || currentAnswer.isNotBlank()) {
             listState.animateScrollToItem(0)
         }
+    }
+
+    // 当前 placeholder
+    val currentPlaceholder = when {
+        chatMode == ChatMode.AGENT -> agentPlaceholder
+        chatScope == ChatScope.NOTE -> notePlaceholder
+        else -> pagePlaceholder
     }
 
     GlassSurface(
@@ -216,26 +243,85 @@ fun PageChatBar(
                 }
             }
 
-            val displayTitle = targetTitle.takeIf { it.isNotBlank() } ?: stringResource(R.string.unnamed_page)
-            val modeText = when (chatMode) {
-                ChatMode.ASK -> targetLabelFormat.format(displayTitle)
-                ChatMode.AGENT -> agentLabelFormat.format(displayTitle)
-                ChatMode.FRAGMENT -> displayTitle
+            // ── 双区域可点击标签：左侧切换模式(ASK/AGENT)，右侧切换范围(当前页/整本笔记) ──
+            val modeLabel = if (chatMode == ChatMode.ASK) modeAskLabel else modeAgentLabel
+            val modeColor = if (chatMode == ChatMode.AGENT)
+                MaterialTheme.colorScheme.tertiary
+            else
+                MaterialTheme.colorScheme.onSurfaceVariant
+
+            val scopeLabel = when (chatScope) {
+                ChatScope.PAGE -> targetTitle.takeIf { it.isNotBlank() } ?: unnamedPage
+                ChatScope.NOTE -> if (noteTitle.isNotBlank()) noteTitle else scopeNoteLabel
             }
-            val modeColor = when (chatMode) {
-                ChatMode.ASK -> MaterialTheme.colorScheme.onSurfaceVariant
-                ChatMode.AGENT -> MaterialTheme.colorScheme.tertiary
-                ChatMode.FRAGMENT -> MaterialTheme.colorScheme.onSurfaceVariant
-            }
-            Text(
-                text = modeText,
-                style = MaterialTheme.typography.labelSmall,
-                color = modeColor,
+            val scopeColor = MaterialTheme.colorScheme.primary
+
+            Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(3.dp))
-                    .clickable { chatMode = if (chatMode == ChatMode.ASK) ChatMode.AGENT else ChatMode.ASK }
-                    .padding(start = 4.dp, bottom = 4.dp)
-            )
+                    .fillMaxWidth()
+                    .padding(start = 2.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 左侧：模式切换芯片
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = modeColor.copy(alpha = 0.12f),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable {
+                            chatMode = if (chatMode == ChatMode.ASK) ChatMode.AGENT else ChatMode.ASK
+                        }
+                ) {
+                    Text(
+                        text = modeLabel,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = modeColor,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+
+                Text(
+                    text = "：",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.padding(horizontal = 2.dp)
+                )
+
+                // 右侧：范围切换芯片
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (enableScopeToggle) scopeColor.copy(alpha = 0.10f) else Color.Transparent,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(enabled = enableScopeToggle) {
+                            chatScope = if (chatScope == ChatScope.PAGE) ChatScope.NOTE else ChatScope.PAGE
+                        }
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = scopeLabel,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (enableScopeToggle) scopeColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .weight(1f, fill = false)
+                                .padding(end = if (enableScopeToggle) 2.dp else 0.dp)
+                        )
+                        if (enableScopeToggle) {
+                            Icon(
+                                imageVector = Icons.Default.SwapHoriz,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = scopeColor.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                }
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -244,7 +330,7 @@ fun PageChatBar(
                 val inputEnabled = if (chatMode == ChatMode.AGENT) {
                     !isLoading
                 } else {
-                    targetContent.isNotBlank() && !isLoading
+                    effectiveContent.isNotBlank() && !isLoading
                 }
                 BasicTextField(
                     value = question,
@@ -284,7 +370,7 @@ fun PageChatBar(
                         Box(modifier = Modifier.fillMaxWidth()) {
                             if (question.text.isEmpty()) {
                                 Text(
-                                    text = placeholder,
+                                    text = currentPlaceholder,
                                     style = MaterialTheme.typography.bodyLarge,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f)
                                 )
