@@ -8,6 +8,8 @@ import com.lingji.app.data.remote.LLMService
 import com.lingji.app.data.repository.SettingsRepository
 import com.lingji.app.data.repository.SubjectRepository
 import com.lingji.app.domain.tool.fragment.FragmentTools
+import com.lingji.app.domain.tool.image.ConversationImageStore
+import com.lingji.app.domain.tool.image.ImageTools
 import com.lingji.app.domain.tool.note.NoteTools
 import com.lingji.app.domain.tool.page.PageTools
 import com.lingji.app.domain.tool.search.SearchTools
@@ -21,13 +23,15 @@ class ToolRegistry @Inject constructor(
     llmService: LLMService,
     settingsRepository: SettingsRepository,
     subjectSummaryDao: SubjectSummaryDao,
-    indexService: IndexService
+    indexService: IndexService,
+    conversationImageStore: ConversationImageStore
 ) {
     private val tools: Map<String, Tool> = buildList {
         addAll(SubjectTools.create(subjectRepository, subjectSummaryDao))
         addAll(PageTools.create(subjectRepository))
         addAll(FragmentTools.create(subjectRepository))
         addAll(NoteTools.create(subjectRepository))
+        addAll(ImageTools.create(subjectRepository, conversationImageStore))
         addAll(SearchTools.create(subjectRepository, llmService, settingsRepository, subjectSummaryDao, indexService))
     }.associateBy { it.name }
 

@@ -32,6 +32,7 @@ import com.lingji.app.domain.model.Subject
 import com.lingji.app.domain.model.SubjectType
 import com.lingji.app.domain.model.fullNoteContent
 import com.lingji.app.domain.model.generateId
+import com.lingji.app.domain.tool.image.ConversationImageStore
 import com.lingji.app.ui.components.ChatMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -57,7 +58,8 @@ class SubjectViewModel @Inject constructor(
     private val homeAgentService: HomeAgentService,
     private val indexService: IndexService,
     private val fileManager: FileManager,
-    private val homeChatDao: HomeChatDao
+    private val homeChatDao: HomeChatDao,
+    private val conversationImageStore: ConversationImageStore
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SubjectUiState())
@@ -821,6 +823,7 @@ class SubjectViewModel @Inject constructor(
     fun startNewConversation() {
         setProcessing(false)
         messagesCollectJob?.cancel()
+        conversationImageStore.clear()
         val currentId = _uiState.value.homeCurrentConversationId
         val currentMessages = _uiState.value.homeMessages
         if (currentId != null && currentMessages.isNotEmpty()) {
@@ -839,6 +842,11 @@ class SubjectViewModel @Inject constructor(
 
     fun loadConversation(id: String) {
         setProcessing(false)
+        conversationImageStore.clear()
+        // 加载会话时，若用户在碎片界面，则切换到 Agent 界面
+        if (_uiState.value.homeChatMode == ChatMode.FRAGMENT) {
+            _uiState.update { it.copy(homeChatMode = ChatMode.AGENT) }
+        }
         val currentId = _uiState.value.homeCurrentConversationId
         val currentMessages = _uiState.value.homeMessages
         if (currentId != null && currentMessages.isNotEmpty()) {
@@ -932,10 +940,10 @@ class SubjectViewModel @Inject constructor(
         Log.d("Fragment", "persistHomeFragments -> DONE count=${fragments.size}")
     }
 
-    fun sendHomeMessage(text: String) {
+    fun sendHomeMessage(text: String, images: List<String> = emptyList()) {
         val mode = _uiState.value.homeChatMode
-        Log.d("Fragment", "sendHomeMessage | mode=$mode text='${text.take(50)}'")
-        if (text.isBlank()) return
+        Log.d("Fragment", "sendHomeMessage | mode=$mode text='${text.take(50)}' images=${images.size}")
+        if (text.isBlank() && images.isEmpty()) return
 
         if (mode == ChatMode.FRAGMENT) {
             addHomeFragment(text)
@@ -946,7 +954,10 @@ class SubjectViewModel @Inject constructor(
         if (!ensureAiConfigured()) return
 
         val timestamp = System.currentTimeMillis()
-        val userMessage = HomeChatMessage(role = "user", content = text, timestamp = timestamp)
+        val displayContent = if (images.isNotEmpty()) {
+            "$text${if (text.isNotBlank()) "\n" else ""}[附${images.size}张图片]"
+        } else text
+        val userMessage = HomeChatMessage(role = "user", content = displayContent, timestamp = timestamp)
 
         processingJob?.cancel()
         processingJob = viewModelScope.launch {
@@ -963,7 +974,7 @@ class SubjectViewModel @Inject constructor(
             }
 
             try {
-                homeChatDao.insertMessageRaw(id = UUID.randomUUID().toString(), conversationId = convId, role = "user", content = text, toolCallsJson = null, timestamp = timestamp)
+                homeChatDao.insertMessageRaw(id = UUID.randomUUID().toString(), conversationId = convId, role = "user", content = displayContent, toolCallsJson = null, timestamp = timestamp)
             } catch (e: Exception) {
                 Log.e("HomeChat", "insertMessageRaw FAILED: ${e.message}", e)
             }
@@ -971,17 +982,18 @@ class SubjectViewModel @Inject constructor(
             setProcessing(true, "AI 回答中…")
             _uiState.update { it.copy(homeMessages = it.homeMessages + userMessage, homeStreamLine = "", homeIsLoading = true, aiErrorMessage = null) }
             homeMessageCache[convId] = _uiState.value.homeMessages
-            runHomeAgent(text, convId)
+            runHomeAgent(text, convId, images)
         }
     }
 
-    private suspend fun runHomeAgent(question: String, convId: String) {
+    private suspend fun runHomeAgent(question: String, convId: String, images: List<String> = emptyList()) {
         val priorMessages = homeAgentMessageCache["_current"] ?: emptyList()
         val collectedMessages = mutableListOf<ChatMessage>()
         val toolCallDescriptions = mutableListOf<HomeChatMessage>()
         homeAgentService.runHomeAgentLoop(
             question = question,
             priorMessages = priorMessages,
+            images = images,
             onReasoning = { appendReasoning(it) },
             onToolCall = { toolName, args, result ->
                 // AI 岛显示原始工具调用信息（工具名 + 参数 + 结果）

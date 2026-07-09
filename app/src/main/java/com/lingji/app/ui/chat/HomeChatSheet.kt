@@ -1,7 +1,13 @@
 package com.lingji.app.ui.chat
 
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.util.Base64
 import android.util.Log
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -24,10 +30,12 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.History
@@ -48,9 +56,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,6 +72,7 @@ import com.lingji.app.ui.components.ChatMode
 import com.lingji.app.ui.components.GlassSurface
 import com.lingji.app.ui.components.MarkdownView
 import com.lingji.app.ui.components.enterSendBehavior
+import com.lingji.app.ui.components.uriToBase64
 import com.lingji.app.ui.viewmodel.HomeChatMessage
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -75,14 +87,15 @@ fun HomeChatSheet(
     conversations: List<HomeConversationEntity>,
     currentConversationId: String?,
     fragments: List<String>,
-    onSend: (String) -> Unit,
+    onSend: (String, List<String>) -> Unit,
     onModeChange: (ChatMode) -> Unit,
     onNewConversation: () -> Unit,
     onLoadConversation: (String) -> Unit,
     onDeleteConversation: (String) -> Unit,
     onDeleteFragment: (Int) -> Unit,
     onOrganizeFragments: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    supportsVision: Boolean = false
 ) {
     val TAG = "HomeChat"
 
@@ -98,15 +111,30 @@ fun HomeChatSheet(
     val listState = rememberLazyListState()
     val dateFormat = remember { SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()) }
 
+    val context = LocalContext.current
+    val selectedImages = remember { androidx.compose.runtime.mutableStateListOf<String>() }
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val base64 = uriToBase64(context, uri)
+            if (base64 != null) {
+                selectedImages.add(base64)
+            }
+        }
+    }
+
     // Responsive bubble width: 72% of screen, clamped between 320dp (phone) and 560dp (tablet)
     val screenWidthDp = LocalConfiguration.current.screenWidthDp
     val maxBubbleWidth = (screenWidthDp * 0.72f).coerceIn(320f, 560f).dp
 
     val submitInput: () -> Unit = {
         val text = inputText.text.trim()
-        if (text.isNotBlank() && !isLoading) {
-            onSend(text)
+        if ((text.isNotBlank() || selectedImages.isNotEmpty()) && !isLoading) {
+            onSend(text, selectedImages.toList())
             inputText = TextFieldValue("")
+            selectedImages.clear()
         }
     }
 
@@ -503,6 +531,53 @@ fun HomeChatSheet(
             }
             }
 
+            // --- 图片预览区 ---
+            if (selectedImages.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    selectedImages.forEachIndexed { index, base64 ->
+                        val bitmap = remember(base64) {
+                            try {
+                                val bytes = Base64.decode(base64.substringAfter(","), Base64.NO_WRAP)
+                                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                            } catch (e: Exception) { null }
+                        }
+                        if (bitmap != null) {
+                            Box(
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                            ) {
+                                Image(
+                                    bitmap = bitmap.asImageBitmap(),
+                                    contentDescription = "图片${index + 1}",
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .size(20.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.error.copy(alpha = 0.7f))
+                                        .clickable { selectedImages.removeAt(index) },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "×",
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // --- Input Area ---
             Row(
                 modifier = Modifier
@@ -511,6 +586,20 @@ fun HomeChatSheet(
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.Bottom
             ) {
+                // 图片选择按钮（仅 AGENT 模式 + 支持视觉时显示）
+                if (currentMode == ChatMode.AGENT && supportsVision && !isLoading) {
+                    IconButton(
+                        onClick = { galleryLauncher.launch("image/*") },
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AddPhotoAlternate,
+                            contentDescription = "添加图片",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
                 GlassSurface(
                     shape = RoundedCornerShape(20.dp),
                     modifier = Modifier.weight(1f)
@@ -545,7 +634,7 @@ fun HomeChatSheet(
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 val isFragmentMode = currentMode == ChatMode.FRAGMENT
-                val canSend = inputText.text.isNotBlank() && (isFragmentMode || !isLoading)
+                val canSend = (inputText.text.isNotBlank() || selectedImages.isNotEmpty()) && (isFragmentMode || !isLoading)
                 TextButton(
                     onClick = submitInput,
                     enabled = canSend,

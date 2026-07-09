@@ -220,7 +220,7 @@ private fun createTempImageUri(context: Context): Uri {
     )
 }
 
-private fun uriToBase64(context: Context, uri: Uri): String? {
+internal fun uriToBase64(context: Context, uri: Uri): String? {
     return try {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         context.contentResolver.openInputStream(uri)?.use { input ->

@@ -92,6 +92,7 @@ import com.lingji.app.domain.model.Folder
 import com.lingji.app.domain.model.HomeItem
 import com.lingji.app.domain.model.Subject
 import com.lingji.app.domain.model.SubjectType
+import com.lingji.app.domain.provider.ProviderRegistry
 import com.lingji.app.ui.chat.HomeChatBar
 import com.lingji.app.ui.chat.HomeChatSheet
 import com.lingji.app.ui.components.ClipboardTooLargeDialog
@@ -651,14 +652,15 @@ fun SubjectGalleryScreen(
             conversations = uiState.homeConversations,
             currentConversationId = uiState.homeCurrentConversationId,
             fragments = uiState.homeFragments,
-            onSend = { text -> viewModel.sendHomeMessage(text) },
+            onSend = { text, images -> viewModel.sendHomeMessage(text, images) },
             onModeChange = { viewModel.setHomeChatMode(it) },
             onNewConversation = { viewModel.startNewConversation() },
             onLoadConversation = { viewModel.loadConversation(it) },
             onDeleteConversation = { viewModel.deleteConversation(it) },
             onDeleteFragment = { viewModel.removeHomeFragment(it) },
             onOrganizeFragments = { viewModel.organizeHomeFragments() },
-            onDismiss = { viewModel.toggleHomeChat() }
+            onDismiss = { viewModel.toggleHomeChat() },
+            supportsVision = ProviderRegistry.supportsVision(uiState.settings.provider, uiState.settings.modelName)
         )
     }
     }
