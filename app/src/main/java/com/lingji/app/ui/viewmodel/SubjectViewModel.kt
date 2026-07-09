@@ -20,6 +20,8 @@ import com.lingji.app.data.remote.models.ToolCall
 import com.lingji.app.data.repository.SettingsRepository
 import com.lingji.app.data.repository.SubjectRepository
 import com.lingji.app.domain.model.AISettings
+import com.lingji.app.domain.model.LiteModelConfig
+import com.lingji.app.domain.model.toAISettings
 import com.lingji.app.ui.viewmodel.AiIslandLine
 import com.lingji.app.domain.model.Folder
 import com.lingji.app.domain.model.Fragment
@@ -490,7 +492,8 @@ class SubjectViewModel @Inject constructor(
         onToken: (String) -> Unit,
         onComplete: (String) -> Unit = {},
         onError: (String) -> Unit = {},
-        conversationHistory: List<Pair<String, String>> = emptyList()
+        conversationHistory: List<Pair<String, String>> = emptyList(),
+        contextContent: String = ""
     ) {
         if (_uiState.value.isProcessing) return
         processingJob?.cancel()
@@ -529,7 +532,8 @@ class SubjectViewModel @Inject constructor(
                             "⏹️ 监督者判断应终止：$reason\n\n"
                         }
                         appendStream(display)
-                    }
+                    },
+                    contextContent = contextContent
                 )
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -683,6 +687,50 @@ class SubjectViewModel @Inject constructor(
             setProcessing(true, "正在测试多模态连接…")
             try {
                 val result = llmService.testMultimodalConnection(_uiState.value.settings, imageBase64)
+                onResult(result)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _uiState.update { it.copy(aiErrorMessage = e.message ?: "多模态测试失败") }
+                onResult(false to (e.message ?: "多模态测试失败"))
+            } finally {
+                setProcessing(false)
+            }
+        }
+    }
+
+    fun saveLiteModelSettings(liteModel: LiteModelConfig) {
+        viewModelScope.launch {
+            settingsRepository.save(_uiState.value.settings.copy(liteModel = liteModel))
+        }
+    }
+
+    fun testLiteModelConnection(onResult: (Pair<Boolean, String>) -> Unit) {
+        if (_uiState.value.isProcessing) return
+        viewModelScope.launch {
+            setProcessing(true, "正在测试轻量模型连接…")
+            try {
+                val liteSettings = _uiState.value.settings.liteModel
+                    .toAISettings(_uiState.value.settings.providerApiKeys)
+                val result = llmService.testConnection(liteSettings)
+                onResult(result)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _uiState.update { it.copy(aiErrorMessage = e.message ?: "测试失败") }
+                onResult(false to (e.message ?: "测试失败"))
+            } finally {
+                setProcessing(false)
+            }
+        }
+    }
+
+    fun testLiteMultimodalConnection(imageBase64: String, onResult: (Pair<Boolean, String>) -> Unit) {
+        if (_uiState.value.isProcessing) return
+        viewModelScope.launch {
+            setProcessing(true, "正在测试轻量模型多模态连接…")
+            try {
+                val liteSettings = _uiState.value.settings.liteModel
+                    .toAISettings(_uiState.value.settings.providerApiKeys)
+                val result = llmService.testMultimodalConnection(liteSettings, imageBase64)
                 onResult(result)
             } catch (e: Exception) {
                 e.printStackTrace()
