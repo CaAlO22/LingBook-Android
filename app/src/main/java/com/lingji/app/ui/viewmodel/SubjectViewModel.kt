@@ -30,6 +30,7 @@ import com.lingji.app.domain.model.PageIndexEntry
 import com.lingji.app.domain.model.SearchResult
 import com.lingji.app.domain.model.Subject
 import com.lingji.app.domain.model.SubjectType
+import com.lingji.app.domain.model.fullNoteContent
 import com.lingji.app.domain.model.generateId
 import com.lingji.app.ui.components.ChatMode
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -428,7 +429,7 @@ class SubjectViewModel @Inject constructor(
         conversationHistory: List<Pair<String, String>> = emptyList()
     ) {
         chatWithContent(
-            content = subject.aggregatedNote,
+            content = subject.fullNoteContent(),
             question = question,
             pageTitle = subject.title,
             onToken = onToken,

@@ -100,3 +100,22 @@ sealed interface HomeItem {
 
 fun Subject.defaultPages(): List<NotebookPage> = pages ?: emptyList()
 fun Subject.defaultPageIndex(): List<PageIndex> = pageIndex ?: emptyList()
+
+/**
+ * 返回笔记的"整本"可读内容，用于 AI 对话（整本笔记范围）等场景：
+ * - NOTEBOOK：按顺序拼接所有页（含页标题），而非初始欢迎语 aggregatedNote。
+ * - FRAGMENT：优先用聚合笔记，为空时回退到碎片原文拼接。
+ */
+fun Subject.fullNoteContent(): String = when (type) {
+    SubjectType.NOTEBOOK -> {
+        val notebookPages = pages ?: emptyList()
+        notebookPages.joinToString("\n\n") { p ->
+            val title = if (p.title.isNotBlank()) "## ${p.title}\n" else ""
+            "$title${p.content}"
+        }
+    }
+    SubjectType.FRAGMENT -> {
+        if (aggregatedNote.isNotBlank()) aggregatedNote
+        else fragments.joinToString("\n") { it.content }
+    }
+}

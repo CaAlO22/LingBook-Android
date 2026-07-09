@@ -80,6 +80,7 @@ import com.lingji.app.domain.model.HorizontalSwipeAction
 import com.lingji.app.domain.model.NotebookPage
 import com.lingji.app.domain.model.PageIndexEntry
 import com.lingji.app.domain.model.Subject
+import com.lingji.app.domain.model.fullNoteContent
 import com.lingji.app.ui.components.ChatMode
 import com.lingji.app.ui.components.ChatScope
 import com.lingji.app.ui.components.ClipboardTooLargeDialog
@@ -446,7 +447,7 @@ fun NotebookSubjectScreen(
                             ?: stringResource(R.string.unnamed_page),
                         targetContent = currentPage?.content ?: "",
                         noteTitle = liveSubject.title,
-                        noteContent = liveSubject.aggregatedNote,
+                        noteContent = liveSubject.fullNoteContent(),
                         enableScopeToggle = true,
                         conversationHistory = chatHistory,
                         currentAnswer = chatAnswer,
