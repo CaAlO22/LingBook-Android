@@ -2,6 +2,7 @@ package com.lingji.app.domain.tool.note
 
 import com.google.gson.JsonObject
 import com.lingji.app.data.repository.SubjectRepository
+import com.lingji.app.domain.model.fullNoteContent
 import com.lingji.app.domain.tool.Tool
 import com.lingji.app.domain.tool.buildJsonArray
 import com.lingji.app.domain.tool.buildJsonObject
@@ -17,7 +18,7 @@ object NoteTools {
 
     private class GetAggregatedNote(private val repo: SubjectRepository) : Tool {
         override val name = "get_aggregated_note"
-        override val description = "读取指定笔记的聚合笔记内容（由碎片聚合而成的 Markdown 笔记）。"
+        override val description = "读取指定笔记的完整内容（NOTEBOOK 为各页拼接，FRAGMENT 为聚合笔记或碎片原文）。"
         override val parameters = buildJsonObject {
             "type" to "object"
             "properties" to buildJsonObject {
@@ -30,7 +31,7 @@ object NoteTools {
                 ?: return "Error: Missing required parameter: subject_id"
             val subject = repo.getSubjectByIdOnce(subjectId)
                 ?: return "Error: Subject not found: $subjectId"
-            return buildJsonObject { "content" to subject.aggregatedNote }.toString()
+            return buildJsonObject { "content" to subject.fullNoteContent() }.toString()
         }
     }
 

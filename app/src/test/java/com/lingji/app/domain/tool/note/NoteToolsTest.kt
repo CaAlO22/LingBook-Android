@@ -2,6 +2,7 @@ package com.lingji.app.domain.tool.note
 
 import com.google.gson.JsonObject
 import com.lingji.app.data.repository.SubjectRepository
+import com.lingji.app.domain.model.NotebookPage
 import com.lingji.app.domain.model.Subject
 import com.lingji.app.domain.model.SubjectType
 import io.mockk.coEvery
@@ -21,6 +22,7 @@ class NoteToolsTest {
     private val testSubject = Subject(
         id = "s1", title = "Math", type = SubjectType.NOTEBOOK,
         aggregatedNote = "# Math\n\nContent here",
+        pages = listOf(NotebookPage(id = "p1", title = "代数", content = "代数内容")),
         studyPlan = "Plan A"
     )
 
@@ -34,7 +36,8 @@ class NoteToolsTest {
         coEvery { repo.getSubjectByIdOnce("s1") } returns testSubject
         val params = JsonObject().apply { addProperty("subject_id", "s1") }
         val result = toolMap["get_aggregated_note"]!!.execute(params)
-        assertTrue(result.contains("\"content\":\"# Math"))
+        // NOTEBOOK 类型应返回页面拼接内容，而非 aggregatedNote 欢迎语
+        assertTrue(result.contains("代数内容"))
     }
 
     @Test
