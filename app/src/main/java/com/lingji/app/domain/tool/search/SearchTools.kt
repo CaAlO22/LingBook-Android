@@ -67,7 +67,7 @@ object SearchTools {
         private val indexService: IndexService
     ) : Tool {
         override val name = "search_pages"
-        override val description = "按关键词搜索笔记页面。可指定 subject_id 搜索特定笔记，不传则搜索全部笔记。返回匹配页面的标题、摘要片段和匹配度。"
+        override val description = "基于 AI 生成的关键词索引和摘要进行语义搜索（可匹配近义词、别名、拼音等）。可指定 subject_id 搜索特定笔记，不传则搜索全部笔记。返回匹配页面的标题、摘要片段和匹配度。"
         override val parameters = buildJsonObject {
             "type" to "object"
             "properties" to buildJsonObject {
@@ -168,7 +168,7 @@ object SearchTools {
             subject: Subject,
             settings: AISettings?
         ): String {
-            if (settings == null || settings.apiKey.isBlank()) return "AI未配置"
+            if (settings == null || settings.apiKey.isBlank()) return "Error: AI 未配置，无法生成摘要"
             val content = when (subject.type) {
                 SubjectType.NOTEBOOK -> {
                     val pages = subject.pages ?: emptyList()
@@ -192,7 +192,7 @@ object SearchTools {
                 val cleaned = LLMService.sanitizeOutput(raw).trim()
                 summaryDao.upsert(SubjectSummaryEntity(subject.id, cleaned, System.currentTimeMillis()))
                 cleaned
-            }.getOrElse { "摘要生成失败" }
+            }.getOrElse { "Error: 摘要生成失败: ${it.message ?: "未知错误"}" }
         }
     }
 }

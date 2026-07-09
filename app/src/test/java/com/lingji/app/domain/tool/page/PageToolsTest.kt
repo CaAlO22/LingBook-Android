@@ -75,7 +75,7 @@ class PageToolsTest {
         val params = JsonObject().apply {
             addProperty("subject_id", "s2")
             addProperty("page_id", "p1")
-            addProperty("content", "Updated content")
+            addProperty("title", "Updated Title")
         }
         val result = toolMap["update_page"]!!.execute(params)
         assertTrue(result.startsWith("Error:"))
@@ -147,7 +147,7 @@ class PageToolsTest {
         val params = JsonObject().apply {
             addProperty("subject_id", "s1")
             addProperty("page_id", "p1")
-            addProperty("content", "Updated content")
+            addProperty("title", "Updated Title")
         }
         val result = toolMap["update_page"]!!.execute(params)
         assertTrue(result.contains("\"success\":true"))

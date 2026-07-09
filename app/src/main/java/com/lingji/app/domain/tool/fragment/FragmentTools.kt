@@ -89,6 +89,11 @@ object FragmentTools {
                 ?: return "Error: Missing required parameter: fragment_id"
             val content = params.get("content")?.asString
                 ?: return "Error: Missing required parameter: content"
+            val subject = repo.getSubjectByIdOnce(subjectId)
+                ?: return "Error: Subject not found: $subjectId"
+            val allFragments = subject.fragments + subject.unmergedFragments
+            if (allFragments.none { it.id == fragmentId })
+                return "Error: Fragment not found: $fragmentId"
             repo.updateFragment(subjectId, fragmentId, content)
             return """{"success":true}"""
         }
@@ -110,6 +115,11 @@ object FragmentTools {
                 ?: return "Error: Missing required parameter: subject_id"
             val fragmentId = params.get("fragment_id")?.asString
                 ?: return "Error: Missing required parameter: fragment_id"
+            val subject = repo.getSubjectByIdOnce(subjectId)
+                ?: return "Error: Subject not found: $subjectId"
+            val allFragments = subject.fragments + subject.unmergedFragments
+            if (allFragments.none { it.id == fragmentId })
+                return "Error: Fragment not found: $fragmentId"
             repo.deleteFragment(subjectId, fragmentId)
             return """{"success":true}"""
         }
@@ -117,7 +127,7 @@ object FragmentTools {
 
     private class SearchFragments(private val repo: SubjectRepository) : Tool {
         override val name = "search_fragments"
-        override val description = "按关键词搜索笔记碎片内容。可指定 subject_id 搜索特定笔记，不传则搜索全部笔记的碎片。返回匹配碎片的内容片段和匹配度。"
+        override val description = "基于原文直接匹配搜索笔记碎片内容（精确关键词查找）。可指定 subject_id 搜索特定笔记，不传则搜索全部笔记的碎片。返回匹配碎片的内容片段和匹配度。"
         override val parameters = buildJsonObject {
             "type" to "object"
             "properties" to buildJsonObject {

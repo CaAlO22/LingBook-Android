@@ -110,30 +110,31 @@ object PageTools {
 
     private class UpdatePage(private val repo: SubjectRepository) : Tool {
         override val name = "update_page"
-        override val description = "更新指定笔记本笔记中某页面的标题和/或内容。仅 notebook 类型笔记可用。"
+        override val description = "更新指定笔记本笔记中某页面的标题。仅 notebook 类型笔记可用。编辑页面内容请使用 edit_replace。"
         override val parameters = buildJsonObject {
             "type" to "object"
             "properties" to buildJsonObject {
                 "subject_id" to buildJsonObject { "type" to "string"; "description" to "笔记 ID（必须为 notebook 类型）" }
                 "page_id" to buildJsonObject { "type" to "string"; "description" to "页面 ID" }
-                "title" to buildJsonObject { "type" to "string"; "description" to "新标题（可选）" }
-                "content" to buildJsonObject { "type" to "string"; "description" to "新内容（可选）" }
+                "title" to buildJsonObject { "type" to "string"; "description" to "新标题" }
             }
-            "required" to buildJsonArray { +"subject_id"; +"page_id" }
+            "required" to buildJsonArray { +"subject_id"; +"page_id"; +"title" }
         }
         override suspend fun execute(params: JsonObject): String {
             val subjectId = params.get("subject_id")?.asString
                 ?: return "Error: Missing required parameter: subject_id"
             val pageId = params.get("page_id")?.asString
                 ?: return "Error: Missing required parameter: page_id"
+            val title = params.get("title")?.asString
+                ?: return "Error: Missing required parameter: title"
+            if (title.isBlank()) return "Error: title 不能为空"
             val subject = repo.getSubjectByIdOnce(subjectId)
                 ?: return "Error: Subject not found: $subjectId"
             if (subject.isFragmentType()) return subject.pageNotSupportedError()
             val existing = subject.pages?.find { it.id == pageId }
                 ?: return "Error: Page not found: $pageId"
             val updated = existing.copy(
-                title = params.get("title")?.asString ?: existing.title,
-                content = params.get("content")?.asString ?: existing.content,
+                title = title,
                 updatedAt = System.currentTimeMillis()
             )
             repo.updatePage(subjectId, updated)
@@ -160,6 +161,8 @@ object PageTools {
             val subject = repo.getSubjectByIdOnce(subjectId)
                 ?: return "Error: Subject not found: $subjectId"
             if (subject.isFragmentType()) return subject.pageNotSupportedError()
+            subject.pages?.find { it.id == pageId }
+                ?: return "Error: Page not found: $pageId"
             repo.deletePage(subjectId, pageId)
             return """{"success":true}"""
         }

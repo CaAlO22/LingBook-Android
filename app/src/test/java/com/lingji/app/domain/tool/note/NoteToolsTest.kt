@@ -35,8 +35,8 @@ class NoteToolsTest {
     )
 
     @Test
-    fun create_returnsFiveTools() {
-        assertEquals(5, tools.size)
+    fun create_returnsFourTools() {
+        assertEquals(4, tools.size)
     }
 
     @Test
@@ -46,18 +46,6 @@ class NoteToolsTest {
         val result = toolMap["get_aggregated_note"]!!.execute(params)
         // NOTEBOOK 类型应返回页面拼接内容，而非 aggregatedNote 欢迎语
         assertTrue(result.contains("代数内容"))
-    }
-
-    @Test
-    fun update_aggregated_note_callsRepo() = runTest {
-        coEvery { repo.updateAggregatedNote("s1", "New content") } returns Unit
-        val params = JsonObject().apply {
-            addProperty("subject_id", "s1")
-            addProperty("content", "New content")
-        }
-        val result = toolMap["update_aggregated_note"]!!.execute(params)
-        assertTrue(result.contains("\"success\":true"))
-        coVerify { repo.updateAggregatedNote("s1", "New content") }
     }
 
     @Test

@@ -53,6 +53,7 @@ class FragmentToolsTest {
 
     @Test
     fun update_fragment_callsRepo() = runTest {
+        coEvery { repo.getSubjectByIdOnce("s1") } returns testSubject
         coEvery { repo.updateFragment("s1", "f1", "Updated") } returns Unit
         val params = JsonObject().apply {
             addProperty("subject_id", "s1")
@@ -66,6 +67,7 @@ class FragmentToolsTest {
 
     @Test
     fun delete_fragment_callsRepo() = runTest {
+        coEvery { repo.getSubjectByIdOnce("s1") } returns testSubject
         coEvery { repo.deleteFragment("s1", "f1") } returns Unit
         val params = JsonObject().apply {
             addProperty("subject_id", "s1")

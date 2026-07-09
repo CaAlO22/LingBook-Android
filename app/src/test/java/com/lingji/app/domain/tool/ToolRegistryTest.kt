@@ -26,9 +26,9 @@ class ToolRegistryTest {
     private val registry = ToolRegistry(repo, llmService, settingsRepo, summaryDao, indexService, conversationImageStore)
 
     @Test
-    fun getAllTools_returns24Tools() {
+    fun getAllTools_returns23Tools() {
         val tools = registry.getAllTools()
-        assertEquals(24, tools.size)
+        assertEquals(23, tools.size)
     }
 
     @Test
@@ -52,7 +52,7 @@ class ToolRegistryTest {
     @Test
     fun toOpenAITools_returnsJsonArray() {
         val arr = registry.toOpenAITools()
-        assertEquals(24, arr.size())
+        assertEquals(23, arr.size())
         val first = arr[0].asJsonObject
         assertEquals("function", first.get("type").asString)
         assertNotNull(first.getAsJsonObject("function").get("name"))

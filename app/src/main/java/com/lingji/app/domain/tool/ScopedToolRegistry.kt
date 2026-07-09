@@ -22,7 +22,7 @@ class ScopedToolRegistry(
                 "type" to "function"
                 "function" to buildJsonObject {
                     "name" to tool.name
-                    "description" to tool.description
+                    "description" to scopedDescription(tool)
                     "parameters" to removeSubjectId(tool.parameters)
                 }
             })
@@ -44,12 +44,12 @@ class ScopedToolRegistry(
     }
 
     companion object {
-        /** 单笔记 Agent 可用的 18 个工具（排除 list/create/delete_subject + summarize_all_notes）。 */
+        /** 单笔记 Agent 可用的 18 个工具（排除 list/create/delete_subject + summarize_all_notes + insert_img + update_aggregated_note）。 */
         val SINGLE_NOTE_TOOLS = setOf(
             "get_subject", "rename_subject",
             "list_pages", "get_page", "create_page", "update_page", "delete_page", "edit_replace",
             "list_fragments", "add_fragment", "update_fragment", "delete_fragment", "search_fragments",
-            "get_aggregated_note", "update_aggregated_note",
+            "get_aggregated_note",
             "get_study_plan", "update_study_plan",
             "get_page_index", "search_pages"
         )
@@ -66,5 +66,14 @@ class ScopedToolRegistry(
             else copy.remove("required")
         }
         return copy
+    }
+
+    /** 在单笔记模式下，搜索工具的 subject_id 被自动注入，需在描述中说明搜索范围已限定。 */
+    private fun scopedDescription(tool: Tool): String {
+        return if (tool.name == "search_fragments" || tool.name == "search_pages") {
+            tool.description + "\n注意：当前为单笔记模式，搜索范围已限定为当前笔记。"
+        } else {
+            tool.description
+        }
     }
 }

@@ -221,16 +221,12 @@ fun NotebookPageEditor(
     }
 
     // 聚焦段的光标 Y 坐标变化时，通过回调对外汇报。
+    // focusedCoordsY <= 0 表示文本段尚未完成定位（如预览切回编辑后首次获焦），
+    // 此时跳过汇报，避免光标跟随逻辑基于错误坐标触发多余滚动。
     LaunchedEffect(focusedTextIndex, focusedCoordsY, focusedSelection, layoutResults) {
         val index = focusedTextIndex ?: return@LaunchedEffect
         val layout = layoutResults[index] ?: return@LaunchedEffect
-        onCursorYChange?.invoke(focusedCoordsY + layout.getCursorRect(focusedSelection).top)
-    }
-
-    // 聚焦段的光标 Y 坐标变化时，通过回调对外汇报。
-    LaunchedEffect(focusedTextIndex, focusedCoordsY, focusedSelection, layoutResults) {
-        val index = focusedTextIndex ?: return@LaunchedEffect
-        val layout = layoutResults[index] ?: return@LaunchedEffect
+        if (focusedCoordsY <= 0f) return@LaunchedEffect
         onCursorYChange?.invoke(focusedCoordsY + layout.getCursorRect(focusedSelection).top)
     }
 

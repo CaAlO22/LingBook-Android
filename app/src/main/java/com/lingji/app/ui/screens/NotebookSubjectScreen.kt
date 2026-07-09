@@ -206,9 +206,9 @@ fun NotebookSubjectScreen(
     val editorHostState = rememberNotebookPageEditorHostState()
     val imagePickerState = rememberImagePickerState()
 
-    // 切换笔记页面时重置为编辑模式
-    LaunchedEffect(currentPageId) {
-        editorHostState.setPreview(false)
+    // 预览/编辑模式切换时清除陈旧的光标坐标，防止光标跟随逻辑基于旧坐标触发多余滚动。
+    LaunchedEffect(editorHostState.isPreview) {
+        debugCursorY = 0f
     }
 
     // 跟踪 viewportTop
@@ -394,6 +394,8 @@ fun NotebookSubjectScreen(
                     viewModel.addPage(liveSubject.id) { page ->
                         currentPageId = page.id
                         lastCreatedPageId = page.id
+                        // 新建页面时回到编辑模式，便于立即输入
+                        editorHostState.setPreview(false)
                     }
                 },
                 onUndo = editorHostState.onUndo,

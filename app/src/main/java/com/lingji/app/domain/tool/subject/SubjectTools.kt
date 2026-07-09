@@ -72,7 +72,7 @@ object SubjectTools {
 
     private class CreateSubject(private val repo: SubjectRepository) : Tool {
         override val name = "create_subject"
-        override val description = "创建一个新笔记。type 可选 notebook 或 fragment，默认 notebook。"
+        override val description = "创建一个新笔记。type 可选 NOTEBOOK 或 FRAGMENT，默认 NOTEBOOK。"
         override val parameters = buildJsonObject {
             "type" to "object"
             "properties" to buildJsonObject {
@@ -82,8 +82,8 @@ object SubjectTools {
                 }
                 "type" to buildJsonObject {
                     "type" to "string"
-                    "description" to "笔记类型：notebook 或 fragment"
-                    "enum" to buildJsonArray { +"notebook"; +"fragment" }
+                    "description" to "笔记类型：NOTEBOOK 或 FRAGMENT"
+                    "enum" to buildJsonArray { +"NOTEBOOK"; +"FRAGMENT" }
                 }
             }
             "required" to buildJsonArray { +"title" }
@@ -151,6 +151,7 @@ object SubjectTools {
                 ?: return "Error: Missing required parameter: subject_id"
             val newTitle = params.get("new_title")?.asString
                 ?: return "Error: Missing required parameter: new_title"
+            if (newTitle.isBlank()) return "Error: new_title 不能为空"
             repo.rename(id, newTitle)
             return """{"success":true}"""
         }

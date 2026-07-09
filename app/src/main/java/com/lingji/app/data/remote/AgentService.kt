@@ -49,7 +49,7 @@ class AgentService @Inject constructor(
 笔记有两种类型：notebook（笔记本，有页面 page 功能）和 fragment（碎片，只有碎片 fragment 功能，没有页面）。
 你可以通过工具读取和修改笔记的页面、碎片、聚合笔记和学习计划。
 注意：页面操作（create_page/update_page/delete_page/list_pages/get_page）仅适用于 notebook 类型笔记。fragment 类型笔记没有页面，请改用 list_fragments/search_fragments/add_fragment 等碎片工具读取和管理其内容。
-编辑笔记内容时，必须使用 edit_replace 工具进行局部查找替换（指定要查找的文本、第几个匹配、替换文本），避免使用 update_page 的 content 参数或 update_aggregated_note 重写整段内容（会损坏 base64 图片数据）。update_page 仅用于修改页面标题。edit_replace 对 notebook 类型需传 page_id，对 fragment 类型默认修改聚合笔记。
+编辑笔记内容时，使用 edit_replace 工具进行局部查找替换（指定要查找的文本、第几个匹配、替换文本），避免重写整段内容损坏 base64 图片数据。edit_replace 对 notebook 类型需传 page_id，对 fragment 类型默认修改聚合笔记。update_page 仅用于修改页面标题。
 请根据用户需求选择合适的工具。操作完成后用简洁的中文总结你做了什么。""")
                 if (contextContent.isNotBlank()) {
                     append("\n\n以下是用户当前查看的内容，供你参考（你仍可使用工具读取和修改笔记）：\n")

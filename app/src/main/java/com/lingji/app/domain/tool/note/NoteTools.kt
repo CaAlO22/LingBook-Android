@@ -12,7 +12,6 @@ object NoteTools {
 
     fun create(repo: SubjectRepository): List<Tool> = listOf(
         GetAggregatedNote(repo),
-        UpdateAggregatedNote(repo),
         GetStudyPlan(repo),
         UpdateStudyPlan(repo),
         EditReplace(repo)
@@ -53,6 +52,7 @@ object NoteTools {
                 ?: return "Error: Missing required parameter: subject_id"
             val content = params.get("content")?.asString
                 ?: return "Error: Missing required parameter: content"
+            if (content.isBlank()) return "Error: content 不能为空，清空聚合笔记请使用 edit_replace 删除相关内容"
             repo.updateAggregatedNote(subjectId, content)
             return """{"success":true}"""
         }
@@ -93,6 +93,7 @@ object NoteTools {
                 ?: return "Error: Missing required parameter: subject_id"
             val content = params.get("content")?.asString
                 ?: return "Error: Missing required parameter: content"
+            if (content.isBlank()) return "Error: content 不能为空"
             repo.updateStudyPlan(subjectId, content)
             return """{"success":true}"""
         }
@@ -102,7 +103,7 @@ object NoteTools {
         override val name = "edit_replace"
         override val description = "在笔记内容中查找并替换指定文本（局部编辑），避免整体重写导致图片损坏。" +
             "notebook 类型需指定 page_id 操作对应页面；fragment 类型无需 page_id，默认修改聚合笔记。" +
-            "编辑含图片的内容时必须使用此工具，不要用 update_page 的 content 参数或 update_aggregated_note 重写整段内容。"
+            "编辑含图片的内容时必须使用此工具，避免重写整段内容。"
         override val parameters = buildJsonObject {
             "type" to "object"
             "properties" to buildJsonObject {
