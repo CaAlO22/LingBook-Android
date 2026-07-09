@@ -45,6 +45,10 @@ MIGRATION_PLAN.md
 # Temporary working files
 tmp/
 
+# Release temp files (contain Gitee access_token - DO NOT commit)
+release_body.json
+release_v*.json
+
 # Compose worktrees (isolated feature development)
 .worktrees/
 

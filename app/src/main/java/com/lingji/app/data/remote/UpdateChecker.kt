@@ -81,8 +81,10 @@ class UpdateChecker @Inject constructor(
         const val GITHUB_REPO_RELEASES = "https://github.com/CaAlO22/LingBook-Android/releases"
 
         // Gitee
-        const val GITEE_API_LATEST =
-            "https://gitee.com/api/v5/repos/caalo22/ling-book-android/releases/latest"
+        // 使用 /releases 列表而非 /releases/latest：后者在 Gitee 上可能返回非最新 Release，
+        // 遍历列表按版本号取最大值才能可靠拿到最新版本。
+        const val GITEE_API_RELEASES =
+            "https://gitee.com/api/v5/repos/caalo22/ling-book-android/releases"
         const val GITEE_API_TAGS =
             "https://gitee.com/api/v5/repos/caalo22/ling-book-android/tags"
         const val GITEE_RELEASES_PAGE =
@@ -220,7 +222,7 @@ class UpdateChecker @Inject constructor(
     private suspend fun checkGitee(): UpdateCheckResult = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder()
-                .url(GITEE_API_LATEST)
+                .url("$GITEE_API_RELEASES?page=1&per_page=20")
                 .header("Accept", "application/json")
                 .header("User-Agent", "LingBook-Android")
                 .get()
@@ -238,13 +240,28 @@ class UpdateChecker @Inject constructor(
                 }
                 val json = response.body?.string()
                     ?: return@withContext UpdateCheckResult.Failed("响应内容为空")
-                val release = try {
-                    gson.fromJson(json, GiteeRelease::class.java)
+                val releases = try {
+                    gson.fromJson(json, Array<GiteeRelease>::class.java).orEmpty()
                 } catch (e: Exception) {
                     return@withContext UpdateCheckResult.Failed(
                         "解析响应失败：${e.message ?: e.javaClass.simpleName}"
                     )
-                } ?: return@withContext UpdateCheckResult.Failed("响应格式异常")
+                }
+                if (releases.isEmpty()) {
+                    return@withContext giteeFallbackViaTags()
+                }
+
+                // Gitee /releases/latest 可能返回非最新 Release，
+                // 遍历全部 Release 按版本号取最大值。
+                val release = releases.maxWithOrNull { a, b ->
+                    val aVer = a.tagName?.removePrefix("v") ?: "0.0.0"
+                    val bVer = b.tagName?.removePrefix("v") ?: "0.0.0"
+                    when {
+                        isNewerVersion(aVer, bVer) -> 1
+                        isNewerVersion(bVer, aVer) -> -1
+                        else -> 0
+                    }
+                } ?: return@withContext giteeFallbackViaTags()
 
                 val tagName = release.tagName?.removePrefix("v")
                     ?: return@withContext UpdateCheckResult.Failed("Release 缺少 tag_name 字段")
