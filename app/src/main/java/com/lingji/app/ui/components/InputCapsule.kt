@@ -24,15 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isCtrlPressed
-import androidx.compose.ui.input.key.isShiftPressed
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.lingji.app.R
@@ -69,29 +61,7 @@ fun InputCapsule(
                 modifier = Modifier
                     .weight(1f)
                     .padding(horizontal = 12.dp, vertical = 10.dp)
-                    .onPreviewKeyEvent { event ->
-                        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                        if (event.key != Key.Enter && event.key != Key.NumPadEnter) {
-                            return@onPreviewKeyEvent false
-                        }
-                        if (event.isCtrlPressed || event.isShiftPressed) {
-                            val current = text
-                            val newText = current.text.replaceRange(
-                                current.selection.start,
-                                current.selection.end,
-                                "\n"
-                            )
-                            val cursor = current.selection.start + 1
-                            text = TextFieldValue(
-                                text = newText,
-                                selection = TextRange(cursor)
-                            )
-                            true
-                        } else {
-                            submitText()
-                            true
-                        }
-                    },
+                    .enterSendBehavior(text, { text = it }, submitText),
                 maxLines = maxLines,
                 textStyle = MaterialTheme.typography.bodyLarge.copy(
                     color = MaterialTheme.colorScheme.onSurface

@@ -1,7 +1,6 @@
 package com.lingji.app.ui.chat
 
 import android.util.Log
-import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -51,11 +50,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.TextFieldValue
@@ -66,6 +60,7 @@ import com.lingji.app.data.db.entities.HomeConversationEntity
 import com.lingji.app.ui.components.ChatMode
 import com.lingji.app.ui.components.GlassSurface
 import com.lingji.app.ui.components.MarkdownView
+import com.lingji.app.ui.components.enterSendBehavior
 import com.lingji.app.ui.viewmodel.HomeChatMessage
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -99,7 +94,6 @@ fun HomeChatSheet(
     // }
 
     var inputText by remember { mutableStateOf(TextFieldValue("")) }
-    var ctrlDown by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val dateFormat = remember { SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()) }
@@ -527,22 +521,7 @@ fun HomeChatSheet(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 14.dp, vertical = 12.dp)
-                            .onPreviewKeyEvent { event ->
-                                val keyCode = event.nativeKeyEvent.keyCode
-                                if (keyCode == KeyEvent.KEYCODE_CTRL_LEFT || keyCode == KeyEvent.KEYCODE_CTRL_RIGHT) {
-                                    ctrlDown = event.type == KeyEventType.KeyDown
-                                    return@onPreviewKeyEvent false
-                                }
-                                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                                if (event.key != Key.Enter && event.key != Key.NumPadEnter) return@onPreviewKeyEvent false
-                                if (ctrlDown) {
-                                    ctrlDown = false
-                                    submitInput()
-                                    true
-                                } else {
-                                    false
-                                }
-                            },
+                            .enterSendBehavior(inputText, { inputText = it }, submitInput),
                         enabled = !isLoading || currentMode == ChatMode.FRAGMENT,
                         maxLines = 5,
                         textStyle = MaterialTheme.typography.bodyMedium.copy(

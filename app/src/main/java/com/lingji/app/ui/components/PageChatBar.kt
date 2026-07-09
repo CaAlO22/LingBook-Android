@@ -1,6 +1,5 @@
 package com.lingji.app.ui.components
 
-import android.view.KeyEvent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -41,12 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.res.stringResource
@@ -76,7 +70,6 @@ fun PageChatBar(
     onBarLayoutChange: ((Float, Float) -> Unit)? = null
 ) {
     var question by remember { mutableStateOf(TextFieldValue("")) }
-    var ctrlDown by remember { mutableStateOf(false) }
     var answerExpanded by remember { mutableStateOf(true) }
     var chatMode by remember { mutableStateOf(ChatMode.ASK) }
     var chatScope by remember { mutableStateOf(initialScope) }
@@ -338,24 +331,7 @@ fun PageChatBar(
                     modifier = Modifier
                         .weight(1f)
                         .padding(horizontal = 12.dp, vertical = 10.dp)
-                        .onPreviewKeyEvent { event ->
-                            val keyCode = event.nativeKeyEvent.keyCode
-                            if (keyCode == KeyEvent.KEYCODE_CTRL_LEFT || keyCode == KeyEvent.KEYCODE_CTRL_RIGHT) {
-                                ctrlDown = event.type == KeyEventType.KeyDown
-                                return@onPreviewKeyEvent false
-                            }
-                            if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                            if (event.key != Key.Enter && event.key != Key.NumPadEnter) {
-                                return@onPreviewKeyEvent false
-                            }
-                            if (ctrlDown) {
-                                ctrlDown = false
-                                submitQuestion()
-                                true
-                            } else {
-                                false
-                            }
-                        },
+                        .enterSendBehavior(question, { question = it }, submitQuestion),
                     enabled = inputEnabled,
                     maxLines = 4,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(
