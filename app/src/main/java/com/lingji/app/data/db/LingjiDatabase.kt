@@ -33,7 +33,7 @@ import com.lingji.app.data.db.entities.SubjectSummaryEntity
         HomeFragmentEntity::class,
         FolderEntity::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 abstract class LingjiDatabase : RoomDatabase() {
@@ -125,6 +125,16 @@ abstract class LingjiDatabase : RoomDatabase() {
                         "createdAt INTEGER NOT NULL)"
                 )
                 db.execSQL("ALTER TABLE subjects ADD COLUMN folderId TEXT")
+            }
+        }
+
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE settings ADD COLUMN liteProvider TEXT NOT NULL DEFAULT 'OPENAI'")
+                db.execSQL("ALTER TABLE settings ADD COLUMN liteBaseUrl TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE settings ADD COLUMN liteApiKey TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE settings ADD COLUMN liteModelName TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE settings ADD COLUMN liteEnableThinking INTEGER NOT NULL DEFAULT 0")
             }
         }
     }

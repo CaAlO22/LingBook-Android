@@ -16,7 +16,40 @@ data class AISettings(
     val enableThinking: Boolean = false,
     val horizontalSwipeAction: HorizontalSwipeAction = HorizontalSwipeAction.TOGGLE_PREVIEW,
     /** 按供应商名缓存的 API Key，切换供应商时自动保存/恢复。 */
-    val providerApiKeys: Map<String, String> = emptyMap()
+    val providerApiKeys: Map<String, String> = emptyMap(),
+    /** 轻量模型配置：用于低成本频繁调用的小模型。 */
+    val liteModel: LiteModelConfig = LiteModelConfig()
+)
+
+/**
+ * 轻量模型配置：用于低成本频繁调用的小模型。
+ * 配置和测试方式与主模型一致，可在设置界面中独立配置。
+ */
+data class LiteModelConfig(
+    val provider: APIProvider = APIProvider.OPENAI,
+    val baseUrl: String = "",
+    val apiKey: String = "",
+    val modelName: String = "",
+    val enableThinking: Boolean = false
+)
+
+/** 将 LiteModelConfig 转为 AISettings，用于复用现有供应商 UI 组件。 */
+fun LiteModelConfig.toAISettings(providerApiKeys: Map<String, String> = emptyMap()): AISettings = AISettings(
+    provider = provider,
+    baseUrl = baseUrl,
+    apiKey = apiKey,
+    modelName = modelName,
+    enableThinking = enableThinking,
+    providerApiKeys = providerApiKeys
+)
+
+/** 从 AISettings 提取模型配置部分，用于 lite model 回写。 */
+fun AISettings.toLiteModelConfig(): LiteModelConfig = LiteModelConfig(
+    provider = provider,
+    baseUrl = baseUrl,
+    apiKey = apiKey,
+    modelName = modelName,
+    enableThinking = enableThinking
 )
 
 data class Fragment(

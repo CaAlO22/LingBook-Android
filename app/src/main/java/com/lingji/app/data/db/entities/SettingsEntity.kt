@@ -14,5 +14,11 @@ data class SettingsEntity(
     /** 笔记页左右横滑手势行为：NONE / TOGGLE_PREVIEW / CHANGE_PAGE */
     val horizontalSwipeAction: String = "TOGGLE_PREVIEW",
     /** 按供应商名缓存的 API Key JSON，如 {"OPENAI":"sk-xxx","DEEPSEEK":"..."} */
-    val providerApiKeys: String = "{}"
+    val providerApiKeys: String = "{}",
+    /** 轻量模型配置 */
+    val liteProvider: String = "OPENAI",
+    val liteBaseUrl: String = "",
+    val liteApiKey: String = "",
+    val liteModelName: String = "",
+    val liteEnableThinking: Boolean = false
 )

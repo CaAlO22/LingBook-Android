@@ -7,6 +7,7 @@ import com.lingji.app.data.db.entities.SettingsEntity
 import com.lingji.app.domain.model.AISettings
 import com.lingji.app.domain.model.APIProvider
 import com.lingji.app.domain.model.HorizontalSwipeAction
+import com.lingji.app.domain.model.LiteModelConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -36,7 +37,14 @@ class SettingsRepository @Inject constructor(
             enableThinking = enableThinking,
             horizontalSwipeAction = runCatching { HorizontalSwipeAction.valueOf(horizontalSwipeAction) }
                 .getOrDefault(HorizontalSwipeAction.TOGGLE_PREVIEW),
-            providerApiKeys = keys
+            providerApiKeys = keys,
+            liteModel = LiteModelConfig(
+                provider = runCatching { APIProvider.valueOf(liteProvider.uppercase()) }.getOrDefault(APIProvider.OPENAI),
+                baseUrl = liteBaseUrl,
+                apiKey = liteApiKey,
+                modelName = liteModelName,
+                enableThinking = liteEnableThinking
+            )
         )
     }
 
@@ -47,6 +55,11 @@ class SettingsRepository @Inject constructor(
         modelName = modelName,
         enableThinking = enableThinking,
         horizontalSwipeAction = horizontalSwipeAction.name,
-        providerApiKeys = gson.toJson(providerApiKeys)
+        providerApiKeys = gson.toJson(providerApiKeys),
+        liteProvider = liteModel.provider.name,
+        liteBaseUrl = liteModel.baseUrl,
+        liteApiKey = liteModel.apiKey,
+        liteModelName = liteModel.modelName,
+        liteEnableThinking = liteModel.enableThinking
     )
 }
