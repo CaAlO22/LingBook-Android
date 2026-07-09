@@ -26,8 +26,8 @@ class FragmentToolsTest {
     )
 
     @Test
-    fun create_returnsFourTools() {
-        assertEquals(4, tools.size)
+    fun create_returnsFiveTools() {
+        assertEquals(5, tools.size)
     }
 
     @Test
