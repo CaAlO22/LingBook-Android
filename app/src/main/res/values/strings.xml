@@ -206,6 +206,10 @@
     <string name="test_connection">测试连接</string>
     <string name="test_multimodal_connection">测试多模态连接</string>
     <string name="multimodal_test_pending">正在测试多模态连接…</string>
+
+    <!-- 设置：轻量模型 -->
+    <string name="lite_model_settings">轻量模型配置</string>
+    <string name="lite_model_description">用于低成本频繁调用的小模型，配置方式与主模型一致</string>
     <string name="import_ling_json">导入 .ling / JSON</string>
     <string name="import_from_file">从文件导入</string>
     <string name="import_from_clipboard">从剪切板导入</string>

@@ -63,6 +63,8 @@ import com.lingji.app.data.remote.UpdateSource
 import com.lingji.app.domain.model.APIProvider
 import com.lingji.app.domain.model.AISettings
 import com.lingji.app.domain.model.HorizontalSwipeAction
+import com.lingji.app.domain.model.toAISettings
+import com.lingji.app.domain.model.toLiteModelConfig
 import com.lingji.app.domain.provider.ProviderRegistry
 import com.lingji.app.ui.components.SettingsOutlinedTextField
 import com.lingji.app.ui.settings.ProviderEndpointSettings
@@ -87,6 +89,8 @@ fun SettingsScreen(
     val settings = uiState.settings
     var expanded by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf("") }
+    var liteTestResult by remember { mutableStateOf("") }
+    var liteExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val isCheckingUpdate by updateViewModel.isChecking.collectAsState()
@@ -265,6 +269,133 @@ fun SettingsScreen(
                         text = testResult,
                         style = MaterialTheme.typography.bodyMedium,
                         color = if (testResult.contains("成功") || testResult.contains("ok", ignoreCase = true)) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.error
+                        },
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+            }
+
+            // 轻量模型配置
+            SettingsCard(title = stringResource(R.string.lite_model_settings)) {
+                Text(
+                    text = stringResource(R.string.lite_model_description),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                val lite = settings.liteModel
+                val liteAsSettings = lite.toAISettings(settings.providerApiKeys)
+
+                ExposedDropdownMenuBox(
+                    expanded = liteExpanded,
+                    onExpandedChange = { liteExpanded = it }
+                ) {
+                    SettingsOutlinedTextField(
+                        value = providerDisplayName(lite.provider),
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text(stringResource(R.string.provider)) },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = liteExpanded) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = liteExpanded,
+                        onDismissRequest = { liteExpanded = false }
+                    ) {
+                        APIProvider.entries.forEach { provider ->
+                            DropdownMenuItem(
+                                text = { Text(providerDisplayName(provider)) },
+                                onClick = {
+                                    val preset = applyProviderPreset(liteAsSettings, provider)
+                                    viewModel.saveSettings(
+                                        settings.copy(
+                                            liteModel = preset.toLiteModelConfig(),
+                                            providerApiKeys = preset.providerApiKeys
+                                        )
+                                    )
+                                    liteExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+                ProviderEndpointSettings(
+                    provider = lite.provider,
+                    settings = liteAsSettings,
+                    onSettingsChange = { newSettings ->
+                        viewModel.saveLiteModelSettings(newSettings.toLiteModelConfig())
+                    }
+                )
+                SettingsTextField(
+                    value = lite.baseUrl,
+                    onValueChange = { viewModel.saveLiteModelSettings(lite.copy(baseUrl = it)) },
+                    label = stringResource(R.string.base_url)
+                )
+                ApiKeyField(
+                    value = lite.apiKey,
+                    onValueChange = {
+                        viewModel.saveSettings(settings.copy(
+                            liteModel = lite.copy(apiKey = it),
+                            providerApiKeys = settings.providerApiKeys.toMutableMap().apply {
+                                if (it.isNotBlank()) put(lite.provider.name, it) else remove(lite.provider.name)
+                            }
+                        ))
+                    },
+                    onCopy = {
+                        val key = lite.apiKey
+                        if (key.isBlank()) {
+                            Toast.makeText(context, R.string.api_key_empty, Toast.LENGTH_SHORT).show()
+                        } else {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("API Key", key))
+                            Toast.makeText(context, R.string.api_key_copied, Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                )
+                ProviderModelSettings(
+                    provider = lite.provider,
+                    settings = liteAsSettings,
+                    onSettingsChange = { newSettings ->
+                        viewModel.saveLiteModelSettings(newSettings.toLiteModelConfig())
+                    }
+                )
+                Button(
+                    onClick = {
+                        liteTestResult = ""
+                        viewModel.testLiteModelConnection { liteTestResult = it.second }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                ) {
+                    Text(stringResource(R.string.test_connection))
+                }
+                Button(
+                    onClick = {
+                        val base64 = context.getEmbeddedTestImageBase64()
+                        if (base64 != null) {
+                            liteTestResult = context.getString(R.string.multimodal_test_pending)
+                            viewModel.testLiteMultimodalConnection(base64) { liteTestResult = it.second }
+                        } else {
+                            liteTestResult = "无法加载测试图片"
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                ) {
+                    Text(stringResource(R.string.test_multimodal_connection))
+                }
+                if (liteTestResult.isNotBlank()) {
+                    Text(
+                        text = liteTestResult,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (liteTestResult.contains("成功") || liteTestResult.contains("ok", ignoreCase = true)) {
                             MaterialTheme.colorScheme.primary
                         } else {
                             MaterialTheme.colorScheme.error
