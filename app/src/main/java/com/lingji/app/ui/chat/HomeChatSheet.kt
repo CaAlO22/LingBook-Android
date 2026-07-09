@@ -477,6 +477,7 @@ fun HomeChatSheet(
                                     MarkdownView(
                                         markdown = msg.content,
                                         textSizeSp = if (isUser) 13f else 15f,
+                                        alignEnd = isUser,
                                         modifier = Modifier.padding(14.dp)
                                     )
                                 }

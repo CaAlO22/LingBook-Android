@@ -1,5 +1,6 @@
 package com.lingji.app.ui.components
 
+import android.view.Gravity
 import android.widget.TextView
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -45,7 +46,8 @@ fun MarkdownView(
     modifier: Modifier = Modifier,
     textColor: Color? = null,
     textSizeSp: Float? = null,
-    compact: Boolean = false
+    compact: Boolean = false,
+    alignEnd: Boolean = false
 ) {
     val context = LocalContext.current
     val markwon = remember(context) {
@@ -73,6 +75,7 @@ fun MarkdownView(
             markwon.setMarkdown(textView, rendered)
             if (textColor != null) textView.setTextColor(textColor.toArgb())
             if (textSizeSp != null) textView.textSize = textSizeSp
+            textView.gravity = if (alignEnd) Gravity.END else Gravity.START
         },
         modifier = modifier
     )

@@ -6,6 +6,7 @@ import com.lingji.app.data.remote.IndexService
 import com.lingji.app.data.remote.LLMService
 import com.lingji.app.data.repository.SettingsRepository
 import com.lingji.app.data.repository.SubjectRepository
+import com.lingji.app.domain.tool.image.ConversationImageStore
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -20,13 +21,14 @@ class ToolRegistryTest {
     private val settingsRepo = mockk<SettingsRepository>()
     private val summaryDao = mockk<SubjectSummaryDao>()
     private val indexService = mockk<IndexService>()
+    private val conversationImageStore = mockk<ConversationImageStore>()
 
-    private val registry = ToolRegistry(repo, llmService, settingsRepo, summaryDao, indexService)
+    private val registry = ToolRegistry(repo, llmService, settingsRepo, summaryDao, indexService, conversationImageStore)
 
     @Test
-    fun getAllTools_returns22Tools() {
+    fun getAllTools_returns24Tools() {
         val tools = registry.getAllTools()
-        assertEquals(22, tools.size)
+        assertEquals(24, tools.size)
     }
 
     @Test
@@ -50,7 +52,7 @@ class ToolRegistryTest {
     @Test
     fun toOpenAITools_returnsJsonArray() {
         val arr = registry.toOpenAITools()
-        assertEquals(22, arr.size())
+        assertEquals(24, arr.size())
         val first = arr[0].asJsonObject
         assertEquals("function", first.get("type").asString)
         assertNotNull(first.getAsJsonObject("function").get("name"))

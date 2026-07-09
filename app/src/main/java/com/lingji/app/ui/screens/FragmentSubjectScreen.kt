@@ -72,6 +72,7 @@ import androidx.compose.ui.zIndex
 import com.lingji.app.R
 import com.lingji.app.domain.model.Fragment
 import com.lingji.app.domain.model.Subject
+import com.lingji.app.domain.model.fullNoteContent
 import com.lingji.app.ui.components.ChatMode
 import com.lingji.app.ui.components.ChatScope
 import com.lingji.app.ui.components.ClipboardTooLargeDialog
@@ -337,6 +338,7 @@ fun FragmentSubjectScreen(
                                                 subjectId = liveSubject.id,
                                                 question = question,
                                                 conversationHistory = noteChatHistory,
+                                                contextContent = liveSubject.fullNoteContent(),
                                                 onToken = { token -> noteChatAnswer += token },
                                                 onComplete = { answer ->
                                                     viewModel.updateNoteChatHistory(liveSubject.id, noteChatHistory + Pair(question, answer))

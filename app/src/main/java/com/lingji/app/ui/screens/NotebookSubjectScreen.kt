@@ -456,10 +456,16 @@ fun NotebookSubjectScreen(
                             if (mode == ChatMode.AGENT) {
                                 chatAnswer = ""
                                 isChatLoading = true
+                                val agentContext = if (scope == ChatScope.NOTE) {
+                                    liveSubject.fullNoteContent()
+                                } else {
+                                    currentPage?.content ?: ""
+                                }
                                 viewModel.chatWithAgent(
                                     subjectId = liveSubject.id,
                                     question = question,
                                     conversationHistory = chatHistory,
+                                    contextContent = agentContext,
                                     onToken = { token -> chatAnswer += token },
                                     onComplete = { answer ->
                                         chatHistory = chatHistory + Pair(question, answer)
