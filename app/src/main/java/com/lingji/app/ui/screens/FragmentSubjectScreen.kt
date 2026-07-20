@@ -72,7 +72,6 @@ import androidx.compose.ui.zIndex
 import com.lingji.app.R
 import com.lingji.app.domain.model.Fragment
 import com.lingji.app.domain.model.Subject
-import com.lingji.app.domain.model.fullNoteContent
 import com.lingji.app.ui.components.ChatMode
 import com.lingji.app.ui.components.ChatScope
 import com.lingji.app.ui.components.ClipboardTooLargeDialog
@@ -166,28 +165,26 @@ fun FragmentSubjectScreen(
     }
 
     // ── 光标跟随：确保光标始终在可视区域内 ──
-    var lastAutoScrollMs by remember { mutableStateOf(0L) }
-    LaunchedEffect(debugCursorY, debugBarTopY, debugBarHeight, debugVpTop) {
+    LaunchedEffect(debugCursorY, debugBarTopY, debugBarHeight, debugVpTop, noteEditorHostState.isScrollInProgress) {
         val margin = with(density) { 4.dp.toPx() }
         val vpTop = debugVpTop
         val barTop = debugBarTopY
         val cursorY = debugCursorY
         if (barTop <= 0f || vpTop <= 0f || cursorY <= 0f) return@LaunchedEffect
 
-        val now = System.currentTimeMillis()
-        if (now - lastAutoScrollMs < 300) return@LaunchedEffect
+        // 滚动动画进行中时跳过修正，避免基于中间帧的坐标触发多余滚动。
+        // 动画结束后 isScrollInProgress 变化会重新触发此 effect 进行修正。
+        if (noteEditorHostState.isScrollInProgress) return@LaunchedEffect
 
         // 光标进入对话框遮挡区域（barTop 以下）即上滚，而非等到超出屏幕底部才触发
         if (cursorY > barTop - 60f + margin) {
             val delta = cursorY - barTop + 60f + margin
-            lastAutoScrollMs = now
             debugTrigger = "cursorBelowBar"
             debugDir = "↓上滚(${delta.toInt()}px)"
             debugAmount = ""
             noteEditorHostState.scrollBy(delta)
         } else if (cursorY < vpTop - margin) {
             val delta = cursorY - vpTop + margin
-            lastAutoScrollMs = now
             debugTrigger = "cursorAboveVp"
             debugDir = "↑下滚(${delta.toInt()}px)"
             debugAmount = ""
@@ -226,9 +223,12 @@ fun FragmentSubjectScreen(
                     }
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                         DropdownMenuItem(
-                            text = { Text(stringResource(R.string.rollback)) },
+                            text = { Text(stringResource(R.string.undo_edit)) },
                             onClick = {
-                                viewModel.rollbackAggregatedNote()
+                                viewModel.undoLastEdit { undone ->
+                                    val msg = if (undone) R.string.undone else R.string.nothing_to_undo
+                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                }
                                 showMenu = false
                             }
                         )
@@ -338,7 +338,6 @@ fun FragmentSubjectScreen(
                                                 subjectId = liveSubject.id,
                                                 question = question,
                                                 conversationHistory = noteChatHistory,
-                                                contextContent = liveSubject.fullNoteContent(),
                                                 onToken = { token -> noteChatAnswer += token },
                                                 onComplete = { answer ->
                                                     viewModel.updateNoteChatHistory(liveSubject.id, noteChatHistory + Pair(question, answer))

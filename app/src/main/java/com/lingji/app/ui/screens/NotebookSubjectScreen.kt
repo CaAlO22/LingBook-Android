@@ -218,21 +218,20 @@ fun NotebookSubjectScreen(
 
     // ── 光标跟随：确保光标始终在可视区域内 ──
     val density = LocalDensity.current
-    var lastAutoScrollMs by remember { mutableStateOf(0L) }
-    LaunchedEffect(debugCursorY, debugBarTopY, debugBarHeight, debugVpTop) {
+    LaunchedEffect(debugCursorY, debugBarTopY, debugBarHeight, debugVpTop, editorHostState.isScrollInProgress) {
         val margin = with(density) { 4.dp.toPx() }
         val vpTop = debugVpTop
         val barTop = debugBarTopY
         val cursorY = debugCursorY
         if (barTop <= 0f || vpTop <= 0f || cursorY <= 0f) return@LaunchedEffect
 
-        val now = System.currentTimeMillis()
-        if (now - lastAutoScrollMs < 300) return@LaunchedEffect
+        // 滚动动画进行中时跳过修正，避免基于中间帧的坐标触发多余滚动。
+        // 动画结束后 isScrollInProgress 变化会重新触发此 effect 进行修正。
+        if (editorHostState.isScrollInProgress) return@LaunchedEffect
 
         if (cursorY > barTop - 60f + margin) {
             // 光标进入对话框遮挡区域（barTop 以下）→ 上滚
             val delta = cursorY - barTop + 60f + margin
-            lastAutoScrollMs = now
             debugTrigger = "cursorBelowBar"
             debugDir = "↓上滚(${delta.toInt()}px)"
             debugAmount = ""
@@ -240,7 +239,6 @@ fun NotebookSubjectScreen(
         } else if (cursorY < vpTop - margin) {
             // 光标在编辑区上方 → 下滚
             val delta = cursorY - vpTop + margin
-            lastAutoScrollMs = now
             debugTrigger = "cursorAboveVp"
             debugDir = "↑下滚(${delta.toInt()}px)"
             debugAmount = ""
@@ -356,6 +354,12 @@ fun NotebookSubjectScreen(
                             Toast.makeText(context, context.getString(R.string.copy_failed), Toast.LENGTH_SHORT).show()
                         }
                     }
+                },
+                onUndoEdit = {
+                    viewModel.undoLastEdit { undone ->
+                        val msg = if (undone) R.string.undone else R.string.nothing_to_undo
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    }
                 }
             )
         }
@@ -458,16 +462,10 @@ fun NotebookSubjectScreen(
                             if (mode == ChatMode.AGENT) {
                                 chatAnswer = ""
                                 isChatLoading = true
-                                val agentContext = if (scope == ChatScope.NOTE) {
-                                    liveSubject.fullNoteContent()
-                                } else {
-                                    currentPage?.content ?: ""
-                                }
                                 viewModel.chatWithAgent(
                                     subjectId = liveSubject.id,
                                     question = question,
                                     conversationHistory = chatHistory,
-                                    contextContent = agentContext,
                                     onToken = { token -> chatAnswer += token },
                                     onComplete = { answer ->
                                         chatHistory = chatHistory + Pair(question, answer)

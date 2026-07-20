@@ -3,10 +3,12 @@ package com.lingji.app.data.repository
 import com.lingji.app.data.db.dao.FragmentDao
 import com.lingji.app.data.db.dao.FolderDao
 import com.lingji.app.data.db.dao.NotebookPageDao
+import com.lingji.app.data.db.dao.NoteRevisionDao
 import com.lingji.app.data.db.dao.SubjectDao
 import com.lingji.app.data.db.entities.FragmentEntity
 import com.lingji.app.data.db.entities.FolderEntity
 import com.lingji.app.data.db.entities.NotebookPageEntity
+import com.lingji.app.data.db.entities.NoteRevisionEntity
 import com.lingji.app.data.db.entities.SubjectEntity
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -24,13 +26,17 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.lingji.app.data.edit.EditBatch
+import kotlin.coroutines.coroutineContext
+import java.util.UUID
 
 @Singleton
 class SubjectRepository @Inject constructor(
     private val subjectDao: SubjectDao,
     private val fragmentDao: FragmentDao,
     private val pageDao: NotebookPageDao,
-    private val folderDao: FolderDao
+    private val folderDao: FolderDao,
+    private val revisionDao: NoteRevisionDao
 ) {
     private val gson = Gson()
     fun getAllSubjects(): Flow<List<Subject>> = combine(
@@ -77,13 +83,59 @@ class SubjectRepository @Inject constructor(
 
     suspend fun updateAggregatedNote(id: String, content: String) {
         val entity = subjectDao.getSubjectById(id) ?: return
+        val batchId = coroutineContext[EditBatch]?.batchId
+        revisionDao.insert(
+            NoteRevisionEntity(
+                id = UUID.randomUUID().toString(),
+                subjectId = id,
+                pageId = null,
+                field = "aggregated",
+                prevContent = entity.aggregatedNote,
+                prevTitle = null,
+                batchId = batchId,
+                createdAt = System.currentTimeMillis()
+            )
+        )
+        trimRevisions(id)
         subjectDao.updateAggregatedNote(id, content, entity.aggregatedNote)
     }
 
-    suspend fun rollbackAggregatedNote(id: String) {
-        val entity = subjectDao.getSubjectById(id) ?: return
-        val prev = entity.prevAggregatedNote ?: return
-        subjectDao.updateAggregatedNote(id, prev, null)
+    suspend fun rollbackLast(subjectId: String): Boolean {
+        val latest = revisionDao.getLatestForSubject(subjectId) ?: return false
+        val batchId = latest.batchId
+        val revisions = if (batchId != null) {
+            revisionDao.getByBatchForSubject(subjectId, batchId)
+        } else {
+            listOf(latest)
+        }
+        val grouped = revisions.groupBy { it.pageId }
+        for ((_, group) in grouped) {
+            val earliest = group.minByOrNull { it.createdAt } ?: continue
+            when (earliest.field) {
+                "aggregated" -> {
+                    subjectDao.updateAggregatedNote(subjectId, earliest.prevContent, null)
+                }
+                "page" -> {
+                    earliest.pageId?.let { pid ->
+                        pageDao.update(pid, earliest.prevTitle ?: "", earliest.prevContent, System.currentTimeMillis())
+                    }
+                }
+            }
+        }
+        if (batchId != null) {
+            revisionDao.deleteByBatchForSubject(subjectId, batchId)
+        } else {
+            revisionDao.deleteById(latest.id)
+        }
+        return true
+    }
+
+    private suspend fun trimRevisions(subjectId: String) {
+        revisionDao.trimForSubject(subjectId, MAX_REVISIONS_PER_SUBJECT)
+    }
+
+    companion object {
+        private const val MAX_REVISIONS_PER_SUBJECT = 20
     }
 
     suspend fun updateStudyPlan(id: String, content: String) = subjectDao.updateStudyPlan(id, content)
@@ -120,6 +172,21 @@ class SubjectRepository @Inject constructor(
     }
 
     suspend fun updatePage(subjectId: String, page: NotebookPage) {
+        val existing = pageDao.getPagesBySubjectOnce(subjectId).find { it.id == page.id } ?: return
+        val batchId = coroutineContext[EditBatch]?.batchId
+        revisionDao.insert(
+            NoteRevisionEntity(
+                id = UUID.randomUUID().toString(),
+                subjectId = subjectId,
+                pageId = page.id,
+                field = "page",
+                prevContent = existing.content,
+                prevTitle = existing.title,
+                batchId = batchId,
+                createdAt = System.currentTimeMillis()
+            )
+        )
+        trimRevisions(subjectId)
         pageDao.update(page.id, page.title, page.content, page.updatedAt)
     }
 

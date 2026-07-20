@@ -35,7 +35,9 @@ object AppModule {
                 LingjiDatabase.MIGRATION_7_8,
                 LingjiDatabase.MIGRATION_8_9,
                 LingjiDatabase.MIGRATION_9_10,
-                LingjiDatabase.MIGRATION_10_11
+                LingjiDatabase.MIGRATION_10_11,
+                LingjiDatabase.MIGRATION_11_12,
+                LingjiDatabase.MIGRATION_12_13
             )
             .addCallback(
                 object : RoomDatabase.Callback() {
@@ -69,4 +71,7 @@ object AppModule {
 
     @Provides
     fun provideFolderDao(database: LingjiDatabase) = database.folderDao()
+
+    @Provides
+    fun provideNoteRevisionDao(database: LingjiDatabase) = database.noteRevisionDao()
 }

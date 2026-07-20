@@ -8,6 +8,7 @@ import com.lingji.app.data.db.dao.FragmentDao
 import com.lingji.app.data.db.dao.FolderDao
 import com.lingji.app.data.db.dao.HomeChatDao
 import com.lingji.app.data.db.dao.NotebookPageDao
+import com.lingji.app.data.db.dao.NoteRevisionDao
 import com.lingji.app.data.db.dao.SettingsDao
 import com.lingji.app.data.db.dao.SubjectDao
 import com.lingji.app.data.db.dao.SubjectSummaryDao
@@ -17,6 +18,7 @@ import com.lingji.app.data.db.entities.HomeConversationEntity
 import com.lingji.app.data.db.entities.HomeFragmentEntity
 import com.lingji.app.data.db.entities.HomeMessageEntity
 import com.lingji.app.data.db.entities.NotebookPageEntity
+import com.lingji.app.data.db.entities.NoteRevisionEntity
 import com.lingji.app.data.db.entities.SettingsEntity
 import com.lingji.app.data.db.entities.SubjectEntity
 import com.lingji.app.data.db.entities.SubjectSummaryEntity
@@ -31,9 +33,10 @@ import com.lingji.app.data.db.entities.SubjectSummaryEntity
         HomeConversationEntity::class,
         HomeMessageEntity::class,
         HomeFragmentEntity::class,
-        FolderEntity::class
+        FolderEntity::class,
+        NoteRevisionEntity::class
     ],
-    version = 11,
+    version = 13,
     exportSchema = false
 )
 abstract class LingjiDatabase : RoomDatabase() {
@@ -137,6 +140,29 @@ abstract class LingjiDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE settings ADD COLUMN liteEnableThinking INTEGER NOT NULL DEFAULT 0")
             }
         }
+
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE home_fragments ADD COLUMN timestamp INTEGER")
+            }
+        }
+
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS note_revisions (" +
+                        "id TEXT NOT NULL PRIMARY KEY, " +
+                        "subjectId TEXT NOT NULL, " +
+                        "pageId TEXT, " +
+                        "field TEXT NOT NULL, " +
+                        "prevContent TEXT NOT NULL, " +
+                        "prevTitle TEXT, " +
+                        "batchId TEXT, " +
+                        "createdAt INTEGER NOT NULL)"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_note_revisions_subjectId ON note_revisions(subjectId)")
+            }
+        }
     }
     abstract fun subjectDao(): SubjectDao
     abstract fun fragmentDao(): FragmentDao
@@ -145,4 +171,5 @@ abstract class LingjiDatabase : RoomDatabase() {
     abstract fun subjectSummaryDao(): SubjectSummaryDao
     abstract fun homeChatDao(): HomeChatDao
     abstract fun folderDao(): FolderDao
+    abstract fun noteRevisionDao(): NoteRevisionDao
 }

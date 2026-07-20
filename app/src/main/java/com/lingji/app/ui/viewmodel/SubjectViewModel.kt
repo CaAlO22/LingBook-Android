@@ -11,6 +11,7 @@ import com.lingji.app.data.db.entities.HomeConversationEntity
 import com.lingji.app.data.db.entities.HomeFragmentEntity
 import com.lingji.app.data.db.entities.HomeMessageEntity
 import com.lingji.app.data.file.FileManager
+import com.lingji.app.data.edit.EditBatch
 import com.lingji.app.data.remote.AgentService
 import com.lingji.app.data.remote.HomeAgentService
 import com.lingji.app.data.remote.IndexService
@@ -492,14 +493,14 @@ class SubjectViewModel @Inject constructor(
         onToken: (String) -> Unit,
         onComplete: (String) -> Unit = {},
         onError: (String) -> Unit = {},
-        conversationHistory: List<Pair<String, String>> = emptyList(),
-        contextContent: String = ""
+        conversationHistory: List<Pair<String, String>> = emptyList()
     ) {
         if (_uiState.value.isProcessing) return
         processingJob?.cancel()
         processingJob = viewModelScope.launch {
             setProcessing(true, "Agent 思考中…")
             try {
+                withContext(EditBatch(UUID.randomUUID().toString())) {
                 agentService.runAgentLoop(
                     subjectId = subjectId,
                     question = question,
@@ -532,9 +533,9 @@ class SubjectViewModel @Inject constructor(
                             "⏹️ 监督者判断应终止：$reason\n\n"
                         }
                         appendStream(display)
-                    },
-                    contextContent = contextContent
+                    }
                 )
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
                 _uiState.update { it.copy(aiErrorMessage = e.message ?: "Agent 请求失败") }
@@ -564,9 +565,11 @@ class SubjectViewModel @Inject constructor(
         _uiState.update { it.copy(noteChatHistories = it.noteChatHistories - subjectId) }
     }
 
-    fun rollbackAggregatedNote() {
-        val subjectId = _uiState.value.currentSubjectId ?: return
-        viewModelScope.launch { subjectRepository.rollbackAggregatedNote(subjectId) }
+    fun undoLastEdit(onResult: (Boolean) -> Unit = {}) {
+        val subjectId = _uiState.value.currentSubjectId ?: run { onResult(false); return }
+        viewModelScope.launch {
+            onResult(subjectRepository.rollbackLast(subjectId))
+        }
     }
 
     fun updateStudyPlan(content: String) {
@@ -580,6 +583,7 @@ class SubjectViewModel @Inject constructor(
         viewModelScope.launch {
             setProcessing(true, if (subject.unmergedFragments.isNotEmpty()) "正在整理并合并新碎片" else "正在基于全量碎片重构笔记")
             try {
+                withContext(EditBatch(UUID.randomUUID().toString())) {
                 val updated = if (subject.unmergedFragments.isNotEmpty()) {
                     val fragmentsToMerge = subject.unmergedFragments
                     val note = llmService.mergeFragment(
@@ -604,6 +608,7 @@ class SubjectViewModel @Inject constructor(
                     )
                 }
                 subjectRepository.updateAggregatedNote(subject.id, updated)
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
                 _uiState.update { it.copy(aiErrorMessage = e.message ?: "整理失败") }
@@ -619,6 +624,7 @@ class SubjectViewModel @Inject constructor(
         viewModelScope.launch {
             setProcessing(true, "正在基于全量碎片重构笔记")
             try {
+                withContext(EditBatch(UUID.randomUUID().toString())) {
                 val note = llmService.refineNote(
                     subject.fragments,
                     subject.aggregatedNote,
@@ -628,6 +634,7 @@ class SubjectViewModel @Inject constructor(
                     onReasoning = { token -> appendReasoning(token) }
                 )
                 subjectRepository.updateAggregatedNote(subject.id, note)
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
                 _uiState.update { it.copy(aiErrorMessage = e.message ?: "重构失败") }
@@ -848,9 +855,9 @@ class SubjectViewModel @Inject constructor(
         fragmentsCollectJob?.cancel()
         fragmentsCollectJob = viewModelScope.launch {
             homeChatDao.getFragments().collect { entities ->
-                val contents = entities.map { e -> e.content }
-                Log.d("Fragment", "loadHomeFragments -> Flow EMIT | count=${contents.size} contents=$contents")
-                _uiState.update { it.copy(homeFragments = contents) }
+                val items = entities.map { e -> HomeFragmentData(e.content, e.timestamp) }
+                Log.d("Fragment", "loadHomeFragments -> Flow EMIT | count=${items.size} contents=${items.map { it.content }}")
+                _uiState.update { it.copy(homeFragments = items) }
             }
         }
     }
@@ -936,7 +943,7 @@ class SubjectViewModel @Inject constructor(
 
     fun addHomeFragment(text: String) {
         val current = _uiState.value.homeFragments
-        val updated = current + text
+        val updated = current + HomeFragmentData(text, System.currentTimeMillis())
         Log.d("Fragment", "addHomeFragment | BEFORE count=${current.size} | ADDING '$text' | AFTER count=${updated.size}")
         viewModelScope.launch { persistHomeFragments(updated) }
     }
@@ -957,6 +964,7 @@ class SubjectViewModel @Inject constructor(
             return
         }
 
+        val timeFmt = java.text.SimpleDateFormat("yyyy/MM/dd HH:mm", java.util.Locale.getDefault())
         val prompt = buildString {
             append("请阅读以下碎片知识，先提出一个整理方案（说明每条碎片应归入哪个已有主题或创建新主题），")
             append("等待用户确认后再执行。不要直接修改笔记。\n\n")
@@ -966,8 +974,10 @@ class SubjectViewModel @Inject constructor(
             append("3. 向用户展示方案，等待确认\n\n")
             append("碎片列表：\n")
             fragments.forEachIndexed { i, f ->
-                append("[碎片${i + 1}] $f\n")
+                val timeStr = f.timestamp?.let { timeFmt.format(java.util.Date(it)) } ?: "未知时间"
+                append("[碎片${i + 1}] ($timeStr, timestamp=${f.timestamp ?: 0}) ${f.content}\n")
             }
+            append("\n注意：使用 add_fragment 工具添加碎片时，请传入该碎片对应的 timestamp 参数（上方括号中的毫秒时间戳），以保留碎片原始发送时间。\n")
         }
 
         Log.d("Fragment", "organizeHomeFragments | switching to AGENT mode")
@@ -978,12 +988,12 @@ class SubjectViewModel @Inject constructor(
         sendHomeMessage(prompt)
     }
 
-    private suspend fun persistHomeFragments(fragments: List<String>) {
+    private suspend fun persistHomeFragments(fragments: List<HomeFragmentData>) {
         Log.d("Fragment", "persistHomeFragments -> CLEAR_ALL count=${fragments.size}")
         homeChatDao.clearAllFragments()
-        fragments.forEachIndexed { i, content ->
-            Log.d("Fragment", "persistHomeFragments -> INSERT pos=$i content='${content.take(40)}'")
-            homeChatDao.insertFragment(HomeFragmentEntity(position = i, content = content))
+        fragments.forEachIndexed { i, item ->
+            Log.d("Fragment", "persistHomeFragments -> INSERT pos=$i content='${item.content.take(40)}'")
+            homeChatDao.insertFragment(HomeFragmentEntity(position = i, content = item.content, timestamp = item.timestamp))
         }
         Log.d("Fragment", "persistHomeFragments -> DONE count=${fragments.size}")
     }
@@ -1038,6 +1048,7 @@ class SubjectViewModel @Inject constructor(
         val priorMessages = homeAgentMessageCache["_current"] ?: emptyList()
         val collectedMessages = mutableListOf<ChatMessage>()
         val toolCallDescriptions = mutableListOf<HomeChatMessage>()
+        withContext(EditBatch(UUID.randomUUID().toString())) {
         homeAgentService.runHomeAgentLoop(
             question = question,
             priorMessages = priorMessages,
@@ -1089,6 +1100,7 @@ class SubjectViewModel @Inject constructor(
                 _uiState.update { it.copy(homeMessages = it.homeMessages + assessMsg) }
             }
         )
+        }
     }
 
     /**

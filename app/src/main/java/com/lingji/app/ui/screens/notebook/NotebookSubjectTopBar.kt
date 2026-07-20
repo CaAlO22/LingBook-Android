@@ -57,7 +57,8 @@ fun NotebookSubjectTopBar(
     onBuildDirectory: () -> Unit,
     onExport: () -> Unit,
     onExportPdf: () -> Unit,
-    onCopyToClipboard: () -> Unit
+    onCopyToClipboard: () -> Unit,
+    onUndoEdit: () -> Unit
 ) {
     var showMoreMenu by remember { mutableStateOf(false) }
 
@@ -134,6 +135,13 @@ fun NotebookSubjectTopBar(
                     expanded = showMoreMenu,
                     onDismissRequest = { showMoreMenu = false }
                 ) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.undo_edit)) },
+                        onClick = {
+                            showMoreMenu = false
+                            onUndoEdit()
+                        }
+                    )
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.build_index)) },
                         onClick = {

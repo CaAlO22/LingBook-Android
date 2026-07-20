@@ -63,6 +63,10 @@
     <string name="plan">计划</string>
     <string name="plan_dialog_title">生成学习计划</string>
     <string name="rollback">回退</string>
+    <!-- 撤销笔记修改 -->
+    <string name="undo_edit">撤销修改</string>
+    <string name="undone">已撤销最近一次修改</string>
+    <string name="nothing_to_undo">没有可撤销的修改</string>
     <string name="plan_deadline_hint">完成时长，如 30天</string>
     <string name="generate_plan">生成计划</string>
     <string name="regenerate_plan">重新生成</string>
@@ -236,7 +240,7 @@
     <string name="update_version_format">v%1$s 已发布</string>
     <string name="update_now">立即更新</string>
     <string name="update_later">稍后再说</string>
-    <string name="update_downloading">下载中… %1$d%%</string>
+    <string name="update_downloading">正在从%1$s下载资源… %2$d%%</string>
     <string name="update_source_label">更新源</string>
 
     <!-- 设置：API Key 显隐与复制 -->
