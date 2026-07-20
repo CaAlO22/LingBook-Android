@@ -134,6 +134,8 @@ class NotebookPageEditorHostState internal constructor() {
         internal set
     var scrollViewportTop by mutableStateOf(0f)
         internal set
+    var isScrollInProgress by mutableStateOf(false)
+        internal set
 
     fun setPreview(value: Boolean) {
         isPreview = value
@@ -170,7 +172,8 @@ fun NotebookPageEditor(
     val segments = remember(content) { parsePageContent(content) }
     val textFieldValues = remember { mutableStateMapOf<Int, TextFieldValue>() }
     var focusedTextIndex by remember { mutableStateOf<Int?>(null) }
-    val firstTextFocusRequester = remember { FocusRequester() }
+    // 按 page.id 重置 FocusRequester，避免翻页时旧 BasicTextField 已卸载、新尚未挂载导致的未初始化崩溃。
+    val firstTextFocusRequester = remember(page.id) { FocusRequester() }
     val layoutResults = remember { mutableStateMapOf<Int, TextLayoutResult>() }
     var focusedCoordsY by remember { mutableStateOf(0f) }
     var focusedSelection by remember { mutableStateOf(0) }
@@ -282,6 +285,15 @@ fun NotebookPageEditor(
             }
         }
 
+        // 同步滚动状态到宿主，供光标跟随逻辑判断是否跳过修正。
+        // 动画结束后重置 isProgrammaticScroll，恢复用户拖拽检测能力。
+        LaunchedEffect(scrollState.isScrollInProgress) {
+            hostState.isScrollInProgress = scrollState.isScrollInProgress
+            if (!scrollState.isScrollInProgress) {
+                isProgrammaticScroll = false
+            }
+        }
+
         // 用户手动拖拽滚动时取消焦点，避免光标跟随冲突。
         // 用增量检测区分用户拖拽（大增量）和惯性滚动（小增量）。
         LaunchedEffect(Unit) {
@@ -313,7 +325,13 @@ fun NotebookPageEditor(
 
             if (autoFocusContent) {
                 androidx.compose.runtime.LaunchedEffect(page.id) {
-                    firstTextFocusRequester.requestFocus()
+                    // 预览模式下不渲染 BasicTextField，FocusRequester 未挂载，跳过聚焦以免崩溃。
+                    if (hostState.isPreview) return@LaunchedEffect
+                    try {
+                        firstTextFocusRequester.requestFocus()
+                    } catch (_: IllegalStateException) {
+                        // 翻页过渡期间 FocusRequester 可能尚未挂载到节点，忽略本次聚焦。
+                    }
                 }
             }
 

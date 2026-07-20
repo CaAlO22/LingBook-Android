@@ -55,6 +55,8 @@ class NoteEditorHostState internal constructor() {
         internal set
     var scrollViewportTop by mutableStateOf(0f)
         internal set
+    var isScrollInProgress by mutableStateOf(false)
+        internal set
 
     fun scrollBy(delta: Float) {
         scrollByOp?.invoke(delta)
@@ -176,6 +178,15 @@ fun NoteEditor(
                     val target = (scrollState.value + delta.toInt()).coerceIn(0, scrollState.maxValue)
                     scrollState.animateScrollTo(target)
                 }
+            }
+        }
+
+        // 同步滚动状态到宿主，供光标跟随逻辑判断是否跳过修正。
+        // 动画结束后重置 isProgrammaticScroll，恢复用户拖拽检测能力。
+        LaunchedEffect(scrollState.isScrollInProgress) {
+            hostState.isScrollInProgress = scrollState.isScrollInProgress
+            if (!scrollState.isScrollInProgress) {
+                isProgrammaticScroll = false
             }
         }
 

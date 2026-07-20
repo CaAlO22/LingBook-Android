@@ -31,6 +31,7 @@ class MainActivity : ComponentActivity() {
                     val updateViewModel: UpdateViewModel = hiltViewModel()
                     val updateInfo by updateViewModel.updateInfo.collectAsState()
                     val downloadProgress by updateViewModel.downloadProgress.collectAsState()
+                    val updateSource by updateViewModel.updateSource.collectAsState()
 
                     // Check for update on first composition
                     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -44,6 +45,7 @@ class MainActivity : ComponentActivity() {
                         UpdateDialog(
                             updateInfo = info,
                             downloadProgress = downloadProgress,
+                            updateSource = updateSource,
                             onUpdate = { updateViewModel.downloadAndInstallApk() },
                             onDismiss = { updateViewModel.dismissUpdate() }
                         )

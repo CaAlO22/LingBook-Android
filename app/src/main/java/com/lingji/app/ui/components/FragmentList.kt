@@ -193,7 +193,7 @@ private fun FragmentBubble(
                                 modifier = Modifier.size(10.dp)
                             )
                             Text(
-                                text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(fragment.timestamp)),
+                                text = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(Date(fragment.timestamp)),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = metaColor,
                                 modifier = Modifier.padding(start = 3.dp)

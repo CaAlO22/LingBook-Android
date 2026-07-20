@@ -29,7 +29,7 @@ sealed class UpdateCheckResult {
     data class Failed(val reason: String) : UpdateCheckResult()
 }
 
-enum class UpdateSource { GITHUB, GITEE }
+enum class UpdateSource(val displayName: String) { GITHUB("GitHub"), GITEE("Gitee") }
 
 @Singleton
 class UpdateChecker @Inject constructor(

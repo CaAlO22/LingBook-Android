@@ -1,6 +1,7 @@
 package com.lingji.app.domain.tool.note
 
 import com.google.gson.JsonObject
+import com.lingji.app.data.remote.LLMService
 import com.lingji.app.data.repository.SubjectRepository
 import com.lingji.app.domain.model.SubjectType
 import com.lingji.app.domain.model.fullNoteContent
@@ -32,7 +33,7 @@ object NoteTools {
                 ?: return "Error: Missing required parameter: subject_id"
             val subject = repo.getSubjectByIdOnce(subjectId)
                 ?: return "Error: Subject not found: $subjectId"
-            return buildJsonObject { "content" to subject.fullNoteContent() }.toString()
+            return buildJsonObject { "content" to LLMService.stripDataImages(subject.fullNoteContent()) }.toString()
         }
     }
 

@@ -56,6 +56,7 @@ object FragmentTools {
             "properties" to buildJsonObject {
                 "subject_id" to buildJsonObject { "type" to "string"; "description" to "笔记 ID" }
                 "content" to buildJsonObject { "type" to "string"; "description" to "碎片内容" }
+                "timestamp" to buildJsonObject { "type" to "number"; "description" to "碎片原始发送时间戳（毫秒）。整理首页碎片时请传入碎片原始时间戳以保留发送时间，不传则使用当前时间。" }
             }
             "required" to buildJsonArray { +"subject_id"; +"content" }
         }
@@ -64,7 +65,8 @@ object FragmentTools {
                 ?: return "Error: Missing required parameter: subject_id"
             val content = params.get("content")?.asString
                 ?: return "Error: Missing required parameter: content"
-            val fragment = Fragment(content = content)
+            val timestamp = params.get("timestamp")?.asLong ?: System.currentTimeMillis()
+            val fragment = Fragment(content = content, timestamp = timestamp)
             repo.addFragment(subjectId, fragment)
             return buildJsonObject { "id" to fragment.id }.toString()
         }

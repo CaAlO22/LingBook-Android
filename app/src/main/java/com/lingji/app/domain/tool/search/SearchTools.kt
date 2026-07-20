@@ -174,7 +174,7 @@ object SearchTools {
                     val pages = subject.pages ?: emptyList()
                     pages.joinToString("\n\n") { p ->
                         val title = if (p.title.isNotBlank()) "## ${p.title}\n" else ""
-                        "$title${p.content}"
+                        "$title${LLMService.stripDataImages(p.content)}"
                     }
                 }
                 SubjectType.FRAGMENT -> {

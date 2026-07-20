@@ -22,11 +22,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.lingji.app.R
 import com.lingji.app.data.remote.UpdateInfo
+import com.lingji.app.data.remote.UpdateSource
 
 @Composable
 fun UpdateDialog(
     updateInfo: UpdateInfo,
     downloadProgress: Int, // -1 = not downloading, 0-100 = progress
+    updateSource: UpdateSource,
     onUpdate: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -72,7 +74,7 @@ fun UpdateDialog(
                 if (isDownloading) {
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = stringResource(R.string.update_downloading, downloadProgress),
+                        text = stringResource(R.string.update_downloading, updateSource.displayName, downloadProgress),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.align(Alignment.CenterHorizontally)

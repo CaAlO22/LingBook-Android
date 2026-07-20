@@ -14,6 +14,11 @@ data class HomeChatMessage(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+data class HomeFragmentData(
+    val content: String,
+    val timestamp: Long? = null
+)
+
 data class SubjectUiState(
     val subjects: List<Subject> = emptyList(),
     val currentSubjectId: String? = null,
@@ -40,7 +45,7 @@ data class SubjectUiState(
     val homeStreamLine: String = "",
     val homeIsLoading: Boolean = false,
     /** 碎片输入模式下收集的碎片列表。 */
-    val homeFragments: List<String> = emptyList(),
+    val homeFragments: List<HomeFragmentData> = emptyList(),
     val folders: List<Folder> = emptyList(),
     val currentFolderId: String? = null,
 ) {

@@ -1,6 +1,7 @@
 package com.lingji.app.domain.tool.page
 
 import com.google.gson.JsonObject
+import com.lingji.app.data.remote.LLMService
 import com.lingji.app.data.repository.SubjectRepository
 import com.lingji.app.domain.model.NotebookPage
 import com.lingji.app.domain.model.Subject
@@ -73,7 +74,7 @@ object PageTools {
             return buildJsonObject {
                 "id" to page.id
                 "title" to page.title
-                "content" to page.content
+                "content" to LLMService.stripDataImages(page.content)
                 "updated_at" to page.updatedAt
             }.toString()
         }

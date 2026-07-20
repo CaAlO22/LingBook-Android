@@ -390,7 +390,7 @@ class LLMService @Inject constructor() {
 
         // 从 markdown 文本里剥离 data:image base64 占位，避免长 base64 把真正的文本上下文淹没；
         // 同时让模型知道图片位置已通过多模态消息单独附上。
-        val cleanedContent = stripDataImagesForChat(pageContent, images.size)
+        val cleanedContent = stripDataImages(pageContent)
         val titleLine = if (pageTitle.isNotBlank()) "页面标题：${pageTitle.trim()}\n" else ""
         val context = buildString {
             append(titleLine)
@@ -458,20 +458,6 @@ class LLMService @Inject constructor() {
         }
     }
 
-    /**
-     * 将 markdown 里的 data:image base64 图片块替换为简短占位（[图片1]…），
-     * 防止数万字符的 base64 把真正的文本上下文淹没。其它 markdown 文字保持不变。
-     */
-    private fun stripDataImagesForChat(content: String, imageCount: Int): String {
-        if (imageCount == 0 && !content.contains("data:image", ignoreCase = true)) return content.trim()
-        val regex = Regex("!\\[[^\\]]*]\\(data:image/[^)]+\\)")
-        var index = 0
-        return regex.replace(content) {
-            index += 1
-            "[图片$index]"
-        }.trim()
-    }
-
     private fun buildRequest(
         endpoint: String,
         body: ChatRequest,
@@ -494,6 +480,20 @@ class LLMService @Inject constructor() {
 
     companion object {
         private val gson = Gson()
+
+        /**
+         * 将 markdown 里的 data:image base64 图片块替换为简短占位（[图片1]…），
+         * 防止数万字符的 base64 把真正的文本上下文淹没。其它 markdown 文字保持不变。
+         */
+        fun stripDataImages(content: String): String {
+            if (!content.contains("data:image", ignoreCase = true)) return content.trim()
+            val regex = Regex("!\\[[^\\]]*]\\(data:image/[^)]+\\)")
+            var index = 0
+            return regex.replace(content) {
+                index += 1
+                "[图片$index]"
+            }.trim()
+        }
 
         fun sanitizeOutput(text: String): String {
         if (text.isBlank()) return ""

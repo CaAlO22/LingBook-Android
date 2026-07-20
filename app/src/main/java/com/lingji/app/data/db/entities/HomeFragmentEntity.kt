@@ -7,5 +7,6 @@ import androidx.room.PrimaryKey
 data class HomeFragmentEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val position: Int,
-    val content: String
+    val content: String,
+    val timestamp: Long? = null
 )

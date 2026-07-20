@@ -74,6 +74,7 @@ import com.lingji.app.ui.components.MarkdownView
 import com.lingji.app.ui.components.enterSendBehavior
 import com.lingji.app.ui.components.uriToBase64
 import com.lingji.app.ui.viewmodel.HomeChatMessage
+import com.lingji.app.ui.viewmodel.HomeFragmentData
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -86,7 +87,7 @@ fun HomeChatSheet(
     currentMode: ChatMode,
     conversations: List<HomeConversationEntity>,
     currentConversationId: String?,
-    fragments: List<String>,
+    fragments: List<HomeFragmentData>,
     onSend: (String, List<String>) -> Unit,
     onModeChange: (ChatMode) -> Unit,
     onNewConversation: () -> Unit,
@@ -110,6 +111,7 @@ fun HomeChatSheet(
     var showHistory by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val dateFormat = remember { SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()) }
+    val fragmentDateFormat = remember { SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()) }
 
     val context = LocalContext.current
     val selectedImages = remember { androidx.compose.runtime.mutableStateListOf<String>() }
@@ -369,12 +371,21 @@ fun HomeChatSheet(
                                         color = MaterialTheme.colorScheme.tertiary,
                                         modifier = Modifier.padding(end = 6.dp, top = 2.dp)
                                     )
-                                    Text(
-                                        text = fragment,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.weight(1f)
-                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = fragment.content,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        if (fragment.timestamp != null) {
+                                            Text(
+                                                text = fragmentDateFormat.format(Date(fragment.timestamp)),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                                modifier = Modifier.padding(top = 2.dp)
+                                            )
+                                        }
+                                    }
                                     IconButton(
                                         onClick = { onDeleteFragment(index) },
                                         modifier = Modifier.size(20.dp)

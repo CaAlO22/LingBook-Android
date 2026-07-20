@@ -34,10 +34,11 @@ class IndexService @Inject constructor(
 {"summary":"这是一段摘要...","keywords":["原文术语","别名","公式写法"]}"""
 
         val images = extractImagesFromContent(page.content)
+        val cleanedContent = LLMService.stripDataImages(page.content)
         val prompt = if (images.isNotEmpty()) {
-            "请分析以下笔记页面内容（包含 ${images.size} 张图片），生成索引信息。请结合图片中的文字、图表、公式等视觉信息进行综合分析。\n\n页面内容：\n${page.content}"
+            "请分析以下笔记页面内容（包含 ${images.size} 张图片），生成索引信息。请结合图片中的文字、图表、公式等视觉信息进行综合分析。\n\n页面内容：\n${cleanedContent}"
         } else {
-            "请分析以下笔记页面内容，生成索引信息：\n\n页面内容：\n${page.content}"
+            "请分析以下笔记页面内容，生成索引信息：\n\n页面内容：\n${cleanedContent}"
         }
 
         val raw = llmService.streamGenerate(
