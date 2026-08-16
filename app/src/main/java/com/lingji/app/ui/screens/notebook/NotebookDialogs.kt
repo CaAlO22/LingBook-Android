@@ -106,38 +106,3 @@ fun MovePageDialog(
     )
 }
 
-@Composable
-fun DeletePageDialog(
-    pageTitle: String,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    LingjiDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.delete_page)) },
-        text = {
-            Text(
-                stringResource(
-                    R.string.delete_page_confirm,
-                    pageTitle.ifBlank { stringResource(R.string.unnamed_page) }
-                )
-            )
-        },
-        confirmButton = {
-            LingjiDialogConfirmButton(
-                text = stringResource(R.string.delete),
-                isDestructive = true,
-                onClick = {
-                    onConfirm()
-                    onDismiss()
-                }
-            )
-        },
-        dismissButton = {
-            LingjiDialogDismissButton(
-                text = stringResource(R.string.cancel),
-                onClick = onDismiss
-            )
-        }
-    )
-}

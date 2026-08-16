@@ -84,6 +84,7 @@ import com.lingji.app.domain.model.fullNoteContent
 import com.lingji.app.ui.components.ChatMode
 import com.lingji.app.ui.components.ChatScope
 import com.lingji.app.ui.components.ClipboardTooLargeDialog
+import com.lingji.app.ui.components.DeleteConfirmDialog
 import com.lingji.app.ui.components.FloatingInputContainer
 import com.lingji.app.ui.components.IndexSearchPanel
 import com.lingji.app.ui.components.LingjiDialog
@@ -97,7 +98,6 @@ import com.lingji.app.ui.components.PageImagePicker
 import com.lingji.app.ui.components.PageIndexEditorDialog
 import com.lingji.app.ui.components.TimeDisplay
 import com.lingji.app.ui.components.rememberImagePickerState
-import com.lingji.app.ui.screens.notebook.DeletePageDialog
 import com.lingji.app.ui.screens.notebook.EmptyPagesState
 import com.lingji.app.ui.screens.notebook.ExportPdfRangeDialog
 import com.lingji.app.ui.screens.notebook.JumpPageDialog
@@ -188,6 +188,7 @@ fun NotebookSubjectScreen(
     var isChatLoading by remember { mutableStateOf(false) }
     var chatHistory by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var deleteConfirmPage by remember { mutableStateOf<NotebookPage?>(null) }
+    var showClearChatConfirm by remember { mutableStateOf(false) }
     var lastCreatedPageId by remember { mutableStateOf<String?>(null) }
     var showIndexEditorPage by remember { mutableStateOf<NotebookPage?>(null) }
     var showExportPdfDialog by remember { mutableStateOf(false) }
@@ -520,8 +521,7 @@ fun NotebookSubjectScreen(
                             }
                         },
                         onClearHistory = {
-                            chatHistory = emptyList()
-                            chatAnswer = ""
+                            showClearChatConfirm = true
                         },
                         onCollapsedTopYChange = { debugBarTopY = it },
                         onBarLayoutChange = { top, height ->
@@ -676,16 +676,35 @@ fun NotebookSubjectScreen(
     }
 
     deleteConfirmPage?.let { page ->
-        DeletePageDialog(
-            pageTitle = page.title,
+        DeleteConfirmDialog(
+            title = stringResource(R.string.delete_page),
+            text = stringResource(
+                R.string.delete_page_confirm,
+                page.title.ifBlank { stringResource(R.string.unnamed_page) }
+            ),
             onConfirm = {
                 val deletedIndex = pages.indexOfFirst { it.id == page.id }
                 val nextPage = pages.getOrNull(deletedIndex + 1)
                     ?: pages.getOrNull(deletedIndex - 1)
                 currentPageId = nextPage?.id
                 viewModel.deletePage(liveSubject.id, page.id)
+                deleteConfirmPage = null
             },
             onDismiss = { deleteConfirmPage = null }
+        )
+    }
+
+    if (showClearChatConfirm) {
+        DeleteConfirmDialog(
+            title = stringResource(R.string.cd_clear_history),
+            text = stringResource(R.string.clear_chat_history_confirm),
+            confirmText = stringResource(R.string.clear),
+            onConfirm = {
+                chatHistory = emptyList()
+                chatAnswer = ""
+                showClearChatConfirm = false
+            },
+            onDismiss = { showClearChatConfirm = false }
         )
     }
     uiState.aiWarningMessage?.let { warning ->
