@@ -96,6 +96,7 @@ import com.lingji.app.domain.provider.ProviderRegistry
 import com.lingji.app.ui.chat.HomeChatBar
 import com.lingji.app.ui.chat.HomeChatSheet
 import com.lingji.app.ui.components.ClipboardTooLargeDialog
+import com.lingji.app.ui.components.DeleteConfirmDialog
 import com.lingji.app.ui.components.DragResult
 import com.lingji.app.ui.components.DragState
 import com.lingji.app.ui.components.FolderCard
@@ -537,28 +538,14 @@ fun SubjectGalleryScreen(
 
     deleteFolderId?.let { id ->
         val folder = uiState.folders.find { it.id == id }
-        LingjiDialog(
-            onDismissRequest = { deleteFolderId = null },
-            title = { Text(stringResource(R.string.delete)) },
-            text = {
-                Text(stringResource(R.string.delete_folder_confirm, folder?.name ?: ""))
+        DeleteConfirmDialog(
+            title = stringResource(R.string.delete),
+            text = stringResource(R.string.delete_folder_confirm, folder?.name ?: ""),
+            onConfirm = {
+                viewModel.deleteFolder(id)
+                deleteFolderId = null
             },
-            confirmButton = {
-                LingjiDialogConfirmButton(
-                    text = stringResource(R.string.delete),
-                    onClick = {
-                        viewModel.deleteFolder(id)
-                        deleteFolderId = null
-                    },
-                    isDestructive = true
-                )
-            },
-            dismissButton = {
-                LingjiDialogDismissButton(
-                    text = stringResource(R.string.cancel),
-                    onClick = { deleteFolderId = null }
-                )
-            }
+            onDismiss = { deleteFolderId = null }
         )
     }
 

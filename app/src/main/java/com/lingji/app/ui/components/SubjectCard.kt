@@ -241,33 +241,17 @@ fun SubjectCard(
             }
 
             if (showDeleteDialog) {
-                LingjiDialog(
-                    onDismissRequest = { showDeleteDialog = false },
-                    title = { Text(stringResource(R.string.delete)) },
-                    text = {
-                        Text(
-                            stringResource(
-                                R.string.delete_subject_confirm,
-                                subject.title.takeIf { it.isNotBlank() } ?: ""
-                            )
-                        )
+                DeleteConfirmDialog(
+                    title = stringResource(R.string.delete),
+                    text = stringResource(
+                        R.string.delete_subject_confirm,
+                        subject.title.takeIf { it.isNotBlank() } ?: ""
+                    ),
+                    onConfirm = {
+                        onDelete()
+                        showDeleteDialog = false
                     },
-                    confirmButton = {
-                        LingjiDialogConfirmButton(
-                            text = stringResource(R.string.delete),
-                            onClick = {
-                                onDelete()
-                                showDeleteDialog = false
-                            },
-                            isDestructive = true
-                        )
-                    },
-                    dismissButton = {
-                        LingjiDialogDismissButton(
-                            text = stringResource(R.string.cancel),
-                            onClick = { showDeleteDialog = false }
-                        )
-                    }
+                    onDismiss = { showDeleteDialog = false }
                 )
             }
         }
