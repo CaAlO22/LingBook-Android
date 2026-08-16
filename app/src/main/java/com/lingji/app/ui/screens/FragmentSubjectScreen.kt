@@ -75,6 +75,7 @@ import com.lingji.app.domain.model.Subject
 import com.lingji.app.ui.components.ChatMode
 import com.lingji.app.ui.components.ChatScope
 import com.lingji.app.ui.components.ClipboardTooLargeDialog
+import com.lingji.app.ui.components.DeleteConfirmDialog
 import com.lingji.app.ui.components.FloatingInputContainer
 import com.lingji.app.ui.components.FragmentList
 import com.lingji.app.ui.components.GlassOutlinedTextField
@@ -143,6 +144,8 @@ fun FragmentSubjectScreen(
     var showRefineDialog by remember { mutableStateOf(false) }
     var planDialogDeadline by remember { mutableStateOf("") }
     var showPlanDialog by remember { mutableStateOf(false) }
+    var pendingDeleteFragment by remember { mutableStateOf<Fragment?>(null) }
+    var showClearChatConfirm by remember { mutableStateOf(false) }
     var showClipboardTooLargeDialog by remember { mutableStateOf(false) }
     var noteText by remember(liveSubject.aggregatedNote) { mutableStateOf(liveSubject.aggregatedNote) }
 
@@ -372,8 +375,7 @@ fun FragmentSubjectScreen(
                                         )
                                     },
                                     onClearHistory = {
-                                        viewModel.clearNoteChatHistory(liveSubject.id)
-                                        noteChatAnswer = ""
+                                        showClearChatConfirm = true
                                     },
                                     modifier = Modifier.fillMaxWidth(),
                                     onCollapsedTopYChange = { debugBarTopY = it },
@@ -399,7 +401,7 @@ fun FragmentSubjectScreen(
                                 0 -> FragmentList(
                                     fragments = (liveSubject.fragments + liveSubject.unmergedFragments).sortedBy { it.timestamp },
                                     onEdit = { editingFragment = it },
-                                    onDelete = { viewModel.deleteFragment(liveSubject.id, it.id) },
+                                    onDelete = { pendingDeleteFragment = it },
                                     modifier = Modifier.fillMaxSize(),
                                     // 预留底部悬浮输入胶囊的高度，使最后一条碎片可滚动到其上方。
                                     bottomContentPadding = 100.dp
@@ -525,6 +527,32 @@ fun FragmentSubjectScreen(
                     onClick = { showPlanDialog = false }
                 )
             }
+        )
+    }
+
+    pendingDeleteFragment?.let { fragment ->
+        DeleteConfirmDialog(
+            title = stringResource(R.string.delete),
+            text = stringResource(R.string.delete_fragment_confirm),
+            onConfirm = {
+                viewModel.deleteFragment(liveSubject.id, fragment.id)
+                pendingDeleteFragment = null
+            },
+            onDismiss = { pendingDeleteFragment = null }
+        )
+    }
+
+    if (showClearChatConfirm) {
+        DeleteConfirmDialog(
+            title = stringResource(R.string.cd_clear_history),
+            text = stringResource(R.string.clear_chat_history_confirm),
+            confirmText = stringResource(R.string.clear),
+            onConfirm = {
+                viewModel.clearNoteChatHistory(liveSubject.id)
+                noteChatAnswer = ""
+                showClearChatConfirm = false
+            },
+            onDismiss = { showClearChatConfirm = false }
         )
     }
 
