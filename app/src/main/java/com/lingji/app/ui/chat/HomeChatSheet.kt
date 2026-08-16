@@ -69,6 +69,7 @@ import androidx.compose.ui.unit.dp
 import com.lingji.app.R
 import com.lingji.app.data.db.entities.HomeConversationEntity
 import com.lingji.app.ui.components.ChatMode
+import com.lingji.app.ui.components.DeleteConfirmDialog
 import com.lingji.app.ui.components.GlassSurface
 import com.lingji.app.ui.components.MarkdownView
 import com.lingji.app.ui.components.enterSendBehavior
@@ -109,6 +110,10 @@ fun HomeChatSheet(
 
     var inputText by remember { mutableStateOf(TextFieldValue("")) }
     var showHistory by remember { mutableStateOf(false) }
+    var pendingDeleteConversation by remember { mutableStateOf<HomeConversationEntity?>(null) }
+    var pendingDeleteFragmentIndex by remember { mutableStateOf<Int?>(null) }
+    var showNewConversationConfirm by remember { mutableStateOf(false) }
+    var showOrganizeConfirm by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val dateFormat = remember { SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()) }
     val fragmentDateFormat = remember { SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()) }
@@ -219,7 +224,11 @@ fun HomeChatSheet(
                             text = { Text(stringResource(R.string.home_chat_new_conversation)) },
                             onClick = {
                                 Log.d(TAG, "EVENT: new conversation clicked")
-                                onNewConversation()
+                                if (fragments.isEmpty()) {
+                                    onNewConversation()
+                                } else {
+                                    showNewConversationConfirm = true
+                                }
                                 showHistory = false
                             },
                             leadingIcon = { Icon(Icons.Filled.Add, contentDescription = null) }
@@ -256,7 +265,7 @@ fun HomeChatSheet(
                                                 .size(24.dp)
                                                 .clickable {
                                                     Log.d(TAG, "EVENT: delete conversation clicked | id=${conv.id}")
-                                                    onDeleteConversation(conv.id)
+                                                    pendingDeleteConversation = conv
                                                     showHistory = false
                                                 },
                                             contentAlignment = Alignment.Center
@@ -387,7 +396,7 @@ fun HomeChatSheet(
                                         }
                                     }
                                     IconButton(
-                                        onClick = { onDeleteFragment(index) },
+                                        onClick = { pendingDeleteFragmentIndex = index },
                                         modifier = Modifier.size(20.dp)
                                     ) {
                                         Icon(
@@ -406,7 +415,7 @@ fun HomeChatSheet(
                 // --- Organize button ---
                 if (fragments.isNotEmpty()) {
                     Surface(
-                        onClick = onOrganizeFragments,
+                        onClick = { showOrganizeConfirm = true },
                         shape = RoundedCornerShape(12.dp),
                         color = MaterialTheme.colorScheme.tertiary,
                         modifier = Modifier
@@ -662,5 +671,55 @@ fun HomeChatSheet(
                 }
             }
         }
+    }
+
+    pendingDeleteConversation?.let { conv ->
+        DeleteConfirmDialog(
+            title = stringResource(R.string.delete),
+            text = stringResource(R.string.delete_conversation_confirm, conv.title),
+            onConfirm = {
+                onDeleteConversation(conv.id)
+                pendingDeleteConversation = null
+            },
+            onDismiss = { pendingDeleteConversation = null }
+        )
+    }
+
+    pendingDeleteFragmentIndex?.let { index ->
+        DeleteConfirmDialog(
+            title = stringResource(R.string.delete),
+            text = stringResource(R.string.delete_fragment_confirm),
+            onConfirm = {
+                onDeleteFragment(index)
+                pendingDeleteFragmentIndex = null
+            },
+            onDismiss = { pendingDeleteFragmentIndex = null }
+        )
+    }
+
+    if (showNewConversationConfirm) {
+        DeleteConfirmDialog(
+            title = stringResource(R.string.home_chat_new_conversation),
+            text = stringResource(R.string.new_conversation_clear_confirm, fragments.size),
+            confirmText = stringResource(R.string.clear_and_start),
+            onConfirm = {
+                onNewConversation()
+                showNewConversationConfirm = false
+            },
+            onDismiss = { showNewConversationConfirm = false }
+        )
+    }
+
+    if (showOrganizeConfirm) {
+        DeleteConfirmDialog(
+            title = stringResource(R.string.organize),
+            text = stringResource(R.string.organize_clear_confirm),
+            confirmText = stringResource(R.string.organize),
+            onConfirm = {
+                onOrganizeFragments()
+                showOrganizeConfirm = false
+            },
+            onDismiss = { showOrganizeConfirm = false }
+        )
     }
 }
