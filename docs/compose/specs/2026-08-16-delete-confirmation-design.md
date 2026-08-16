@@ -1,5 +1,10 @@
 # 设计：删除操作统一二次确认
 
+> [!NOTE]
+> This document may not reflect the current implementation.
+> See the final report for up-to-date state:
+> [Final Report](../reports/delete-confirmation.md)
+
 日期：2026-08-16
 状态：已获用户批准
 
