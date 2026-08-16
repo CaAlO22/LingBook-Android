@@ -283,4 +283,13 @@
     <string name="home_chat_empty">开始与灵记对话吧</string>
     <string name="home_chat_mode_ask">问答</string>
     <string name="home_chat_mode_agent">Agent</string>
+
+    <!-- 删除确认 -->
+    <string name="delete_fragment_confirm">确定要删除这条碎片吗？此操作不可撤销。</string>
+    <string name="delete_conversation_confirm">确定要删除会话“%1$s”吗？会话的全部消息将一并删除，此操作不可撤销。</string>
+    <string name="clear_chat_history_confirm">确定要清空聊天历史吗？此操作不可撤销。</string>
+    <string name="new_conversation_clear_confirm">开始新对话将清空 %1$d 条未整理碎片，此操作不可撤销。</string>
+    <string name="organize_clear_confirm">整理完成后碎片列表将被清空，确定继续吗？</string>
+    <string name="clear">清空</string>
+    <string name="clear_and_start">清空并开始</string>
 </resources>

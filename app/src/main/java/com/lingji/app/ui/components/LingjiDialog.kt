@@ -22,9 +22,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.lingji.app.R
 
 /**
  * 灵记风格弹窗容器。
@@ -166,6 +168,46 @@ fun LingjiDialogDismissButton(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
+}
+
+/**
+ * 通用删除/清空二次确认弹窗。
+ *
+ * 基于 [LingjiDialog] 封装，确认按钮固定使用破坏性（红色）样式，
+ * 用于所有删除、清空类操作的二次确认，统一交互体验。
+ *
+ * @param title 弹窗标题。
+ * @param text 确认提示正文。
+ * @param onConfirm 点击确认按钮回调（执行删除后由调用方清除 pending 状态）。
+ * @param onDismiss 取消/点外部关闭回调（由调用方清除 pending 状态）。
+ * @param confirmText 确认按钮文案，默认「删除」；清空类操作可传「清空」等。
+ */
+@Composable
+fun DeleteConfirmDialog(
+    title: String,
+    text: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    confirmText: String = stringResource(R.string.delete)
+) {
+    LingjiDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(text) },
+        confirmButton = {
+            LingjiDialogConfirmButton(
+                text = confirmText,
+                onClick = onConfirm,
+                isDestructive = true
+            )
+        },
+        dismissButton = {
+            LingjiDialogDismissButton(
+                text = stringResource(R.string.cancel),
+                onClick = onDismiss
+            )
+        }
+    )
 }
 
 
