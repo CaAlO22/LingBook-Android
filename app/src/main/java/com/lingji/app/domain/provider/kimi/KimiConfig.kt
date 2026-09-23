@@ -10,60 +10,28 @@ object KimiConfig : ProviderConfig {
     override val id = "KIMI"
     override val displayNameRes = R.string.provider_kimi
     override val defaultBaseUrl = MOONSHOT_URL
-    override val defaultModelId = "kimi-k2.6"
+    override val defaultModelId = "kimi-k3"
     override val models = listOf(
         ProviderModel(
-            id = "kimi-k2.6",
-            name = "Kimi K2.6",
-            description = "最新旗舰，256K 上下文，多模态与 Tool Calling",
+            id = "kimi-k3",
+            name = "Kimi K3",
+            description = "最新旗舰，1M 上下文，原生视觉，编程与 Agent 能力最强",
             supportsVision = true
-        ),
-        ProviderModel(
-            id = "kimi-k2.5",
-            name = "Kimi K2.5",
-            description = "上一代旗舰，长上下文"
         ),
         ProviderModel(
             id = "kimi-k2.7-code",
             name = "Kimi K2.7-Code",
-            description = "代码专用模型"
+            description = "代码专用模型，256K 上下文，长上下文指令遵循稳定"
         ),
         ProviderModel(
             id = "kimi-k2.7-code-highspeed",
             name = "Kimi K2.7-Code-HighSpeed",
-            description = "代码专用高速版"
+            description = "代码专用高速版，约 180 tokens/s"
         ),
         ProviderModel(
-            id = "moonshot-v1-8k",
-            name = "Moonshot V1 8K",
-            description = "短文本，上下文 8K"
-        ),
-        ProviderModel(
-            id = "moonshot-v1-32k",
-            name = "Moonshot V1 32K",
-            description = "长文本，上下文 32K"
-        ),
-        ProviderModel(
-            id = "moonshot-v1-128k",
-            name = "Moonshot V1 128K",
-            description = "超长文本，上下文 128K"
-        ),
-        ProviderModel(
-            id = "moonshot-v1-8k-vision-preview",
-            name = "Moonshot V1 8K Vision",
-            description = "视觉模型，上下文 8K",
-            supportsVision = true
-        ),
-        ProviderModel(
-            id = "moonshot-v1-32k-vision-preview",
-            name = "Moonshot V1 32K Vision",
-            description = "视觉模型，上下文 32K",
-            supportsVision = true
-        ),
-        ProviderModel(
-            id = "moonshot-v1-128k-vision-preview",
-            name = "Moonshot V1 128K Vision",
-            description = "视觉模型，上下文 128K",
+            id = "kimi-k2.6",
+            name = "Kimi K2.6",
+            description = "通用多模态，256K 上下文，支持思考与非思考模式",
             supportsVision = true
         )
     )

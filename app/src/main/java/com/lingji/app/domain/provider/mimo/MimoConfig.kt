@@ -11,17 +11,24 @@ object MimoConfig : ProviderConfig {
     override val id = "XIAOMI"
     override val displayNameRes = R.string.provider_mimo
     override val defaultBaseUrl = PAY_AS_YOU_GO_URL
-    override val defaultModelId = "mimo-v2.5-pro"
+    override val defaultModelId = "mimo-v2.6-pro"
     override val models = listOf(
         ProviderModel(
-            id = "mimo-v2.5-pro",
-            name = "MiMo-V2.5-Pro",
-            description = "复杂推理、长文档、深度分析"
+            id = "mimo-v2.6-pro",
+            name = "MiMo-V2.6-Pro",
+            description = "最新旗舰推理模型，全模态，面向长程任务与高价值工作",
+            supportsVision = true
         ),
         ProviderModel(
-            id = "mimo-v2.5",
-            name = "MiMo-V2.5",
-            description = "全模态理解、图文音视频",
+            id = "mimo-v2.6-flash",
+            name = "MiMo-V2.6-Flash",
+            description = "全模态高效推理，高智能低成本，适合规模化调用",
+            supportsVision = true
+        ),
+        ProviderModel(
+            id = "mimo-v2.6-pro-ultraspeed",
+            name = "MiMo-V2.6-Pro-UltraSpeed",
+            description = "V2.6-Pro 旗舰性能，最高 20 倍推理速度，面向强实时场景",
             supportsVision = true
         )
     )

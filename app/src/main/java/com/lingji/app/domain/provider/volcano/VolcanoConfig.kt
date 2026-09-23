@@ -10,44 +10,48 @@ object VolcanoConfig : ProviderConfig {
     override val id = "DOUBAO"
     override val displayNameRes = R.string.provider_volcano
     override val defaultBaseUrl = ARK_URL
-    override val defaultModelId = "doubao-seed-2-0-lite-260215"
+    override val defaultModelId = "doubao-seed-2-1-pro-260915"
     override val models = listOf(
         ProviderModel(
-            id = "doubao-seed-2-0-lite-260215",
-            name = "Doubao Seed 2.0 Lite",
-            description = "官方推荐均衡型模型，适合大多数场景"
+            id = "doubao-seed-2-1-pro-260915",
+            name = "Doubao Seed 2.1 Pro",
+            description = "官方推荐旗舰，1M 上下文，Coding/Agent/多模态全面升级",
+            supportsVision = true
         ),
         ProviderModel(
-            id = "doubao-seed-2-0-pro-260215",
-            name = "Doubao Seed 2.0 Pro",
-            description = "旗舰级 Agent 通用模型，复杂推理与长链路任务"
+            id = "doubao-seed-2-1-lite-260915",
+            name = "Doubao Seed 2.1 Lite",
+            description = "全模态理解，1M 上下文，性能与成本均衡",
+            supportsVision = true
         ),
         ProviderModel(
-            id = "doubao-seed-2-0-mini-260215",
-            name = "Doubao Seed 2.0 Mini",
-            description = "低时延、高并发、成本敏感场景"
+            id = "doubao-seed-evolving",
+            name = "Doubao Seed Evolving",
+            description = "周级迭代的 Coding & Agent 模型，能力持续进化",
+            supportsVision = true
         ),
         ProviderModel(
-            id = "doubao-seed-2-0-code-preview-260215",
-            name = "Doubao Seed 2.0 Code",
-            description = "面向编程优化，适合 AI 编程工具"
+            id = "doubao-seed-2-1-pro-260628",
+            name = "Doubao Seed 2.1 Pro (0628)",
+            description = "面向生产级任务，升级编程、智能体与多模态能力",
+            supportsVision = true
+        ),
+        ProviderModel(
+            id = "doubao-seed-2-1-turbo-260628",
+            name = "Doubao Seed 2.1 Turbo",
+            description = "效果与成本均衡，适合高频调用",
+            supportsVision = true
         ),
         ProviderModel(
             id = "doubao-seed-2-0-lite-260428",
-            name = "Doubao Seed 2.0 Lite (全模态)",
-            description = "轻量全模态，支持文本/图片/语音/视频",
+            name = "Doubao Seed 2.0 Lite",
+            description = "豆包首款全模态理解模型，音视图文统一理解",
             supportsVision = true
         ),
         ProviderModel(
             id = "doubao-seed-2-0-mini-260428",
-            name = "Doubao Seed 2.0 Mini (全模态)",
-            description = "轻量均衡全模态，多语种及小语种",
-            supportsVision = true
-        ),
-        ProviderModel(
-            id = "doubao-vision-32k-250115",
-            name = "豆包 Vision",
-            description = "图片/视频/文档视觉理解",
+            name = "Doubao Seed 2.0 Mini",
+            description = "低时延、低成本的全模态理解模型",
             supportsVision = true
         )
     )

@@ -32,6 +32,6 @@ class BailianRequestStrategy : RequestStrategy {
     )
 
     companion object {
-        private const val BailianDefaultModel = "qwen3.7-plus"
+        private const val BailianDefaultModel = "qwen3.8-max"
     }
 }

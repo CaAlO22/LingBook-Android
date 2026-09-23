@@ -17,14 +17,28 @@ class ZhipuRequestStrategy : RequestStrategy {
         messages: List<ChatMessage>,
         stream: Boolean,
         tools: JsonArray?
-    ): ChatRequest = ChatRequest(
-        model = settings.modelName.ifBlank { "glm-4.7" },
-        messages = messages,
-        temperature = 0.7,
-        stream = stream,
-        thinking = mapOf(
-            "type" to if (settings.enableThinking) "enabled" else "disabled"
-        ),
-        tools = tools
-    )
+    ): ChatRequest {
+        val model = settings.modelName.ifBlank { ZhipuDefaultModel }
+        // GLM-5.3 起始终开启思考，不接受 thinking.type="disabled"。
+        // 用户关闭思考时改为发送 enabled + reasoning_effort="low"，以最低推理强度换取最快响应。
+        val alwaysThinking = ALWAYS_THINKING_MODELS.any { model.startsWith(it) }
+        val thinkingEnabled = alwaysThinking || settings.enableThinking
+
+        return ChatRequest(
+            model = model,
+            messages = messages,
+            temperature = 0.7,
+            stream = stream,
+            thinking = mapOf("type" to if (thinkingEnabled) "enabled" else "disabled"),
+            reasoningEffort = if (alwaysThinking && !settings.enableThinking) "low" else null,
+            tools = tools
+        )
+    }
+
+    companion object {
+        private const val ZhipuDefaultModel = "glm-5.3"
+
+        /** 始终开启思考、不允许关闭的模型前缀。 */
+        private val ALWAYS_THINKING_MODELS = listOf("glm-5.3")
+    }
 }

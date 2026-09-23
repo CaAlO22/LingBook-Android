@@ -4,6 +4,7 @@ import com.google.gson.JsonArray
 import com.lingji.app.data.remote.models.ChatMessage
 import com.lingji.app.data.remote.models.ChatRequest
 import com.lingji.app.domain.model.AISettings
+import com.lingji.app.domain.provider.ProviderRegistry
 import okhttp3.Request
 
 /**
@@ -25,7 +26,9 @@ class OpenAICompatibleStrategy(
         stream: Boolean,
         tools: JsonArray?
     ): ChatRequest = ChatRequest(
-        model = settings.modelName.ifBlank { "gpt-4o" },
+        model = settings.modelName.ifBlank {
+            ProviderRegistry.config(settings.provider).defaultModelId
+        },
         messages = messages,
         temperature = 0.7,
         stream = stream,

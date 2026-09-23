@@ -10,17 +10,13 @@ object DeepSeekConfig : ProviderConfig {
     override val id = "DEEPSEEK"
     override val displayNameRes = R.string.provider_deepseek
     override val defaultBaseUrl = DEEPSEEK_URL
-    override val defaultModelId = "deepseek-v4-pro"
+    override val defaultModelId = "deepseek-flash"
     override val models = listOf(
         ProviderModel(
-            id = "deepseek-v4-pro",
-            name = "DeepSeek-V4-Pro",
-            description = "最新旗舰，1M 上下文，复杂推理与编程"
-        ),
-        ProviderModel(
-            id = "deepseek-v4-flash",
-            name = "DeepSeek-V4-Flash",
-            description = "轻量快速，适合高频调用"
+            id = "deepseek-flash",
+            name = "DeepSeek-V4.1-Flash",
+            description = "最新旗舰，1M 上下文，原生多模态，性能与成本全面超越 V4-Pro",
+            supportsVision = true
         )
     )
     override val supportsThinking = true

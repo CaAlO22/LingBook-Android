@@ -18,7 +18,7 @@ class DeepSeekRequestStrategy : RequestStrategy {
         stream: Boolean,
         tools: JsonArray?
     ): ChatRequest = ChatRequest(
-        model = settings.modelName.ifBlank { "deepseek-v4-pro" },
+        model = settings.modelName.ifBlank { "deepseek-flash" },
         messages = messages,
         temperature = 0.7,
         stream = stream,

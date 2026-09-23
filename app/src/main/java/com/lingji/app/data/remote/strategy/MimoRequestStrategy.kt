@@ -18,7 +18,7 @@ class MimoRequestStrategy : RequestStrategy {
         stream: Boolean,
         tools: JsonArray?
     ): ChatRequest = ChatRequest(
-        model = settings.modelName.ifBlank { "mimo-v2.5-pro" },
+        model = settings.modelName.ifBlank { "mimo-v2.6-pro" },
         messages = messages,
         temperature = 0.7,
         stream = stream,

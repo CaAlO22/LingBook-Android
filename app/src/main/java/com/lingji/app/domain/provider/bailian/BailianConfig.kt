@@ -10,28 +10,18 @@ object BailianConfig : ProviderConfig {
     override val id = "BAILIAN"
     override val displayNameRes = R.string.provider_bailian
     override val defaultBaseUrl = DASHSCOPE_URL
-    override val defaultModelId = "qwen3.7-plus"
+    override val defaultModelId = "qwen3.8-max"
     override val models = listOf(
         ProviderModel(
-            id = "qwen3.7-plus",
-            name = "Qwen 3.7 Plus",
-            description = "最新千问 Plus，均衡性能与成本，支持 1M 上下文"
-        ),
-        ProviderModel(
-            id = "qwen3.7-max",
-            name = "Qwen 3.7 Max",
-            description = "最新千问旗舰，最强综合能力"
-        ),
-        ProviderModel(
-            id = "qwen3.6-plus",
-            name = "Qwen 3.6 Plus",
-            description = "原生多模态，文档理解与真实世界问答能力强",
+            id = "qwen3.8-max",
+            name = "Qwen 3.8 Max",
+            description = "最新旗舰，1M 上下文，最强推理与视觉理解",
             supportsVision = true
         ),
         ProviderModel(
-            id = "qwen3.6-flash",
-            name = "Qwen 3.6 Flash",
-            description = "快速经济的多模态模型，视觉与代码能力突出",
+            id = "qwen3.8-flash",
+            name = "Qwen 3.8 Flash",
+            description = "效果接近旗舰，1M 上下文，成本更低",
             supportsVision = true
         ),
         ProviderModel(

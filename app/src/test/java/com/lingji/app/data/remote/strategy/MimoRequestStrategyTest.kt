@@ -14,7 +14,7 @@ class MimoRequestStrategyTest {
             settings = AISettings(
                 provider = APIProvider.XIAOMI,
                 apiKey = "key",
-                modelName = "mimo-v2.5-pro",
+                modelName = "mimo-v2.6-pro",
                 enableThinking = false
             ),
             messages = listOf(ChatMessage("user", "hello")),
