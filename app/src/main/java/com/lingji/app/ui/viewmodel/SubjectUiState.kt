@@ -53,13 +53,19 @@ data class SubjectUiState(
 
     /**
      * 首页展示项：合并文件夹与无文件夹归属的碎片笔记，按 orderIndex 降序排列。
+     *
+     * 注意：`folderId` 指向的文件夹若已不存在（跨设备导入的笔记、文件夹被异常删除等），
+     * 该笔记会回落到首页展示，避免"笔记既不在任何文件夹里、也不在首页"而彻底不可见。
      */
     val homeItems: List<HomeItem>
         get() {
+            val folderIds = folders.mapTo(mutableSetOf()) { it.id }
             val folderItems = folders.map { folder ->
                 HomeItem.FolderItem(folder, subjects.count { it.folderId == folder.id })
             }
-            val noteItems = subjects.filter { it.folderId == null }.map { HomeItem.NoteItem(it) }
+            val noteItems = subjects
+                .filter { it.folderId == null || it.folderId !in folderIds }
+                .map { HomeItem.NoteItem(it) }
             return (folderItems + noteItems).sortedByDescending { item ->
                 when (item) {
                     is HomeItem.FolderItem -> item.folder.orderIndex

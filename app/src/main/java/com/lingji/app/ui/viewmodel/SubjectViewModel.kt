@@ -129,12 +129,44 @@ class SubjectViewModel @Inject constructor(
         }
     }
 
+    /**
+     * 导入笔记（文件 / 剪贴板 / 文本共用入口）。
+     *
+     * 导入的笔记一律视为**全新的副本**，会做以下归一化处理：
+     * 1. 重新生成笔记 id，避免覆盖本机已有笔记；
+     * 2. 重新生成碎片 / 页面 id，避免多次导入同一文件时因主键（REPLACE）冲突
+     *    把先前副本的页面"抢走"，导致先前导入的笔记内容被清空；
+     * 3. 清空文件夹归属并置于首页最前，保证导入后立刻能在首页看到。
+     *    源文件里的 folderId 属于导出端设备，本机通常不存在该文件夹；
+     *    若原样保留，笔记会被挂在不存在的文件夹下而从首页消失。
+     */
     fun importSubject(subject: Subject) {
         viewModelScope.launch {
-            val imported = subject.copy(id = generateId())
+            val topOrder = (_uiState.value.subjects.maxOfOrNull { it.orderIndex } ?: -1) + 1
+            val imported = subject.copy(
+                id = generateId(),
+                folderId = null,
+                orderIndex = topOrder
+            ).remapInternalIds()
             subjectRepository.insert(imported)
             _uiState.update { it.copy(currentSubjectId = imported.id) }
         }
+    }
+
+    /** 重新生成笔记内部所有子实体 id，并同步页面索引与"最后打开页"的引用关系。 */
+    private fun Subject.remapInternalIds(): Subject {
+        if (fragments.isEmpty() && unmergedFragments.isEmpty() && pages.isNullOrEmpty()) return this
+        val pageIdMap: Map<String, String> = pages.orEmpty().associate { it.id to generateId() }
+        return copy(
+            fragments = fragments.map { it.copy(id = generateId()) },
+            unmergedFragments = unmergedFragments.map { it.copy(id = generateId()) },
+            pages = pages?.map { it.copy(id = pageIdMap.getValue(it.id)) },
+            pageIndex = pageIndex?.map { it.copy(id = pageIdMap[it.id] ?: it.id) },
+            pageIndexEntries = pageIndexEntries?.map {
+                it.copy(pageId = pageIdMap[it.pageId] ?: it.pageId)
+            },
+            lastOpenedPageId = lastOpenedPageId?.let { pageIdMap[it] }
+        )
     }
 
     fun deleteSubject(id: String) {
