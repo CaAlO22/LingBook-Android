@@ -12,6 +12,7 @@ import com.lingji.app.data.db.dao.NoteRevisionDao
 import com.lingji.app.data.db.dao.SettingsDao
 import com.lingji.app.data.db.dao.SubjectDao
 import com.lingji.app.data.db.dao.SubjectSummaryDao
+import com.lingji.app.data.db.dao.SyncTombstoneDao
 import com.lingji.app.data.db.entities.FragmentEntity
 import com.lingji.app.data.db.entities.FolderEntity
 import com.lingji.app.data.db.entities.HomeConversationEntity
@@ -22,6 +23,7 @@ import com.lingji.app.data.db.entities.NoteRevisionEntity
 import com.lingji.app.data.db.entities.SettingsEntity
 import com.lingji.app.data.db.entities.SubjectEntity
 import com.lingji.app.data.db.entities.SubjectSummaryEntity
+import com.lingji.app.data.db.entities.SyncTombstoneEntity
 
 @Database(
     entities = [
@@ -34,9 +36,10 @@ import com.lingji.app.data.db.entities.SubjectSummaryEntity
         HomeMessageEntity::class,
         HomeFragmentEntity::class,
         FolderEntity::class,
-        NoteRevisionEntity::class
+        NoteRevisionEntity::class,
+        SyncTombstoneEntity::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 abstract class LingjiDatabase : RoomDatabase() {
@@ -163,6 +166,30 @@ abstract class LingjiDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_note_revisions_subjectId ON note_revisions(subjectId)")
             }
         }
+
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 云同步：为各表补充 updatedAt 时间戳（以既有时间列回填）
+                db.execSQL("ALTER TABLE subjects ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE subjects SET updatedAt = createdAt")
+                db.execSQL("ALTER TABLE fragments ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE fragments SET updatedAt = timestamp")
+                db.execSQL("ALTER TABLE folders ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE folders SET updatedAt = createdAt")
+                db.execSQL("ALTER TABLE home_messages ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE home_messages SET updatedAt = timestamp")
+                db.execSQL("ALTER TABLE subject_summaries ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE subject_summaries SET updatedAt = summarizedAt")
+                // 云同步：删除墓碑表
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS sync_tombstones (" +
+                        "tbl TEXT NOT NULL, " +
+                        "id TEXT NOT NULL, " +
+                        "deletedAt INTEGER NOT NULL, " +
+                        "PRIMARY KEY(tbl, id))"
+                )
+            }
+        }
     }
     abstract fun subjectDao(): SubjectDao
     abstract fun fragmentDao(): FragmentDao
@@ -172,4 +199,5 @@ abstract class LingjiDatabase : RoomDatabase() {
     abstract fun homeChatDao(): HomeChatDao
     abstract fun folderDao(): FolderDao
     abstract fun noteRevisionDao(): NoteRevisionDao
+    abstract fun syncTombstoneDao(): SyncTombstoneDao
 }

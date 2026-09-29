@@ -23,32 +23,40 @@ interface SubjectDao {
     @Delete
     suspend fun delete(subject: SubjectEntity)
 
-    @Query("UPDATE subjects SET title = :title WHERE id = :id")
-    suspend fun rename(id: String, title: String)
+    @Query("DELETE FROM subjects WHERE id = :id")
+    suspend fun deleteById(id: String)
 
-    @Query("UPDATE subjects SET aggregatedNote = :content, prevAggregatedNote = :prev WHERE id = :id")
-    suspend fun updateAggregatedNote(id: String, content: String, prev: String?)
+    @Query("UPDATE subjects SET title = :title, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun rename(id: String, title: String, updatedAt: Long)
 
-    @Query("UPDATE subjects SET studyPlan = :content WHERE id = :id")
-    suspend fun updateStudyPlan(id: String, content: String)
+    @Query("UPDATE subjects SET aggregatedNote = :content, prevAggregatedNote = :prev, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateAggregatedNote(id: String, content: String, prev: String?, updatedAt: Long)
 
-    @Query("UPDATE subjects SET orderIndex = :orderIndex WHERE id = :id")
-    suspend fun updateOrderIndex(id: String, orderIndex: Int)
+    @Query("UPDATE subjects SET studyPlan = :content, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateStudyPlan(id: String, content: String, updatedAt: Long)
 
-    @Query("UPDATE subjects SET pageIndexJson = :json WHERE id = :id")
-    suspend fun updatePageIndexJson(id: String, json: String)
+    @Query("UPDATE subjects SET orderIndex = :orderIndex, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateOrderIndex(id: String, orderIndex: Int, updatedAt: Long)
 
-    @Query("UPDATE subjects SET lastOpenedPageId = :pageId WHERE id = :id")
-    suspend fun updateLastOpenedPageId(id: String, pageId: String?)
+    @Query("UPDATE subjects SET pageIndexJson = :json, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updatePageIndexJson(id: String, json: String, updatedAt: Long)
 
-    @Query("UPDATE subjects SET folderId = :folderId WHERE id = :id")
-    suspend fun updateFolderId(id: String, folderId: String?)
+    @Query("UPDATE subjects SET lastOpenedPageId = :pageId, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateLastOpenedPageId(id: String, pageId: String?, updatedAt: Long)
+
+    @Query("UPDATE subjects SET folderId = :folderId, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateFolderId(id: String, folderId: String?, updatedAt: Long)
 
     @Query("SELECT * FROM subjects WHERE folderId IS :folderId ORDER BY orderIndex DESC, createdAt DESC")
     suspend fun getSubjectsByFolderOnce(folderId: String?): List<SubjectEntity>
 
-    @Query("UPDATE subjects SET folderId = NULL WHERE folderId = :folderId")
-    suspend fun clearFolderAssociation(folderId: String)
+    @Query("UPDATE subjects SET folderId = NULL, updatedAt = :updatedAt WHERE folderId = :folderId")
+    suspend fun clearFolderAssociation(folderId: String, updatedAt: Long)
+
+    // ── 云同步 ──
+
+    @Query("SELECT * FROM subjects WHERE updatedAt > :since")
+    suspend fun getUpdatedSince(since: Long): List<SubjectEntity>
 
     @Transaction
     suspend fun upsert(subject: SubjectEntity) = insert(subject)

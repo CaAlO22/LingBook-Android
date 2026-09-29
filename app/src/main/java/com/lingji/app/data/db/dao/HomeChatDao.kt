@@ -21,6 +21,13 @@ interface HomeChatDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertConversation(conversation: HomeConversationEntity)
 
+    /**
+     * 云同步专用：纯 UPDATE，不触发 INSERT OR REPLACE 的行删除，
+     * 避免外键 CASCADE 误删该会话的本地消息。返回受影响行数。
+     */
+    @Query("UPDATE home_conversations SET title = :title, created_at = :createdAt, updated_at = :updatedAt WHERE id = :id")
+    suspend fun updateConversationFull(id: String, title: String, createdAt: Long, updatedAt: Long): Int
+
     @Query("UPDATE home_conversations SET title = :title, updated_at = :updatedAt WHERE id = :id")
     suspend fun updateConversationTimestamp(id: String, title: String, updatedAt: Long)
 
@@ -33,14 +40,15 @@ interface HomeChatDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: HomeMessageEntity)
 
-    @Query("INSERT OR REPLACE INTO home_messages (id, conversation_id, role, content, tool_calls_json, timestamp) VALUES (:id, :conversationId, :role, :content, :toolCallsJson, :timestamp)")
+    @Query("INSERT OR REPLACE INTO home_messages (id, conversation_id, role, content, tool_calls_json, timestamp, updatedAt) VALUES (:id, :conversationId, :role, :content, :toolCallsJson, :timestamp, :updatedAt)")
     suspend fun insertMessageRaw(
         id: String,
         conversationId: String,
         role: String,
         content: String,
         toolCallsJson: String?,
-        timestamp: Long
+        timestamp: Long,
+        updatedAt: Long
     )
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -48,6 +56,26 @@ interface HomeChatDao {
 
     @Query("DELETE FROM home_messages WHERE conversation_id = :conversationId")
     suspend fun deleteMessagesByConversation(conversationId: String)
+
+    @Query("DELETE FROM home_messages WHERE id = :id")
+    suspend fun deleteMessageById(id: String)
+
+    // ── 云同步 ──
+
+    @Query("SELECT * FROM home_conversations")
+    suspend fun getConversationsOnce(): List<HomeConversationEntity>
+
+    @Query("SELECT * FROM home_conversations WHERE updated_at > :since")
+    suspend fun getConversationsUpdatedSince(since: Long): List<HomeConversationEntity>
+
+    @Query("SELECT * FROM home_messages")
+    suspend fun getAllMessagesOnce(): List<HomeMessageEntity>
+
+    @Query("SELECT * FROM home_messages WHERE updatedAt > :since")
+    suspend fun getMessagesUpdatedSince(since: Long): List<HomeMessageEntity>
+
+    @Query("SELECT * FROM home_messages WHERE conversation_id = :conversationId")
+    suspend fun getMessagesOnce(conversationId: String): List<HomeMessageEntity>
 
     @Query("SELECT EXISTS(SELECT 1 FROM home_messages WHERE conversation_id = :id LIMIT 1)")
     suspend fun conversationHasMessages(id: String): Boolean

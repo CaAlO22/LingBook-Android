@@ -1,5 +1,6 @@
 package com.lingji.app.data.db.entities
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -21,5 +22,6 @@ data class HomeMessageEntity(
     val role: String,
     val content: String,
     val tool_calls_json: String?,
-    val timestamp: Long
+    val timestamp: Long,
+    @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis()
 )

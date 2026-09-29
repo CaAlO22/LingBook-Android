@@ -1,5 +1,6 @@
 package com.lingji.app.data.db.entities
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -15,5 +16,6 @@ data class SubjectEntity(
     val orderIndex: Int = 0,
     val pageIndexJson: String = "",
     val lastOpenedPageId: String? = null,
-    val folderId: String? = null  // null = 在首页, 非 null = 在对应文件夹内
+    val folderId: String? = null,  // null = 在首页, 非 null = 在对应文件夹内
+    @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis()
 )

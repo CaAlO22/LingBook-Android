@@ -70,6 +70,7 @@ import com.lingji.app.ui.components.SettingsOutlinedTextField
 import com.lingji.app.ui.settings.ProviderEndpointSettings
 import com.lingji.app.ui.settings.ProviderModelSettings
 import com.lingji.app.ui.settings.providerDisplayName
+import com.lingji.app.ui.settings.sync.SyncSettingsContent
 import com.lingji.app.ui.theme.NotoSerifCJKsc
 import com.lingji.app.ui.viewmodel.CheckMessage
 import com.lingji.app.ui.viewmodel.SubjectViewModel
@@ -411,6 +412,11 @@ fun SettingsScreen(
                     current = settings.horizontalSwipeAction,
                     onChange = { viewModel.saveSettings(settings.copy(horizontalSwipeAction = it)) }
                 )
+            }
+
+            // 云同步
+            SettingsCard(title = stringResource(R.string.sync_settings)) {
+                SyncSettingsContent()
             }
 
             SettingsCard(title = stringResource(R.string.app_settings)) {

@@ -19,4 +19,9 @@ interface SubjectSummaryDao {
 
     @Query("DELETE FROM subject_summaries WHERE subjectId = :subjectId")
     suspend fun deleteBySubjectId(subjectId: String)
+
+    // ── 云同步 ──
+
+    @Query("SELECT * FROM subject_summaries WHERE updatedAt > :since")
+    suspend fun getUpdatedSince(since: Long): List<SubjectSummaryEntity>
 }

@@ -22,9 +22,20 @@ interface FolderDao {
     @Delete
     suspend fun delete(folder: FolderEntity)
 
-    @Query("UPDATE folders SET name = :name WHERE id = :id")
-    suspend fun rename(id: String, name: String)
+    @Query("DELETE FROM folders WHERE id = :id")
+    suspend fun deleteById(id: String)
 
-    @Query("UPDATE folders SET orderIndex = :orderIndex WHERE id = :id")
-    suspend fun updateOrderIndex(id: String, orderIndex: Int)
+    @Query("UPDATE folders SET name = :name, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun rename(id: String, name: String, updatedAt: Long)
+
+    @Query("UPDATE folders SET orderIndex = :orderIndex, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateOrderIndex(id: String, orderIndex: Int, updatedAt: Long)
+
+    // ── 云同步 ──
+
+    @Query("SELECT * FROM folders")
+    suspend fun getAllOnce(): List<FolderEntity>
+
+    @Query("SELECT * FROM folders WHERE updatedAt > :since")
+    suspend fun getUpdatedSince(since: Long): List<FolderEntity>
 }

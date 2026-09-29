@@ -7,9 +7,11 @@ import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.lingji.app.data.db.dao.HomeChatDao
+import com.lingji.app.data.db.dao.SyncTombstoneDao
 import com.lingji.app.data.db.entities.HomeConversationEntity
 import com.lingji.app.data.db.entities.HomeFragmentEntity
 import com.lingji.app.data.db.entities.HomeMessageEntity
+import com.lingji.app.data.db.entities.SyncTombstoneEntity
 import com.lingji.app.data.file.FileManager
 import com.lingji.app.data.edit.EditBatch
 import com.lingji.app.data.remote.AgentService
@@ -62,7 +64,8 @@ class SubjectViewModel @Inject constructor(
     private val indexService: IndexService,
     private val fileManager: FileManager,
     private val homeChatDao: HomeChatDao,
-    private val conversationImageStore: ConversationImageStore
+    private val conversationImageStore: ConversationImageStore,
+    private val syncTombstoneDao: SyncTombstoneDao
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SubjectUiState())
@@ -966,7 +969,14 @@ class SubjectViewModel @Inject constructor(
 
     fun deleteConversation(id: String) {
         viewModelScope.launch {
+            // 云同步：为会话及其消息记录删除墓碑（消息随 FK 级联删除）
+            val messageIds = homeChatDao.getMessagesOnce(id).map { it.id }
+            val now = System.currentTimeMillis()
             homeChatDao.deleteConversation(id)
+            syncTombstoneDao.insertAll(
+                listOf(SyncTombstoneEntity("home_conversations", id, now)) +
+                    messageIds.map { SyncTombstoneEntity("home_messages", it, now) }
+            )
             if (_uiState.value.homeCurrentConversationId == id) {
                 startNewConversation()
             }
@@ -1064,7 +1074,7 @@ class SubjectViewModel @Inject constructor(
             }
 
             try {
-                homeChatDao.insertMessageRaw(id = UUID.randomUUID().toString(), conversationId = convId, role = "user", content = displayContent, toolCallsJson = null, timestamp = timestamp)
+                homeChatDao.insertMessageRaw(id = UUID.randomUUID().toString(), conversationId = convId, role = "user", content = displayContent, toolCallsJson = null, timestamp = timestamp, updatedAt = timestamp)
             } catch (e: Exception) {
                 Log.e("HomeChat", "insertMessageRaw FAILED: ${e.message}", e)
             }

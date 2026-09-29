@@ -5,11 +5,14 @@ import com.lingji.app.data.db.dao.FolderDao
 import com.lingji.app.data.db.dao.NotebookPageDao
 import com.lingji.app.data.db.dao.NoteRevisionDao
 import com.lingji.app.data.db.dao.SubjectDao
+import com.lingji.app.data.db.dao.SubjectSummaryDao
+import com.lingji.app.data.db.dao.SyncTombstoneDao
 import com.lingji.app.data.db.entities.FragmentEntity
 import com.lingji.app.data.db.entities.FolderEntity
 import com.lingji.app.data.db.entities.NotebookPageEntity
 import com.lingji.app.data.db.entities.NoteRevisionEntity
 import com.lingji.app.data.db.entities.SubjectEntity
+import com.lingji.app.data.db.entities.SyncTombstoneEntity
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.lingji.app.domain.model.Folder
@@ -36,9 +39,18 @@ class SubjectRepository @Inject constructor(
     private val fragmentDao: FragmentDao,
     private val pageDao: NotebookPageDao,
     private val folderDao: FolderDao,
-    private val revisionDao: NoteRevisionDao
+    private val revisionDao: NoteRevisionDao,
+    private val summaryDao: SubjectSummaryDao,
+    private val tombstoneDao: SyncTombstoneDao
 ) {
     private val gson = Gson()
+
+    /** 云同步：记录删除墓碑，把删除传播到服务器与其他设备。 */
+    private suspend fun recordTombstones(vararg entries: Pair<String, String>) {
+        if (entries.isEmpty()) return
+        val now = System.currentTimeMillis()
+        tombstoneDao.insertAll(entries.map { (tbl, id) -> SyncTombstoneEntity(tbl, id, now) })
+    }
     fun getAllSubjects(): Flow<List<Subject>> = combine(
         subjectDao.getAllSubjects(),
         fragmentDao.getAllFragments(),
@@ -74,12 +86,21 @@ class SubjectRepository @Inject constructor(
 
     suspend fun delete(id: String) {
         val entity = subjectDao.getSubjectById(id) ?: return
+        // 先收集将被级联删除的实体 id，为其记录墓碑
+        val fragmentIds = fragmentDao.getFragmentsBySubjectOnce(id).map { it.id }
+        val pageIds = pageDao.getPagesBySubjectOnce(id).map { it.id }
         subjectDao.delete(entity)
         fragmentDao.deleteBySubject(id)
         pageDao.deleteBySubject(id)
+        summaryDao.deleteBySubjectId(id)
+        recordTombstones(
+            *arrayOf("subjects" to id, "subject_summaries" to id) +
+                fragmentIds.map { "fragments" to it } +
+                pageIds.map { "notebook_pages" to it }
+        )
     }
 
-    suspend fun rename(id: String, title: String) = subjectDao.rename(id, title)
+    suspend fun rename(id: String, title: String) = subjectDao.rename(id, title, System.currentTimeMillis())
 
     suspend fun updateAggregatedNote(id: String, content: String) {
         val entity = subjectDao.getSubjectById(id) ?: return
@@ -97,7 +118,7 @@ class SubjectRepository @Inject constructor(
             )
         )
         trimRevisions(id)
-        subjectDao.updateAggregatedNote(id, content, entity.aggregatedNote)
+        subjectDao.updateAggregatedNote(id, content, entity.aggregatedNote, System.currentTimeMillis())
     }
 
     suspend fun rollbackLast(subjectId: String): Boolean {
@@ -113,7 +134,7 @@ class SubjectRepository @Inject constructor(
             val earliest = group.minByOrNull { it.createdAt } ?: continue
             when (earliest.field) {
                 "aggregated" -> {
-                    subjectDao.updateAggregatedNote(subjectId, earliest.prevContent, null)
+                    subjectDao.updateAggregatedNote(subjectId, earliest.prevContent, null, System.currentTimeMillis())
                 }
                 "page" -> {
                     earliest.pageId?.let { pid ->
@@ -138,24 +159,25 @@ class SubjectRepository @Inject constructor(
         private const val MAX_REVISIONS_PER_SUBJECT = 20
     }
 
-    suspend fun updateStudyPlan(id: String, content: String) = subjectDao.updateStudyPlan(id, content)
+    suspend fun updateStudyPlan(id: String, content: String) = subjectDao.updateStudyPlan(id, content, System.currentTimeMillis())
 
-    suspend fun moveSubject(id: String, orderIndex: Int) = subjectDao.updateOrderIndex(id, orderIndex)
+    suspend fun moveSubject(id: String, orderIndex: Int) = subjectDao.updateOrderIndex(id, orderIndex, System.currentTimeMillis())
 
     suspend fun addFragment(subjectId: String, fragment: Fragment) {
         fragmentDao.insert(fragment.toEntity(subjectId, isUnmerged = true))
     }
 
     suspend fun updateFragment(subjectId: String, fragmentId: String, content: String) {
-        fragmentDao.updateContent(fragmentId, content)
+        fragmentDao.updateContent(fragmentId, content, System.currentTimeMillis())
     }
 
     suspend fun deleteFragment(subjectId: String, fragmentId: String) {
-        fragmentDao.delete(FragmentEntity(fragmentId, subjectId, "", 0))
+        fragmentDao.deleteById(fragmentId)
+        recordTombstones("fragments" to fragmentId)
     }
 
     suspend fun completeBatchMerge(subjectId: String, mergedFragmentIds: List<String>) {
-        fragmentDao.markUnmergedMergedByIds(subjectId, mergedFragmentIds)
+        fragmentDao.markUnmergedMergedByIds(subjectId, mergedFragmentIds, System.currentTimeMillis())
     }
 
     suspend fun addPage(subjectId: String, page: NotebookPage) {
@@ -168,7 +190,8 @@ class SubjectRepository @Inject constructor(
         val entity = page.toEntity(subjectId, position)
         existing.add(position, entity)
         pageDao.deleteBySubject(subjectId)
-        pageDao.insertAll(existing.mapIndexed { idx, p -> p.copy(orderIndex = idx) })
+        val now = System.currentTimeMillis()
+        pageDao.insertAll(existing.mapIndexed { idx, p -> p.copy(orderIndex = idx, updatedAt = now) })
     }
 
     suspend fun updatePage(subjectId: String, page: NotebookPage) {
@@ -191,7 +214,8 @@ class SubjectRepository @Inject constructor(
     }
 
     suspend fun deletePage(subjectId: String, pageId: String) {
-        pageDao.delete(NotebookPageEntity(pageId, subjectId, "", "", 0, 0, 0, 0))
+        pageDao.deleteById(pageId)
+        recordTombstones("notebook_pages" to pageId)
     }
 
     suspend fun movePage(subjectId: String, pageId: String, newIndex: Int) {
@@ -202,7 +226,8 @@ class SubjectRepository @Inject constructor(
         val targetIndex = newIndex.coerceIn(0, pages.size)
         pages.add(targetIndex, moved)
         pageDao.deleteBySubject(subjectId)
-        pageDao.insertAll(pages.mapIndexed { idx, p -> p.copy(orderIndex = idx) })
+        val now = System.currentTimeMillis()
+        pageDao.insertAll(pages.mapIndexed { idx, p -> p.copy(orderIndex = idx, updatedAt = now) })
     }
 
     suspend fun markPagesIndexed(subjectId: String, pageIds: List<String>, indexedAt: Long) {
@@ -215,19 +240,19 @@ class SubjectRepository @Inject constructor(
         val current = getSubjectByIdOnce(subjectId)?.pageIndexEntries ?: emptyList()
         val newPageIds = entries.map { it.pageId }.toSet()
         val merged = current.filter { it.pageId !in newPageIds } + entries
-        subjectDao.updatePageIndexJson(subjectId, gson.toJson(merged))
+        subjectDao.updatePageIndexJson(subjectId, gson.toJson(merged), System.currentTimeMillis())
     }
 
     suspend fun updatePageIndexEntry(subjectId: String, pageId: String, entry: PageIndexEntry) {
         val current = getSubjectByIdOnce(subjectId)?.pageIndexEntries ?: emptyList()
         val updated = current.map { if (it.pageId == pageId) entry else it }
             .let { if (it.none { e -> e.pageId == pageId }) it + entry else it }
-        subjectDao.updatePageIndexJson(subjectId, gson.toJson(updated))
+        subjectDao.updatePageIndexJson(subjectId, gson.toJson(updated), System.currentTimeMillis())
         pageDao.updateIndexedAt(pageId, System.currentTimeMillis())
     }
 
     suspend fun updateLastOpenedPageId(subjectId: String, pageId: String?) {
-        subjectDao.updateLastOpenedPageId(subjectId, pageId)
+        subjectDao.updateLastOpenedPageId(subjectId, pageId, System.currentTimeMillis())
     }
 
     fun getAllFolders(): Flow<List<Folder>> = folderDao.getAllFolders().map { entities ->
@@ -242,25 +267,27 @@ class SubjectRepository @Inject constructor(
 
     suspend fun deleteFolder(id: String) {
         // Unlink all subjects in this folder (move them back to home)
-        subjectDao.clearFolderAssociation(id)
+        subjectDao.clearFolderAssociation(id, System.currentTimeMillis())
         val folder = folderDao.getFolderById(id) ?: return
         folderDao.delete(folder)
+        recordTombstones("folders" to id)
     }
 
-    suspend fun renameFolder(id: String, name: String) = folderDao.rename(id, name)
+    suspend fun renameFolder(id: String, name: String) = folderDao.rename(id, name, System.currentTimeMillis())
 
     suspend fun moveSubjectToFolder(subjectId: String, folderId: String) {
-        subjectDao.updateFolderId(subjectId, folderId)
+        val now = System.currentTimeMillis()
+        subjectDao.updateFolderId(subjectId, folderId, now)
         // Assign orderIndex at top of folder's note list
         val count = subjectDao.getSubjectsByFolderOnce(folderId).size
-        subjectDao.updateOrderIndex(subjectId, count)
+        subjectDao.updateOrderIndex(subjectId, count, System.currentTimeMillis())
     }
 
     suspend fun removeSubjectFromFolder(subjectId: String) {
-        subjectDao.updateFolderId(subjectId, null)
+        subjectDao.updateFolderId(subjectId, null, System.currentTimeMillis())
         // Assign orderIndex at top of home page list
         val homeSubjects = subjectDao.getSubjectsByFolderOnce(null)
-        subjectDao.updateOrderIndex(subjectId, homeSubjects.size)
+        subjectDao.updateOrderIndex(subjectId, homeSubjects.size, System.currentTimeMillis())
     }
 
     suspend fun reorderHomeItems(orderedItems: List<HomeItem>) {
@@ -270,8 +297,8 @@ class SubjectRepository @Inject constructor(
             // because display sorts by orderIndex DESC
             val orderIndex = size - 1 - index
             when (item) {
-                is HomeItem.FolderItem -> folderDao.updateOrderIndex(item.folder.id, orderIndex)
-                is HomeItem.NoteItem -> subjectDao.updateOrderIndex(item.subject.id, orderIndex)
+                is HomeItem.FolderItem -> folderDao.updateOrderIndex(item.folder.id, orderIndex, System.currentTimeMillis())
+                is HomeItem.NoteItem -> subjectDao.updateOrderIndex(item.subject.id, orderIndex, System.currentTimeMillis())
             }
         }
     }
@@ -280,7 +307,7 @@ class SubjectRepository @Inject constructor(
     suspend fun reorderFolderItems(folderId: String, orderedSubjectIds: List<String>) {
         val size = orderedSubjectIds.size
         orderedSubjectIds.forEachIndexed { index, id ->
-            subjectDao.updateOrderIndex(id, size - 1 - index)
+            subjectDao.updateOrderIndex(id, size - 1 - index, System.currentTimeMillis())
         }
     }
 

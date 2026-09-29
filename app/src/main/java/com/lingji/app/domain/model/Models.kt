@@ -6,7 +6,8 @@ enum class APIProvider { OPENAI, DOUBAO, XIAOMI, BAILIAN, ZHIPU, DEEPSEEK, KIMI 
 enum class SubjectType { FRAGMENT, NOTEBOOK }
 enum class HorizontalSwipeAction { NONE, TOGGLE_PREVIEW, CHANGE_PAGE }
 
-fun generateId(): String = UUID.randomUUID().toString().take(8)
+// 云同步多设备场景下 8 位短 ID 碰撞风险过高，统一使用完整 UUID
+fun generateId(): String = UUID.randomUUID().toString()
 
 data class AISettings(
     val provider: APIProvider = APIProvider.OPENAI,

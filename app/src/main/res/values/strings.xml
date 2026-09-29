@@ -292,4 +292,20 @@
     <string name="organize_clear_confirm">整理完成后碎片列表将被清空，确定继续吗？</string>
     <string name="clear">清空</string>
     <string name="clear_and_start">清空并开始</string>
+
+    <!-- 设置：云同步 -->
+    <string name="sync_settings">云同步</string>
+    <string name="sync_description">配置自建同步服务器后，笔记、碎片、会话等数据将在多设备间自动同步。服务器不可用时不影响本地使用；AI 设置与 API Key 不会被同步。</string>
+    <string name="sync_enable">启用云同步</string>
+    <string name="sync_host">服务器地址</string>
+    <string name="sync_port">端口</string>
+    <string name="sync_token">访问令牌（可选）</string>
+    <string name="sync_test_connection">测试连接</string>
+    <string name="sync_now">立即同步</string>
+    <string name="sync_syncing">同步中…</string>
+    <string name="sync_connect_success">连接成功</string>
+    <string name="sync_connect_failed">连接失败：%1$s</string>
+    <string name="sync_config_incomplete">请先填写服务器地址与端口</string>
+    <string name="sync_never">尚未同步</string>
+    <string name="sync_last_format">上次同步：%1$s</string>
 </resources>

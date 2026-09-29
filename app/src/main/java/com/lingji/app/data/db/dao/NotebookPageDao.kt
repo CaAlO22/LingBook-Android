@@ -31,9 +31,23 @@ interface NotebookPageDao {
     @Query("DELETE FROM notebook_pages WHERE subjectId = :subjectId")
     suspend fun deleteBySubject(subjectId: String)
 
+    @Query("DELETE FROM notebook_pages WHERE id = :id")
+    suspend fun deleteById(id: String)
+
     @Query("UPDATE notebook_pages SET title = :title, content = :content, updatedAt = :updatedAt WHERE id = :id")
     suspend fun update(id: String, title: String, content: String, updatedAt: Long)
 
     @Query("UPDATE notebook_pages SET indexedAt = :indexedAt WHERE id = :id")
     suspend fun updateIndexedAt(id: String, indexedAt: Long)
+
+    // ── 云同步 ──
+
+    @Query("SELECT * FROM notebook_pages")
+    suspend fun getAllOnce(): List<NotebookPageEntity>
+
+    @Query("SELECT * FROM notebook_pages WHERE updatedAt > :since")
+    suspend fun getUpdatedSince(since: Long): List<NotebookPageEntity>
+
+    @Query("SELECT * FROM notebook_pages WHERE id = :id LIMIT 1")
+    suspend fun getById(id: String): NotebookPageEntity?
 }
