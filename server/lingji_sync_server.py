@@ -220,9 +220,9 @@ class SyncHandler(BaseHTTPRequestHandler):
     store: SyncStore = None   # 由 main() 注入
     token: str = None         # 可选访问令牌
 
-    # 静默日志到 stdout，一行一个请求
+    # 日志到 stdout，一行一个请求（flush 便于重定向到文件时实时查看）
     def log_message(self, fmt, *args):
-        print("[%s] %s - %s" % (now_ms(), self.address_string(), fmt % args))
+        print("[%s] %s - %s" % (now_ms(), self.address_string(), fmt % args), flush=True)
 
     def _send_json(self, code: int, payload: dict):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -297,7 +297,7 @@ def main():
 
     server = ThreadingHTTPServer((args.host, args.port), SyncHandler)
     print("灵记同步服务器已启动: http://%s:%d  (db=%s, auth=%s)"
-          % (args.host, args.port, args.db, "on" if args.token else "off"))
+          % (args.host, args.port, args.db, "on" if args.token else "off"), flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
