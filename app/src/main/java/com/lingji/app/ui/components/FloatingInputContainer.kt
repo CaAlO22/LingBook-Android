@@ -1,8 +1,5 @@
 package com.lingji.app.ui.components
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,7 +12,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,17 +49,9 @@ fun FloatingInputContainer(
     content: @Composable () -> Unit
 ) {
     val density = LocalDensity.current
-    val imeBottomPx = WindowInsets.ime.getBottom(density)
-    val targetKeyboardPadding = with(density) { imeBottomPx.toDp() }
-
-    val animatedKeyboardPadding by animateDpAsState(
-        targetValue = targetKeyboardPadding,
-        animationSpec = tween(
-            durationMillis = 260,
-            easing = FastOutSlowInEasing
-        ),
-        label = "floating-input-ime"
-    )
+    // WindowInsets.ime 本身随系统键盘动画逐帧更新，直接使用才能与输入法完全同步；
+    // 再叠加一层补间动画会始终落后于键盘，产生可见的跟随延迟。
+    val keyboardPadding = with(density) { WindowInsets.ime.getBottom(density).toDp() }
 
     // HazeState 连接模糊源（页面内容）与模糊目标（悬浮栏）。
     val hazeState = remember { HazeState() }
@@ -85,7 +73,7 @@ fun FloatingInputContainer(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(horizontal = horizontalMargin)
-                .padding(bottom = bottomOffset + animatedKeyboardPadding)
+                .padding(bottom = bottomOffset + keyboardPadding)
                 .fillMaxWidth()
                 .shadow(elevation = 3.dp, shape = barShape, clip = false)
                 .clip(barShape)

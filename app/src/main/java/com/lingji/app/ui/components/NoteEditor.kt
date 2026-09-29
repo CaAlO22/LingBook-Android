@@ -5,9 +5,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -40,6 +42,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextLayoutResult
@@ -49,6 +52,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lingji.app.R
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 class NoteEditorHostState internal constructor() {
     var scrollByOp by mutableStateOf<((Float) -> Unit)?>(null)
@@ -171,12 +175,27 @@ fun NoteEditor(
         var lastScrollValue by remember { mutableStateOf(0) }
         var lastFocusTimeMs by remember { mutableStateOf(0L) }
 
+        // ── 收起输入法后恢复原滚动位置 ──
+        // 键盘开始弹出时记录当前滚动值；键盘完全收起后，若期间用户没有主动拖拽滚动，
+        // 则平滑滚回该位置。光标跟随产生的程序滚动不影响恢复。
+        val density = LocalDensity.current
+        val imeVisible = WindowInsets.ime.getBottom(density) > 0
+        var scrollBeforeIme by remember { mutableStateOf<Int?>(null) }
+        var userScrolledWhileIme by remember { mutableStateOf(false) }
+
         SideEffect {
             hostState.scrollByOp = { delta ->
                 isProgrammaticScroll = true
                 scope.launch {
-                    val target = (scrollState.value + delta.toInt()).coerceIn(0, scrollState.maxValue)
-                    scrollState.animateScrollTo(target)
+                    if (abs(delta) > 160f) {
+                        // 大跨度修正（如点击远处文本）用动画平滑过渡。
+                        val target = (scrollState.value + delta.toInt()).coerceIn(0, scrollState.maxValue)
+                        scrollState.animateScrollTo(target)
+                    } else {
+                        // 打字时的小步跟随直接即时滚动：弹簧动画每次按键都会被打断重启，
+                        // 叠加"动画中跳过修正、结束后再补一次"会造成一卡一卡的阶梯感。
+                        scrollState.scroll { scrollBy(delta) }
+                    }
                 }
             }
         }
@@ -204,12 +223,28 @@ fun NoteEditor(
             }
         }
 
+        // 键盘弹出/收起时记录与恢复滚动位置。
+        LaunchedEffect(imeVisible) {
+            if (imeVisible) {
+                userScrolledWhileIme = false
+                if (scrollBeforeIme == null) scrollBeforeIme = scrollState.value
+            } else {
+                val target = scrollBeforeIme
+                scrollBeforeIme = null
+                if (target != null && !userScrolledWhileIme) {
+                    isProgrammaticScroll = true
+                    scrollState.animateScrollTo(target.coerceIn(0, scrollState.maxValue))
+                }
+            }
+        }
+
         // 用户拖拽检测 → 清除焦点
         LaunchedEffect(Unit) {
             snapshotFlow { scrollState.value }
                 .collect { current ->
                     val delta = current - lastScrollValue
                     if ((delta > 8 || delta < -8) && !isProgrammaticScroll) {
+                        userScrolledWhileIme = true
                         if (System.currentTimeMillis() - lastFocusTimeMs > 500) {
                             focusManager.clearFocus()
                         }

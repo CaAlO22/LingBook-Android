@@ -13,10 +13,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -50,6 +52,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextLayoutResult
@@ -61,6 +64,7 @@ import com.lingji.app.domain.model.NotebookPage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.abs
 
 private data class PageEditState(val title: String, val content: String)
 
@@ -248,6 +252,13 @@ fun NotebookPageEditor(
         var lastScrollValue by remember { mutableStateOf(0) }
         // 记录焦点被设定的时间，用于抑制获焦后惯性滚动导致的误清除
         var lastFocusTimeMs by remember { mutableStateOf(0L) }
+        // ── 收起输入法后恢复原滚动位置 ──
+        // 键盘开始弹出时记录当前滚动值；键盘完全收起后，若期间用户没有主动拖拽滚动，
+        // 则平滑滚回该位置。光标跟随产生的程序滚动不影响恢复。
+        val density = LocalDensity.current
+        val imeVisible = WindowInsets.ime.getBottom(density) > 0
+        var scrollBeforeIme by remember { mutableStateOf<Int?>(null) }
+        var userScrolledWhileIme by remember { mutableStateOf(false) }
         // 文本区至少撑满剩余可视空间，保证内容短时也能沉浸在输入栏后方。
         val contentHeight = if (fillHeight) {
             (maxHeight - 80.dp).coerceAtLeast(220.dp)
@@ -278,9 +289,17 @@ fun NotebookPageEditor(
             hostState.scrollByOp = { delta ->
                 isProgrammaticScroll = true
                 scope.launch {
-                    val target = (scrollState.value + delta.toInt()).coerceIn(0, scrollState.maxValue)
-                    Log.d("NbEditorDebug", "scrollBy delta=$delta target=$target current=${scrollState.value} max=${scrollState.maxValue}")
-                    scrollState.animateScrollTo(target)
+                    if (abs(delta) > 160f) {
+                        // 大跨度修正（如点击远处文本）用动画平滑过渡。
+                        val target = (scrollState.value + delta.toInt()).coerceIn(0, scrollState.maxValue)
+                        Log.d("NbEditorDebug", "scrollBy(anim) delta=$delta target=$target current=${scrollState.value} max=${scrollState.maxValue}")
+                        scrollState.animateScrollTo(target)
+                    } else {
+                        // 打字时的小步跟随直接即时滚动：弹簧动画每次按键都会被打断重启，
+                        // 叠加"动画中跳过修正、结束后再补一次"会造成一卡一卡的阶梯感。
+                        Log.d("NbEditorDebug", "scrollBy(now) delta=$delta current=${scrollState.value} max=${scrollState.maxValue}")
+                        scrollState.scroll { scrollBy(delta) }
+                    }
                 }
             }
         }
@@ -294,6 +313,21 @@ fun NotebookPageEditor(
             }
         }
 
+        // 键盘弹出/收起时记录与恢复滚动位置。
+        LaunchedEffect(imeVisible) {
+            if (imeVisible) {
+                userScrolledWhileIme = false
+                if (scrollBeforeIme == null) scrollBeforeIme = scrollState.value
+            } else {
+                val target = scrollBeforeIme
+                scrollBeforeIme = null
+                if (target != null && !userScrolledWhileIme) {
+                    isProgrammaticScroll = true
+                    scrollState.animateScrollTo(target.coerceIn(0, scrollState.maxValue))
+                }
+            }
+        }
+
         // 用户手动拖拽滚动时取消焦点，避免光标跟随冲突。
         // 用增量检测区分用户拖拽（大增量）和惯性滚动（小增量）。
         LaunchedEffect(Unit) {
@@ -301,6 +335,7 @@ fun NotebookPageEditor(
                 .collect { current ->
                     val delta = current - lastScrollValue
                     if ((delta > 8 || delta < -8) && !isProgrammaticScroll) {
+                        userScrolledWhileIme = true
                         if (focusedTextIndex != null && System.currentTimeMillis() - lastFocusTimeMs > 500) {
                             focusManager.clearFocus()
                         }
