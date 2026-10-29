@@ -63,6 +63,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -72,6 +73,7 @@ import com.lingji.app.ui.components.ChatMode
 import com.lingji.app.ui.components.DeleteConfirmDialog
 import com.lingji.app.ui.components.GlassSurface
 import com.lingji.app.ui.components.MarkdownView
+import com.lingji.app.ui.components.arrowKeyCursorBehavior
 import com.lingji.app.ui.components.enterSendBehavior
 import com.lingji.app.ui.components.uriToBase64
 import com.lingji.app.ui.viewmodel.HomeChatMessage
@@ -109,6 +111,7 @@ fun HomeChatSheet(
     // }
 
     var inputText by remember { mutableStateOf(TextFieldValue("")) }
+    var textLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
     var showHistory by remember { mutableStateOf(false) }
     var pendingDeleteConversation by remember { mutableStateOf<HomeConversationEntity?>(null) }
     var pendingDeleteFragmentIndex by remember { mutableStateOf<Int?>(null) }
@@ -631,9 +634,12 @@ fun HomeChatSheet(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 14.dp, vertical = 12.dp)
+                            // 方向键只移动光标，不被焦点系统当成按钮间导航。
+                            .arrowKeyCursorBehavior(inputText, { inputText = it }) { textLayout }
                             .enterSendBehavior(inputText, { inputText = it }, submitInput),
                         enabled = !isLoading || currentMode == ChatMode.FRAGMENT,
                         maxLines = 5,
+                        onTextLayout = { textLayout = it },
                         textStyle = MaterialTheme.typography.bodyMedium.copy(
                             color = if (!isLoading) MaterialTheme.colorScheme.onSurface
                                 else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)

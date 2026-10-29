@@ -294,7 +294,18 @@ fun NoteEditor(
                         }
                         .onGloballyPositioned { coords ->
                             fieldCoordsY = coords.positionInRoot().y
-                        },
+                        }
+                        // 只读态交给默认处理；可编辑态下方向键只作用于光标，避免焦点跳走。
+                        .then(
+                            if (readOnly) {
+                                Modifier
+                            } else {
+                                Modifier.arrowKeyCursorBehavior(
+                                    textFieldValue,
+                                    { textFieldValue = it },
+                                ) { textLayoutResult }
+                            }
+                        ),
                     onTextLayout = { textLayoutResult = it },
                     readOnly = readOnly,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(

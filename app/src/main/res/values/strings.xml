@@ -120,6 +120,7 @@
     <string name="chat_scope_page">当前页</string>
     <string name="chat_scope_note">整本笔记</string>
     <string name="chat_agent_placeholder">向 Agent 提问…</string>
+    <string name="chat_no_content_placeholder">暂无可询问的内容，先补充内容或切换 Agent 模式</string>
     <string name="unnamed_page">未命名页面</string>
     <string name="cd_search">搜索</string>
     <string name="search_notes">搜索笔记</string>

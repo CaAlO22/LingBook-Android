@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.lingji.app.R
@@ -37,6 +38,8 @@ fun InputCapsule(
     maxLines: Int = 4
 ) {
     var text by remember { mutableStateOf(TextFieldValue("")) }
+    // 方向键移动光标需要文本布局信息（上下行落点），由输入框的 onTextLayout 持续更新。
+    var textLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
 
     val submitText: () -> Unit = {
         if (text.text.isNotBlank()) {
@@ -61,8 +64,11 @@ fun InputCapsule(
                 modifier = Modifier
                     .weight(1f)
                     .padding(horizontal = 12.dp, vertical = 10.dp)
+                    // 必须先于默认焦点导航消费方向键，否则光标不动、焦点跳到相邻按钮。
+                    .arrowKeyCursorBehavior(text, { text = it }) { textLayout }
                     .enterSendBehavior(text, { text = it }, submitText),
                 maxLines = maxLines,
+                onTextLayout = { textLayout = it },
                 textStyle = MaterialTheme.typography.bodyLarge.copy(
                     color = MaterialTheme.colorScheme.onSurface
                 ),

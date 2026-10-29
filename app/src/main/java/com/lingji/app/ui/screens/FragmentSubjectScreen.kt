@@ -328,7 +328,9 @@ fun FragmentSubjectScreen(
                             } else if (pagerState.currentPage == 1) {
                                 PageChatBar(
                                     targetTitle = liveSubject.title,
-                                    targetContent = liveSubject.aggregatedNote,
+                                    // 用编辑器里的当前文本，而不是仅「已保存」的笔记：
+                                    // 否则刚写还没保存的内容会被判定为空，ASK 模式无法提问。
+                                    targetContent = noteText,
                                     initialScope = ChatScope.NOTE,
                                     conversationHistory = noteChatHistory,
                                     currentAnswer = noteChatAnswer,

@@ -41,13 +41,16 @@ class SubjectRepositoryUndoTest {
 
     @Before
     fun setup() {
-        repo = SubjectRepository(subjectDao, fragmentDao, pageDao, folderDao, revisionDao)
+        repo = SubjectRepository(
+            subjectDao, fragmentDao, pageDao, folderDao, revisionDao,
+            mockk(relaxed = true), mockk(relaxed = true)
+        )
     }
 
     @Test
     fun updateAggregatedNote_storesRevisionWithBatchId() = runTest {
         coEvery { subjectDao.getSubjectById("s1") } returns fragmentEntity
-        coEvery { subjectDao.updateAggregatedNote("s1", "new", "old") } returns Unit
+        coEvery { subjectDao.updateAggregatedNote("s1", "new", "old", any()) } returns Unit
         val revisionSlot = slot<NoteRevisionEntity>()
         coEvery { revisionDao.insert(capture(revisionSlot)) } returns Unit
 
@@ -58,13 +61,13 @@ class SubjectRepositoryUndoTest {
         assertEquals("old", revisionSlot.captured.prevContent)
         assertEquals("batch-1", revisionSlot.captured.batchId)
         assertEquals("aggregated", revisionSlot.captured.field)
-        coVerify { subjectDao.updateAggregatedNote("s1", "new", "old") }
+        coVerify { subjectDao.updateAggregatedNote("s1", "new", "old", any()) }
     }
 
     @Test
     fun updateAggregatedNote_storesRevisionWithNullBatchId_whenNoEditBatch() = runTest {
         coEvery { subjectDao.getSubjectById("s1") } returns fragmentEntity
-        coEvery { subjectDao.updateAggregatedNote("s1", "new", "old") } returns Unit
+        coEvery { subjectDao.updateAggregatedNote("s1", "new", "old", any()) } returns Unit
         val revisionSlot = slot<NoteRevisionEntity>()
         coEvery { revisionDao.insert(capture(revisionSlot)) } returns Unit
 
@@ -109,13 +112,13 @@ class SubjectRepositoryUndoTest {
             prevContent = "old", prevTitle = null, batchId = null, createdAt = 100L
         )
         coEvery { revisionDao.getLatestForSubject("s1") } returns revision
-        coEvery { subjectDao.updateAggregatedNote("s1", "old", null) } returns Unit
+        coEvery { subjectDao.updateAggregatedNote("s1", "old", null, any()) } returns Unit
         coEvery { revisionDao.deleteById("r1") } returns Unit
 
         val result = repo.rollbackLast("s1")
 
         assertTrue(result)
-        coVerify { subjectDao.updateAggregatedNote("s1", "old", null) }
+        coVerify { subjectDao.updateAggregatedNote("s1", "old", null, any()) }
         coVerify { revisionDao.deleteById("r1") }
     }
 
@@ -157,11 +160,11 @@ class SubjectRepositoryUndoTest {
         )
         coEvery { revisionDao.getLatestForSubject("s1") } returns r2
         coEvery { revisionDao.getByBatchForSubject("s1", batchId) } returns listOf(r1, r2)
-        coEvery { subjectDao.updateAggregatedNote("s1", "v1", null) } returns Unit
+        coEvery { subjectDao.updateAggregatedNote("s1", "v1", null, any()) } returns Unit
         coEvery { revisionDao.deleteByBatchForSubject("s1", batchId) } returns Unit
 
         repo.rollbackLast("s1")
 
-        coVerify { subjectDao.updateAggregatedNote("s1", "v1", null) }
+        coVerify { subjectDao.updateAggregatedNote("s1", "v1", null, any()) }
     }
 }

@@ -44,6 +44,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -82,6 +83,7 @@ fun PageChatBar(
     val pagePlaceholder = stringResource(R.string.chat_placeholder)
     val notePlaceholder = stringResource(R.string.note_chat_placeholder)
     val agentPlaceholder = stringResource(R.string.chat_agent_placeholder)
+    val noContentPlaceholder = stringResource(R.string.chat_no_content_placeholder)
 
     // 根据模式和范围选择有效内容
     val effectiveContent = when {
@@ -89,17 +91,19 @@ fun PageChatBar(
         chatScope == ChatScope.NOTE -> noteContent
         else -> targetContent
     }
-    val inputReady = if (chatMode == ChatMode.AGENT) {
-        question.text.isNotBlank() && !isLoading
-    } else {
-        question.text.isNotBlank() && effectiveContent.isNotBlank() && !isLoading
-    }
-    val enabled = inputReady
+    // 「能否输入」与「能否发送」必须解耦：
+    // ASK 模式需要目标内容非空才能提问，但目标内容为空时如果连输入框一起禁用，
+    // 用户点不进输入框、光标都不出现，完全无法键入（碎片尚未整理成笔记时必现）。
+    // 因此输入框只受请求进行中限制，内容为空改由发送按钮禁用 + placeholder 提示。
+    val inputEnabled = !isLoading
+    val canSend = question.text.isNotBlank() && !isLoading &&
+        (chatMode == ChatMode.AGENT || effectiveContent.isNotBlank())
     val listState = rememberLazyListState()
+    var textLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
 
     val submitQuestion: () -> Unit = {
         val text = question.text.trim()
-        if (text.isNotBlank() && inputReady) {
+        if (text.isNotBlank() && canSend) {
             answerExpanded = true
             onSend(text, chatMode, chatScope)
             question = TextFieldValue("")
@@ -115,6 +119,7 @@ fun PageChatBar(
     // 当前 placeholder
     val currentPlaceholder = when {
         chatMode == ChatMode.AGENT -> agentPlaceholder
+        effectiveContent.isBlank() -> noContentPlaceholder
         chatScope == ChatScope.NOTE -> notePlaceholder
         else -> pagePlaceholder
     }
@@ -320,20 +325,18 @@ fun PageChatBar(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                val inputEnabled = if (chatMode == ChatMode.AGENT) {
-                    !isLoading
-                } else {
-                    effectiveContent.isNotBlank() && !isLoading
-                }
                 BasicTextField(
                     value = question,
                     onValueChange = { question = it },
                     modifier = Modifier
                         .weight(1f)
                         .padding(horizontal = 12.dp, vertical = 10.dp)
+                        // 方向键在 Preview 阶段被接管，避免焦点跳到相邻按钮。
+                        .arrowKeyCursorBehavior(question, { question = it }) { textLayout }
                         .enterSendBehavior(question, { question = it }, submitQuestion),
                     enabled = inputEnabled,
                     maxLines = 4,
+                    onTextLayout = { textLayout = it },
                     textStyle = MaterialTheme.typography.bodyLarge.copy(
                         color = if (inputEnabled) {
                             MaterialTheme.colorScheme.onSurface
@@ -357,18 +360,18 @@ fun PageChatBar(
                 )
                 IconButton(
                     onClick = submitQuestion,
-                    enabled = enabled
+                    enabled = canSend
                 ) {
                     Surface(
                         shape = CircleShape,
-                        color = if (enabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.9f) else Color.Transparent,
+                        color = if (canSend) MaterialTheme.colorScheme.primary.copy(alpha = 0.9f) else Color.Transparent,
                         modifier = Modifier.size(40.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.Send,
                                 contentDescription = stringResource(R.string.cd_send),
-                                tint = if (enabled) {
+                                tint = if (canSend) {
                                     MaterialTheme.colorScheme.onPrimary
                                 } else {
                                     MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
