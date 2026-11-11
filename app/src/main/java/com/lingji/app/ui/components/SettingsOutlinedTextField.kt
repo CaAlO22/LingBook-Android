@@ -43,7 +43,10 @@ fun SettingsOutlinedTextField(
         trailingIcon = trailingIcon,
         leadingIcon = leadingIcon,
         visualTransformation = visualTransformation,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            // 上下键不再把焦点带离输入框。
+            .arrowKeyFocusGuard(),
         shape = RoundedCornerShape(12.dp),
         colors = OutlinedTextFieldDefaults.colors(
             focusedContainerColor = Color.Transparent,

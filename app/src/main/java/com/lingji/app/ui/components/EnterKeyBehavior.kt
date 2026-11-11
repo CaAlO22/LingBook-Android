@@ -1,56 +1,32 @@
 package com.lingji.app.ui.components
 
-import android.content.res.Configuration
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
-import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.input.TextFieldValue
 
 /**
- * 统一的回车键行为：
- * - 竖屏：回车换行（交给默认处理，不拦截）。
- * - 横屏：回车发送，Ctrl/Shift+回车换行（手动插入换行以保证跨输入法一致）。
+ * 所有 AI 发送类输入框统一的回车行为（与横竖屏无关）：
+ * - 回车：换行，交给多行输入框默认处理，避免打断输入法组合。
+ * - Ctrl + 回车：发送。
  *
- * @param value 当前输入框内容，横屏 Ctrl/Shift+回车时据此插入换行。
- * @param onValueChange 内容变更回调。
- * @param onSend 发送回调（横屏下普通回车触发）。
+ * @param onSend 发送回调（Ctrl+回车触发）。
  */
-fun Modifier.enterSendBehavior(
-    value: TextFieldValue,
-    onValueChange: (TextFieldValue) -> Unit,
-    onSend: () -> Unit
-): Modifier = composed {
-    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+fun Modifier.enterSendBehavior(onSend: () -> Unit): Modifier = composed {
+    // composed 块不会随外部回调变化重建，用 rememberUpdatedState 保证始终调用最新的发送逻辑。
+    val latestOnSend by rememberUpdatedState(onSend)
     onPreviewKeyEvent { event ->
         if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
         if (event.key != Key.Enter && event.key != Key.NumPadEnter) return@onPreviewKeyEvent false
-        if (isLandscape) {
-            if (event.isCtrlPressed || event.isShiftPressed) {
-                onValueChange(insertNewline(value))
-                true
-            } else {
-                onSend()
-                true
-            }
-        } else {
-            // 竖屏：回车换行，交给默认处理
-            false
-        }
+        // 普通回车不拦截：多行输入框会自行插入换行。
+        if (!event.isCtrlPressed) return@onPreviewKeyEvent false
+        latestOnSend()
+        true
     }
-}
-
-private fun insertNewline(value: TextFieldValue): TextFieldValue {
-    val newText = value.text.replaceRange(
-        value.selection.start, value.selection.end, "\n"
-    )
-    val cursor = value.selection.start + 1
-    return TextFieldValue(text = newText, selection = TextRange(cursor))
 }

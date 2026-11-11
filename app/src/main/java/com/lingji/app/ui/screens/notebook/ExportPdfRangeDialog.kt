@@ -27,6 +27,7 @@ import com.lingji.app.R
 import com.lingji.app.ui.components.LingjiDialog
 import com.lingji.app.ui.components.LingjiDialogConfirmButton
 import com.lingji.app.ui.components.LingjiDialogDismissButton
+import com.lingji.app.ui.components.arrowKeyFocusGuard
 
 private enum class ExportRange { CURRENT, ALL, CUSTOM }
 
@@ -71,6 +72,7 @@ fun ExportPdfRangeDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 8.dp)
+                            .arrowKeyFocusGuard()
                     )
                 }
                 Spacer(modifier = Modifier.height(8.dp))

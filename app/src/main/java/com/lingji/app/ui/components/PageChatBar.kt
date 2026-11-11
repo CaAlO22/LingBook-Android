@@ -333,7 +333,7 @@ fun PageChatBar(
                         .padding(horizontal = 12.dp, vertical = 10.dp)
                         // 方向键在 Preview 阶段被接管，避免焦点跳到相邻按钮。
                         .arrowKeyCursorBehavior(question, { question = it }) { textLayout }
-                        .enterSendBehavior(question, { question = it }, submitQuestion),
+                        .enterSendBehavior(submitQuestion),
                     enabled = inputEnabled,
                     maxLines = 4,
                     onTextLayout = { textLayout = it },

@@ -636,7 +636,7 @@ fun HomeChatSheet(
                             .padding(horizontal = 14.dp, vertical = 12.dp)
                             // 方向键只移动光标，不被焦点系统当成按钮间导航。
                             .arrowKeyCursorBehavior(inputText, { inputText = it }) { textLayout }
-                            .enterSendBehavior(inputText, { inputText = it }, submitInput),
+                            .enterSendBehavior(submitInput),
                         enabled = !isLoading || currentMode == ChatMode.FRAGMENT,
                         maxLines = 5,
                         onTextLayout = { textLayout = it },

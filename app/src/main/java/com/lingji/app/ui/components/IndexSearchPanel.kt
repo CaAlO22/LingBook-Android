@@ -49,7 +49,9 @@ fun IndexSearchPanel(
                     value = query,
                     onValueChange = { query = it },
                     label = { Text(stringResource(R.string.search_keyword_hint)) },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .arrowKeyFocusGuard(),
                     trailingIcon = {
                         if (query.isNotEmpty()) {
                             IconButton(onClick = { query = "" }) {

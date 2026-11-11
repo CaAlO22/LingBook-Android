@@ -83,7 +83,9 @@ fun PageIndexEditorDialog(
                         onValueChange = { newKeyword = it },
                         label = { Text(stringResource(R.string.add_keyword_hint)) },
                         singleLine = true,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .arrowKeyFocusGuard()
                     )
                     IconButton(
                         onClick = {
@@ -113,7 +115,8 @@ fun PageIndexEditorDialog(
                     label = { Text(stringResource(R.string.summary_hint)) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 100.dp),
+                        .heightIn(min = 100.dp)
+                        .arrowKeyFocusGuard(),
                     minLines = 3,
                     maxLines = 6
                 )

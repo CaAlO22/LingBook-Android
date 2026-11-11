@@ -66,7 +66,7 @@ fun InputCapsule(
                     .padding(horizontal = 12.dp, vertical = 10.dp)
                     // 必须先于默认焦点导航消费方向键，否则光标不动、焦点跳到相邻按钮。
                     .arrowKeyCursorBehavior(text, { text = it }) { textLayout }
-                    .enterSendBehavior(text, { text = it }, submitText),
+                    .enterSendBehavior(submitText),
                 maxLines = maxLines,
                 onTextLayout = { textLayout = it },
                 textStyle = MaterialTheme.typography.bodyLarge.copy(

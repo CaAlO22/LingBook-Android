@@ -8,12 +8,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.lingji.app.R
 import com.lingji.app.ui.components.LingjiDialog
 import com.lingji.app.ui.components.LingjiDialogConfirmButton
 import com.lingji.app.ui.components.LingjiDialogDismissButton
+import com.lingji.app.ui.components.arrowKeyFocusGuard
 
 @Composable
 fun JumpPageDialog(
@@ -33,7 +35,8 @@ fun JumpPageDialog(
                 },
                 label = { Text(stringResource(R.string.page_number_hint)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                singleLine = true
+                singleLine = true,
+                modifier = Modifier.arrowKeyFocusGuard()
             )
         },
         confirmButton = {
@@ -82,7 +85,8 @@ fun MovePageDialog(
                     )
                 },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                singleLine = true
+                singleLine = true,
+                modifier = Modifier.arrowKeyFocusGuard()
             )
         },
         confirmButton = {

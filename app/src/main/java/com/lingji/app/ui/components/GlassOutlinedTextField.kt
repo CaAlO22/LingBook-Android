@@ -44,7 +44,10 @@ fun GlassOutlinedTextField(
             readOnly = readOnly,
             trailingIcon = trailingIcon,
             leadingIcon = leadingIcon,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                // 上下键不再把焦点带离输入框。
+                .arrowKeyFocusGuard(),
             shape = shape,
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = Color.Transparent,

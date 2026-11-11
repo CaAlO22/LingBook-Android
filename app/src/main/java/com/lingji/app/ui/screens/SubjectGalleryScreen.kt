@@ -107,6 +107,7 @@ import com.lingji.app.ui.components.LingjiDialogDismissButton
 import com.lingji.app.ui.components.SubjectCard
 import com.lingji.app.ui.components.SubjectCardMinHeight
 import com.lingji.app.ui.components.TimeDisplay
+import com.lingji.app.ui.components.arrowKeyFocusGuard
 import com.lingji.app.ui.theme.NotoSerifCJKsc
 import com.lingji.app.ui.viewmodel.SubjectViewModel
 import dev.chrisbanes.haze.HazeState
@@ -733,7 +734,9 @@ fun AddSubjectCard(
                         onValueChange = { title = it },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .focusRequester(focusRequester),
+                            .focusRequester(focusRequester)
+                            // 上下键不再把焦点带离新建输入框。
+                            .arrowKeyFocusGuard(),
                         singleLine = true,
                         textStyle = MaterialTheme.typography.bodyLarge.copy(
                             color = MaterialTheme.colorScheme.onSurface,
@@ -1004,7 +1007,9 @@ private fun AddFolderCard(onCreate: (String) -> Unit, modifier: Modifier = Modif
                         onValueChange = { name = it },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .focusRequester(focusRequester),
+                            .focusRequester(focusRequester)
+                            // 上下键不再把焦点带离新建输入框。
+                            .arrowKeyFocusGuard(),
                         singleLine = true,
                         textStyle = MaterialTheme.typography.bodyLarge.copy(
                             color = MaterialTheme.colorScheme.onSurface,

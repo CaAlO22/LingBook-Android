@@ -410,36 +410,37 @@ fun NotebookPageEditor(
                                     textFieldCount++
                                     val value = textFieldValues[index]
                                         ?: TextFieldValue(segment.text)
+                                    val onTextChanged: (TextFieldValue) -> Unit = { newValue ->
+                                        textFieldValues[index] = newValue
+                                        if (focusedTextIndex == index) {
+                                            focusedSelection = newValue.selection.start
+                                        }
+                                        val newContent = segments.mapIndexed { i, seg ->
+                                            when {
+                                                i == index && seg is PageSegment.Text -> newValue.text
+                                                seg is PageSegment.Text -> seg.text
+                                                seg is PageSegment.Image -> imageMarkdown(seg.url)
+                                                else -> ""
+                                            }
+                                        }.joinToString("")
+                                        if (newContent != content) {
+                                            undoManager.update(PageEditState(title, newContent))
+                                            val updated = undoManager.value
+                                            onUpdate(
+                                                page.copy(
+                                                    title = updated.title,
+                                                    content = updated.content,
+                                                    updatedAt = System.currentTimeMillis()
+                                                )
+                                            )
+                                        }
+                                        hostState.cursorPosition =
+                                            (segments.offsetBefore(index) + newValue.selection.start)
+                                                .coerceIn(0, newContent.length)
+                                    }
                                     BasicTextField(
                                         value = value,
-                                        onValueChange = { newValue ->
-                                            textFieldValues[index] = newValue
-                                            if (focusedTextIndex == index) {
-                                                focusedSelection = newValue.selection.start
-                                            }
-                                            val newContent = segments.mapIndexed { i, seg ->
-                                                when {
-                                                    i == index && seg is PageSegment.Text -> newValue.text
-                                                    seg is PageSegment.Text -> seg.text
-                                                    seg is PageSegment.Image -> imageMarkdown(seg.url)
-                                                    else -> ""
-                                                }
-                                            }.joinToString("")
-                                            if (newContent != content) {
-                                                undoManager.update(PageEditState(title, newContent))
-                                                val updated = undoManager.value
-                                                onUpdate(
-                                                    page.copy(
-                                                        title = updated.title,
-                                                        content = updated.content,
-                                                        updatedAt = System.currentTimeMillis()
-                                                    )
-                                                )
-                                            }
-                                            hostState.cursorPosition =
-                                                (segments.offsetBefore(index) + newValue.selection.start)
-                                                    .coerceIn(0, newContent.length)
-                                        },
+                                        onValueChange = onTextChanged,
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .then(
@@ -465,7 +466,12 @@ fun NotebookPageEditor(
                                                 if (focusedTextIndex == index) {
                                                     focusedCoordsY = y
                                                 }
-                                            },
+                                            }
+                                            // 方向键只移动光标，不被焦点系统当成按钮间导航。
+                                            .arrowKeyCursorBehavior(
+                                                value,
+                                                onTextChanged
+                                            ) { layoutResults[index] },
                                         onTextLayout = { result ->
                                             layoutResults[index] = result
                                         },
@@ -535,7 +541,9 @@ private fun UnderlinedTitleField(
         onValueChange = onValueChange,
         modifier = modifier
             .padding(end = 8.dp)
-            .onFocusChanged { if (it.isFocused) onFocus() },
+            .onFocusChanged { if (it.isFocused) onFocus() }
+            // 上下键不再把焦点带离标题输入框。
+            .arrowKeyFocusGuard(),
         singleLine = true,
         textStyle = MaterialTheme.typography.titleMedium.copy(
             color = MaterialTheme.colorScheme.onSurface

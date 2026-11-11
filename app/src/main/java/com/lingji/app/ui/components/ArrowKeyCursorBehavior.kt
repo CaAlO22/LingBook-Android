@@ -9,6 +9,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.TextLayoutResult
@@ -70,6 +71,18 @@ fun Modifier.arrowKeyCursorBehavior(
         // 无论光标是否真的移动都消费事件，确保焦点不会被带走。
         true
     }
+}
+
+/**
+ * 方向键焦点守卫：输入框自身没有消费上下方向键时，在冒泡阶段把它们吞掉，
+ * 避免焦点系统的默认 2D 导航把焦点移到相邻按钮上。
+ *
+ * 用于只暴露 String、拿不到选区的输入框。能拿到 [TextFieldValue] 时请优先使用
+ * [arrowKeyCursorBehavior]，后者还会真正移动光标（单行字段上下键到行首/行尾）。
+ */
+fun Modifier.arrowKeyFocusGuard(): Modifier = onKeyEvent { event ->
+    // 按下与抬起都消费，避免抬起事件继续参与默认的焦点导航。
+    event.key == Key.DirectionUp || event.key == Key.DirectionDown
 }
 
 internal fun resolveCursorTarget(
