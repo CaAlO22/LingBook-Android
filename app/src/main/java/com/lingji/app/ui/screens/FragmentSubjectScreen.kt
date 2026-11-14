@@ -331,6 +331,9 @@ fun FragmentSubjectScreen(
                                     // 用编辑器里的当前文本，而不是仅「已保存」的笔记：
                                     // 否则刚写还没保存的内容会被判定为空，ASK 模式无法提问。
                                     targetContent = noteText,
+                                    noteTitle = liveSubject.title,
+                                    // 信息岛：询问提示修复——NOTE 范围读取 noteContent，必须传入编辑器当前文本。
+                                    noteContent = noteText,
                                     initialScope = ChatScope.NOTE,
                                     conversationHistory = noteChatHistory,
                                     currentAnswer = noteChatAnswer,
@@ -416,6 +419,7 @@ fun FragmentSubjectScreen(
                                         bottomContentPadding = 100.dp,
                                         onCursorYChange = { debugCursorY = it },
                                         onDebugInfo = { debugScrollInfo = it },
+                                        showNavigationTools = true,
                                         hostState = noteEditorHostState
                                     )
                                 }

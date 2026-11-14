@@ -135,7 +135,7 @@ fun PageChatBar(
                     onCollapsedTopYChange?.invoke(top)
                 }
             },
-        shape = RoundedCornerShape(24.dp)
+        shape = RoundedCornerShape(28.dp)
     ) {
         Column(
             modifier = Modifier

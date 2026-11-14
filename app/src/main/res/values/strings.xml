@@ -228,6 +228,16 @@
     <string name="note_saved">笔记已保存</string>
     <string name="page_saved">页面已保存</string>
 
+    <!-- 信息岛：碎片笔记目录与全文搜索 -->
+    <string name="note_toc">笔记目录</string>
+    <string name="note_no_headings">暂无标题</string>
+    <string name="note_search">搜索当前笔记</string>
+    <string name="note_search_placeholder">输入关键词…</string>
+    <string name="note_search_match_count">%1$d / %2$d</string>
+    <string name="cd_search_previous">上一个匹配</string>
+    <string name="cd_search_next">下一个匹配</string>
+    <string name="cd_close_search">关闭搜索</string>
+
     <!-- 多模态降级提示 -->
     <string name="vision_warning_title">图片输入已忽略</string>
     <string name="i_know">我知道了</string>

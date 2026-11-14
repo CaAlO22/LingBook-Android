@@ -47,7 +47,8 @@ fun MarkdownView(
     textColor: Color? = null,
     textSizeSp: Float? = null,
     compact: Boolean = false,
-    alignEnd: Boolean = false
+    alignEnd: Boolean = false,
+    onTextViewReady: ((TextView) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val markwon = remember(context) {
@@ -76,6 +77,7 @@ fun MarkdownView(
             if (textColor != null) textView.setTextColor(textColor.toArgb())
             if (textSizeSp != null) textView.textSize = textSizeSp
             textView.gravity = if (alignEnd) Gravity.END else Gravity.START
+            onTextViewReady?.invoke(textView)
         },
         modifier = modifier
     )

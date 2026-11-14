@@ -1,6 +1,7 @@
 package com.lingji.app.ui.components
 
 import android.util.Log
+import android.widget.TextView
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,13 +13,21 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Toc
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -48,11 +57,56 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lingji.app.R
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+
+// 信息岛：碎片笔记目录与搜索——标题解析跳过围栏代码块，搜索保留源文本/渲染文本位置。
+private data class NoteHeading(val title: String, val level: Int, val sourceOffset: Int)
+
+private fun parseNoteHeadings(markdown: String): List<NoteHeading> {
+    val headings = mutableListOf<NoteHeading>()
+    val headingRegex = Regex("^ {0,3}(#{1,6})[ \\t]+(.+?)\\s*$")
+    var sourceOffset = 0
+    var fence: String? = null
+    markdown.split('\n').forEach { line ->
+        val trimmed = line.trimStart()
+        val fenceMarker = when {
+            trimmed.startsWith("```") -> "```"
+            trimmed.startsWith("~~~") -> "~~~"
+            else -> null
+        }
+        if (fenceMarker != null) {
+            if (fence == null) fence = fenceMarker else if (fence == fenceMarker) fence = null
+        } else if (fence == null) {
+            headingRegex.find(line)?.let { match ->
+                val rawTitle = match.groupValues[2]
+                    .replace(Regex("[ \\t]+#+$"), "")
+                    .trim()
+                val title = rawTitle
+                    .replace(Regex("!\\[([^]]*)]\\([^)]*\\)"), "$1")
+                    .replace(Regex("\\[([^]]+)]\\([^)]*\\)"), "$1")
+                    .replace(Regex("[*_`~]"), "")
+                if (title.isNotBlank()) {
+                    headings += NoteHeading(title, match.groupValues[1].length, sourceOffset)
+                }
+            }
+        }
+        sourceOffset += line.length + 1
+    }
+    return headings
+}
+
+private fun findNoteMatches(text: String, query: String): List<IntRange> {
+    if (query.isBlank()) return emptyList()
+    return Regex(Regex.escape(query), RegexOption.IGNORE_CASE)
+        .findAll(text)
+        .map { it.range }
+        .toList()
+}
 
 class NoteEditorHostState internal constructor() {
     var scrollByOp by mutableStateOf<((Float) -> Unit)?>(null)
@@ -80,6 +134,7 @@ fun NoteEditor(
     bottomContentPadding: Dp = 8.dp,
     onCursorYChange: ((Float) -> Unit)? = null,
     onDebugInfo: ((String) -> Unit)? = null,
+    showNavigationTools: Boolean = false,
     hostState: NoteEditorHostState = remember { NoteEditorHostState() }
 ) {
     var isPreview by remember { mutableStateOf(false) }
@@ -99,6 +154,74 @@ fun NoteEditor(
     }
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
     var fieldCoordsY by remember { mutableStateOf(0f) }
+
+    // 信息岛：碎片笔记目录与全文搜索，编辑态使用源文本偏移，预览态使用 Markwon 渲染偏移。
+    var showToc by remember { mutableStateOf(false) }
+    var showSearch by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var currentMatchIndex by remember { mutableStateOf(0) }
+    var previewTextView by remember { mutableStateOf<TextView?>(null) }
+    var previewText by remember { mutableStateOf("") }
+    val headings = remember(value) { parseNoteHeadings(value) }
+    val searchableText = if (isPreview) previewText else value
+    val searchMatches = remember(searchableText, searchQuery) {
+        findNoteMatches(searchableText, searchQuery)
+    }
+
+    val scrollState = rememberScrollState()
+    val scope = rememberCoroutineScope()
+    var isProgrammaticScroll by remember { mutableStateOf(false) }
+
+    fun scrollToTarget(target: Float) {
+        isProgrammaticScroll = true
+        scope.launch {
+            scrollState.animateScrollTo(target.toInt().coerceIn(0, scrollState.maxValue))
+        }
+    }
+
+    fun scrollToEditOffset(offset: Int) {
+        val layout = textLayoutResult ?: return
+        val line = layout.getLineForOffset(offset.coerceIn(0, value.length))
+        scrollToTarget(layout.getLineTop(line))
+    }
+
+    fun scrollToPreviewOffset(offset: Int) {
+        if (offset < 0) return
+        val textView = previewTextView ?: return
+        textView.post {
+            val layout = textView.layout ?: return@post
+            val safeOffset = offset.coerceIn(0, layout.text.length)
+            val line = layout.getLineForOffset(safeOffset)
+            scrollToTarget(textView.top + layout.getLineTop(line).toFloat())
+        }
+    }
+
+    fun scrollToMatch(index: Int) {
+        val match = searchMatches.getOrNull(index) ?: return
+        currentMatchIndex = index
+        if (isPreview) scrollToPreviewOffset(match.first) else scrollToEditOffset(match.first)
+    }
+
+    fun scrollToHeading(index: Int) {
+        val heading = headings.getOrNull(index) ?: return
+        if (!isPreview) {
+            scrollToEditOffset(heading.sourceOffset)
+            return
+        }
+        val occurrence = headings.take(index).count { it.title.equals(heading.title, ignoreCase = true) }
+        var foundOffset = -1
+        var fromIndex = 0
+        repeat(occurrence + 1) {
+            foundOffset = previewText.indexOf(heading.title, fromIndex, ignoreCase = true)
+            if (foundOffset >= 0) fromIndex = foundOffset + heading.title.length
+        }
+        scrollToPreviewOffset(foundOffset)
+    }
+
+    LaunchedEffect(searchQuery, isPreview, value, previewText, showSearch) {
+        currentMatchIndex = 0
+        if (showSearch && searchQuery.isNotBlank()) scrollToMatch(0)
+    }
 
     // 连续上报光标 Y 坐标
     LaunchedEffect(fieldCoordsY, textFieldValue.selection.start, textLayoutResult) {
@@ -124,6 +247,62 @@ fun NoteEditor(
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                if (showNavigationTools) {
+                    Box {
+                        IconButton(onClick = { showToc = true }) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Toc,
+                                contentDescription = stringResource(R.string.note_toc),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showToc,
+                            onDismissRequest = { showToc = false },
+                            modifier = Modifier
+                                .widthIn(max = 280.dp)
+                                .heightIn(max = 360.dp)
+                        ) {
+                            if (headings.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.note_no_headings)) },
+                                    onClick = { showToc = false }
+                                )
+                            } else {
+                                headings.forEachIndexed { index, heading ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                text = heading.title,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.padding(start = ((heading.level - 1) * 10).dp)
+                                            )
+                                        },
+                                        onClick = {
+                                            showToc = false
+                                            scrollToHeading(index)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    IconButton(
+                        onClick = {
+                            showSearch = !showSearch
+                            showToc = false
+                            if (!showSearch) searchQuery = ""
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = stringResource(R.string.note_search),
+                            tint = if (showSearch) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
                 IconButton(
                     onClick = { undoManager.undo()?.let(onValueChange) },
                     enabled = undoManager.canUndo
@@ -167,11 +346,101 @@ fun NoteEditor(
             }
         }
 
-        val scrollState = rememberScrollState()
-        val scope = rememberCoroutineScope()
+        if (showNavigationTools && showSearch) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 2.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(start = 12.dp, end = 4.dp)
+                ) {
+                    BasicTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                            color = MaterialTheme.colorScheme.onSurface
+                        ),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(vertical = 10.dp),
+                        decorationBox = { innerTextField ->
+                            Box {
+                                if (searchQuery.isEmpty()) {
+                                    Text(
+                                        text = stringResource(R.string.note_search_placeholder),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                innerTextField()
+                            }
+                        }
+                    )
+                    if (searchQuery.isNotBlank()) {
+                        Text(
+                            text = if (searchMatches.isEmpty()) {
+                                stringResource(R.string.search_no_results)
+                            } else {
+                                stringResource(
+                                    R.string.note_search_match_count,
+                                    (currentMatchIndex + 1).coerceAtMost(searchMatches.size),
+                                    searchMatches.size
+                                )
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            scrollToMatch((currentMatchIndex - 1 + searchMatches.size) % searchMatches.size)
+                        },
+                        enabled = searchMatches.isNotEmpty(),
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowUp,
+                            contentDescription = stringResource(R.string.cd_search_previous),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = { scrollToMatch((currentMatchIndex + 1) % searchMatches.size) },
+                        enabled = searchMatches.isNotEmpty(),
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = stringResource(R.string.cd_search_next),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            showSearch = false
+                            searchQuery = ""
+                        },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = stringResource(R.string.cd_close_search),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+        }
+
         val focusManager = LocalFocusManager.current
 
-        var isProgrammaticScroll by remember { mutableStateOf(false) }
         var lastScrollValue by remember { mutableStateOf(0) }
         var lastFocusTimeMs by remember { mutableStateOf(0L) }
 
@@ -271,7 +540,15 @@ fun NoteEditor(
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
-                    MarkdownView(markdown = undoManager.value, compact = true)
+                    MarkdownView(
+                        markdown = undoManager.value,
+                        compact = true,
+                        onTextViewReady = { textView ->
+                            previewTextView = textView
+                            val renderedText = textView.text.toString()
+                            if (previewText != renderedText) previewText = renderedText
+                        }
+                    )
                 }
             } else {
                 BasicTextField(

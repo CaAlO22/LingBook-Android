@@ -4,11 +4,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.runtime.Composable
@@ -44,7 +42,7 @@ fun FloatingInputContainer(
     modifier: Modifier = Modifier,
     bottomOffset: Dp = 16.dp,
     horizontalMargin: Dp = 24.dp,
-    barShape: Shape = RoundedCornerShape(24.dp),
+    barShape: Shape = RoundedCornerShape(28.dp),
     floatingBar: @Composable () -> Unit,
     content: @Composable () -> Unit
 ) {
@@ -75,15 +73,23 @@ fun FloatingInputContainer(
                 .padding(horizontal = horizontalMargin)
                 .padding(bottom = bottomOffset + keyboardPadding)
                 .fillMaxWidth()
-                .shadow(elevation = 3.dp, shape = barShape, clip = false)
+                // 信息岛：Web 质感玻璃——柔和外阴影 + 不透明模糊承接层 + 无颗粒背景模糊。
+                .shadow(
+                    elevation = 12.dp,
+                    shape = barShape,
+                    clip = false,
+                    ambientColor = Color(0xFF78716C).copy(alpha = 0.16f),
+                    spotColor = Color(0xFF78716C).copy(alpha = 0.20f)
+                )
                 .clip(barShape)
                 .hazeChild(
                     state = hazeState,
                     style = HazeStyle(
-                        backgroundColor = MaterialTheme.colorScheme.background,
-                        tint = HazeTint(Color.White.copy(alpha = 0.22f)),
-                        blurRadius = 24.dp,
-                        noiseFactor = 0.15f
+                        // 必须不透明：否则原始清晰内容会穿透模糊快照，看起来像没有模糊。
+                        backgroundColor = Color.White,
+                        tint = HazeTint(Color.White.copy(alpha = 0.18f)),
+                        blurRadius = 18.dp,
+                        noiseFactor = 0f
                     )
                 )
         ) {
