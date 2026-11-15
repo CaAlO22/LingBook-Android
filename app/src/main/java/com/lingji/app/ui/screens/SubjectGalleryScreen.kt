@@ -110,6 +110,7 @@ import com.lingji.app.ui.components.TimeDisplay
 import com.lingji.app.ui.components.arrowKeyFocusGuard
 import com.lingji.app.ui.theme.NotoSerifCJKsc
 import com.lingji.app.ui.viewmodel.SubjectViewModel
+import dev.chrisbanes.haze.HazeInputScale
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
@@ -612,7 +613,10 @@ fun SubjectGalleryScreen(
                     blurRadius = 24.dp,
                     noiseFactor = 0.15f
                 )
-            )
+            ) {
+                // 全分辨率快照，避免滚动时降采样别名引起的闪烁。
+                inputScale = HazeInputScale.None
+            }
     ) {
         HomeChatBar(
             currentMode = uiState.homeChatMode,

@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
+import dev.chrisbanes.haze.HazeInputScale
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
@@ -91,7 +92,11 @@ fun FloatingInputContainer(
                         blurRadius = 18.dp,
                         noiseFactor = 0f
                     )
-                )
+                ) {
+                    // Auto 在高模糊半径下把快照降采样到 1/3，滚动文字在低分辨率下
+                    // 逐帧别名跳变表现为闪烁；全分辨率捕获可消除（Haze issue #732）。
+                    inputScale = HazeInputScale.None
+                }
         ) {
             floatingBar()
         }
