@@ -1,5 +1,10 @@
 package com.lingji.app.ui.navigation
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -7,6 +12,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -22,6 +28,9 @@ import com.lingji.app.ui.screens.SettingsScreen
 import com.lingji.app.ui.screens.SubjectGalleryScreen
 import com.lingji.app.ui.viewmodel.SubjectViewModel
 
+private const val NAV_TRANSITION_MS = 320
+private val NavEasing = FastOutSlowInEasing
+
 @Composable
 fun LingjiNavigation(updateViewModel: UpdateViewModel) {
     val navController = rememberNavController()
@@ -32,7 +41,30 @@ fun LingjiNavigation(updateViewModel: UpdateViewModel) {
         NavHost(
             navController = navController,
             startDestination = "gallery",
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            // 页面切换动效：对齐系统预测式返回的观感——当前页沿手势方向滑出并微缩，露出下层页面
+            enterTransition = {
+                slideInHorizontally(tween(NAV_TRANSITION_MS, easing = NavEasing)) { it }
+            },
+            exitTransition = {
+                slideOutHorizontally(tween(NAV_TRANSITION_MS, easing = NavEasing)) { -it / 4 } +
+                    scaleOut(
+                        animationSpec = tween(NAV_TRANSITION_MS, easing = NavEasing),
+                        targetScale = 0.9f,
+                        transformOrigin = TransformOrigin(0f, 0.5f)
+                    )
+            },
+            popEnterTransition = {
+                slideInHorizontally(tween(NAV_TRANSITION_MS, easing = NavEasing)) { -it / 4 }
+            },
+            popExitTransition = {
+                slideOutHorizontally(tween(NAV_TRANSITION_MS, easing = NavEasing)) { it } +
+                    scaleOut(
+                        animationSpec = tween(NAV_TRANSITION_MS, easing = NavEasing),
+                        targetScale = 0.9f,
+                        transformOrigin = TransformOrigin(1f, 0.5f)
+                    )
+            }
         ) {
             composable("gallery") {
                 SubjectGalleryScreen(
