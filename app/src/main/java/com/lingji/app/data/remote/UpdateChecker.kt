@@ -386,9 +386,13 @@ class UpdateChecker @Inject constructor(
         }
     }
 
+    /**
+     * 版本号比较：数字段逐段比较；数字部分相同时，字母后缀表示不改版本号的紧急修复补丁，
+     * 例如 1.9.0A 新于 1.9.0、1.9.0B 新于 1.9.0A，而 1.9.1 新于任意 1.9.0X。
+     */
     private fun isNewerVersion(remote: String, current: String): Boolean {
-        val remoteParts = remote.split(".").map { it.toIntOrNull() ?: 0 }
-        val currentParts = current.split(".").map { it.toIntOrNull() ?: 0 }
+        val (remoteParts, remoteSuffix) = parseVersion(remote)
+        val (currentParts, currentSuffix) = parseVersion(current)
         val maxLen = maxOf(remoteParts.size, currentParts.size)
         for (i in 0 until maxLen) {
             val r = remoteParts.getOrElse(i) { 0 }
@@ -396,7 +400,27 @@ class UpdateChecker @Inject constructor(
             if (r > c) return true
             if (r < c) return false
         }
-        return false
+        if (remoteSuffix == currentSuffix) return false
+        // 无后缀视为未打补丁，早于同数字版本的所有字母补丁
+        if (currentSuffix.isEmpty()) return true
+        if (remoteSuffix.isEmpty()) return false
+        return remoteSuffix > currentSuffix
+    }
+
+    /**
+     * 将版本号解析为数字段与字母后缀，如 "v1.9.0A" -> ([1, 9, 0], "A")。
+     * 非法数字段按 0 处理，后缀统一转大写以忽略大小写差异。
+     */
+    private fun parseVersion(version: String): Pair<List<Int>, String> {
+        val cleaned = version.trim().removePrefix("v").removePrefix("V")
+        val numbers = mutableListOf<Int>()
+        val suffix = StringBuilder()
+        for (part in cleaned.split(".")) {
+            val digits = part.takeWhile { it.isDigit() }
+            numbers.add(digits.toIntOrNull() ?: 0)
+            suffix.append(part.drop(digits.length).filter { it.isLetter() })
+        }
+        return numbers to suffix.toString().uppercase()
     }
 
     // GitHub API response models
