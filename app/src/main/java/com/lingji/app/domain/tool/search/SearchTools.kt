@@ -160,6 +160,7 @@ object SearchTools {
                     val allFrags = subject.fragments + subject.unmergedFragments
                     allFrags.maxOfOrNull { it.timestamp } ?: 0L
                 }
+                SubjectType.TODO -> subject.todoItems.maxOfOrNull { it.createdAt } ?: 0L
             }
             return cached.summarizedAt < lastModified
         }
@@ -180,6 +181,9 @@ object SearchTools {
                 SubjectType.FRAGMENT -> {
                     if (subject.aggregatedNote.isNotBlank()) subject.aggregatedNote
                     else subject.fragments.joinToString("\n") { it.content }
+                }
+                SubjectType.TODO -> subject.todoItems.joinToString("\n") {
+                    "- [${if (it.isDone) "x" else " "}] ${it.content}"
                 }
             }
             if (content.isBlank()) return "（无内容）"

@@ -35,6 +35,8 @@ import com.lingji.app.domain.model.PageIndexEntry
 import com.lingji.app.domain.model.SearchResult
 import com.lingji.app.domain.model.Subject
 import com.lingji.app.domain.model.SubjectType
+import com.lingji.app.domain.model.TodoRepeat
+import com.lingji.app.domain.model.currentPeriodStart
 import com.lingji.app.domain.model.fullNoteContent
 import com.lingji.app.domain.model.generateId
 import com.lingji.app.domain.tool.image.ConversationImageStore
@@ -158,7 +160,7 @@ class SubjectViewModel @Inject constructor(
 
     /** 重新生成笔记内部所有子实体 id，并同步页面索引与"最后打开页"的引用关系。 */
     private fun Subject.remapInternalIds(): Subject {
-        if (fragments.isEmpty() && unmergedFragments.isEmpty() && pages.isNullOrEmpty()) return this
+        if (fragments.isEmpty() && unmergedFragments.isEmpty() && pages.isNullOrEmpty() && todoItems.isEmpty()) return this
         val pageIdMap: Map<String, String> = pages.orEmpty().associate { it.id to generateId() }
         return copy(
             fragments = fragments.map { it.copy(id = generateId()) },
@@ -168,7 +170,8 @@ class SubjectViewModel @Inject constructor(
             pageIndexEntries = pageIndexEntries?.map {
                 it.copy(pageId = pageIdMap[it.pageId] ?: it.pageId)
             },
-            lastOpenedPageId = lastOpenedPageId?.let { pageIdMap[it] }
+            lastOpenedPageId = lastOpenedPageId?.let { pageIdMap[it] },
+            todoItems = todoItems.map { it.copy(id = generateId()) }
         )
     }
 
@@ -260,6 +263,39 @@ class SubjectViewModel @Inject constructor(
 
     fun deleteFragment(subjectId: String, fragmentId: String) {
         viewModelScope.launch { subjectRepository.deleteFragment(subjectId, fragmentId) }
+    }
+
+    // ───────────────────────── 待办列表 ─────────────────────────
+
+    fun addTodoItem(subjectId: String, content: String) {
+        if (content.isBlank()) return
+        viewModelScope.launch { subjectRepository.addTodoItem(subjectId, content.trim()) }
+    }
+
+    fun setTodoItemDone(itemId: String, isDone: Boolean) {
+        viewModelScope.launch { subjectRepository.setTodoItemDone(itemId, isDone) }
+    }
+
+    fun deleteTodoItem(itemId: String) {
+        viewModelScope.launch { subjectRepository.deleteTodoItem(itemId) }
+    }
+
+    fun updateTodoRepeat(subjectId: String, repeat: TodoRepeat) {
+        viewModelScope.launch { subjectRepository.updateTodoRepeat(subjectId, repeat) }
+    }
+
+    /**
+     * 进入待办列表时调用：若已跨入新的重复周期，则清除上一周期的勾选状态。
+     * 仅做一次幂等重置，重复调用不会产生副作用。
+     */
+    fun applyTodoRepeatResetIfNeeded(subject: Subject) {
+        if (subject.type != SubjectType.TODO) return
+        if (subject.todoItems.none { it.isDone }) return
+        val periodStart = subject.todoRepeat.currentPeriodStart(System.currentTimeMillis()) ?: return
+        if (subject.todoLastResetAt >= periodStart) return
+        viewModelScope.launch {
+            subjectRepository.resetTodoDone(subject.id, System.currentTimeMillis())
+        }
     }
 
     fun addPage(

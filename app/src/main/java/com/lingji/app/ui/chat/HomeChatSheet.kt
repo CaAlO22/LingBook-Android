@@ -40,8 +40,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import com.lingji.app.ui.components.DropdownMenu
+import com.lingji.app.ui.components.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -318,8 +318,7 @@ fun HomeChatSheet(
                             shape = RoundedCornerShape(percent = 50),
                             color = if (fragmentSelected) MaterialTheme.colorScheme.surface
                                 else androidx.compose.ui.graphics.Color.Transparent,
-                            tonalElevation = if (fragmentSelected) 1.dp else 0.dp,
-                            shadowElevation = if (fragmentSelected) 0.5.dp else 0.dp,
+                            // 不再使用 shadowElevation：低海拔阴影会被裁成方形色块，四角圆角缺失。
                             onClick = { onModeChange(ChatMode.FRAGMENT) }
                         ) {
                             Text(
@@ -335,8 +334,7 @@ fun HomeChatSheet(
                             shape = RoundedCornerShape(percent = 50),
                             color = if (agentSelected) MaterialTheme.colorScheme.surface
                                 else androidx.compose.ui.graphics.Color.Transparent,
-                            tonalElevation = if (agentSelected) 1.dp else 0.dp,
-                            shadowElevation = if (agentSelected) 0.5.dp else 0.dp,
+                            // 同上：去掉低海拔阴影，避免方形阴影覆盖圆角。
                             onClick = { onModeChange(ChatMode.AGENT) }
                         ) {
                             Text(

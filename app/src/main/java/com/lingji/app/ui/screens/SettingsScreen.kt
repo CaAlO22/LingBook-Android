@@ -31,7 +31,6 @@ import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
@@ -66,6 +65,8 @@ import com.lingji.app.domain.model.HorizontalSwipeAction
 import com.lingji.app.domain.model.toAISettings
 import com.lingji.app.domain.model.toLiteModelConfig
 import com.lingji.app.domain.provider.ProviderRegistry
+import com.lingji.app.ui.components.DropdownMenu
+import com.lingji.app.ui.components.DropdownMenuItem
 import com.lingji.app.ui.components.SettingsOutlinedTextField
 import com.lingji.app.ui.settings.ProviderEndpointSettings
 import com.lingji.app.ui.settings.ProviderModelSettings
@@ -185,9 +186,10 @@ fun SettingsScreen(
                             .fillMaxWidth()
                             .menuAnchor()
                     )
-                    ExposedDropdownMenu(
+                    DropdownMenu(
                         expanded = expanded,
-                        onDismissRequest = { expanded = false }
+                        onDismissRequest = { expanded = false },
+                        matchAnchorWidth = true
                     ) {
                         APIProvider.entries.forEach { provider ->
                             DropdownMenuItem(
@@ -304,9 +306,10 @@ fun SettingsScreen(
                             .fillMaxWidth()
                             .menuAnchor()
                     )
-                    ExposedDropdownMenu(
+                    DropdownMenu(
                         expanded = liteExpanded,
-                        onDismissRequest = { liteExpanded = false }
+                        onDismissRequest = { liteExpanded = false },
+                        matchAnchorWidth = true
                     ) {
                         APIProvider.entries.forEach { provider ->
                             DropdownMenuItem(
@@ -653,9 +656,10 @@ private fun HorizontalSwipeSetting(
                 .fillMaxWidth()
                 .menuAnchor()
         )
-        ExposedDropdownMenu(
+        DropdownMenu(
             expanded = expanded,
-            onDismissRequest = { expanded = false }
+            onDismissRequest = { expanded = false },
+            matchAnchorWidth = true
         ) {
             HorizontalSwipeAction.entries.forEach { action ->
                 val text = when (action) {

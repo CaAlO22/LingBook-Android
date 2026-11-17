@@ -18,14 +18,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -274,6 +273,13 @@ private fun SubjectStats(subject: Subject) {
             StatItem(
                 icon = Icons.Default.Book,
                 count = subject.aggregatedNote.length,
+                tint = tint
+            )
+        } else if (subject.type == SubjectType.TODO) {
+            StatItem(
+                icon = Icons.Default.Checklist,
+                count = subject.todoItems.count { it.isDone },
+                label = "/${subject.todoItems.size}",
                 tint = tint
             )
         } else {

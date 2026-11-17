@@ -89,13 +89,15 @@ fun FloatingInputContainer(
                         // 必须不透明：否则原始清晰内容会穿透模糊快照，看起来像没有模糊。
                         backgroundColor = Color.White,
                         tint = HazeTint(Color.White.copy(alpha = 0.18f)),
-                        blurRadius = 18.dp,
+                        // 半径需远大于文字行高，否则滚动时文字暗带透过玻璃移动、
+                        // 亮度随段落脉动，观感即闪烁。
+                        blurRadius = 48.dp,
                         noiseFactor = 0f
                     )
                 ) {
-                    // Auto 在高模糊半径下把快照降采样到 1/3，滚动文字在低分辨率下
-                    // 逐帧别名跳变表现为闪烁；全分辨率捕获可消除（Haze issue #732）。
-                    inputScale = HazeInputScale.None
+                    // 大半径配合降采样：降采样空间内等效半径仍足够均化文字，
+                    // 既消除别名闪烁又避免全分辨率大半径的帧成本。
+                    inputScale = HazeInputScale.Fixed(0.5f)
                 }
         ) {
             floatingBar()

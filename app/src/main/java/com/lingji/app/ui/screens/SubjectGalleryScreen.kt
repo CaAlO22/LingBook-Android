@@ -10,6 +10,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,12 +39,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import com.lingji.app.ui.components.DropdownMenu
+import com.lingji.app.ui.components.DropdownMenuItem
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -79,8 +82,10 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -442,11 +447,12 @@ fun SubjectGalleryScreen(
                                         (dragState.dragStartPos.y + dragState.dragOffset.y - containerPos.y).toInt()
                                     )
                                 }
-                                .width(160.dp)
-                                .alpha(0.85f),
+                                .width(160.dp),
                             shape = RoundedCornerShape(16.dp),
                             colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surface
+                                // 半透明直接落在容器色上：若用 Modifier.alpha 包住带 elevation 的卡片，
+                                // 阴影会被绘制进离屏图层并按矩形边界裁切，四角阴影圆角会缺失。
+                                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
                             ),
                             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
                         ) {
@@ -610,12 +616,14 @@ fun SubjectGalleryScreen(
                 style = HazeStyle(
                     backgroundColor = MaterialTheme.colorScheme.background,
                     tint = HazeTint(Color.White.copy(alpha = 0.22f)),
-                    blurRadius = 24.dp,
+                    // 大半径均化卡片色块，避免滚动时玻璃亮度脉动观感如闪烁。
+                    blurRadius = 48.dp,
                     noiseFactor = 0.15f
                 )
             ) {
-                // 全分辨率快照，避免滚动时降采样别名引起的闪烁。
-                inputScale = HazeInputScale.None
+                // 大半径配合半分辨率采样：降采样空间内等效半径仍足够均化背景，
+                // 既消除别名闪烁又避免全分辨率大半径的帧成本。
+                inputScale = HazeInputScale.Fixed(0.5f)
             }
     ) {
         HomeChatBar(
@@ -762,20 +770,11 @@ fun AddSubjectCard(
                         }
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TypeChip(
-                            label = stringResource(R.string.fragment_mode),
-                            selected = type == SubjectType.FRAGMENT,
-                            onClick = { type = SubjectType.FRAGMENT },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        TypeChip(
-                            label = stringResource(R.string.notebook_mode),
-                            selected = type == SubjectType.NOTEBOOK,
-                            onClick = { type = SubjectType.NOTEBOOK },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
+                    TypeDropdown(
+                        type = type,
+                        onTypeChange = { type = it },
+                        modifier = Modifier.fillMaxWidth()
+                    )
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         TextButton(
@@ -868,6 +867,83 @@ private fun SubjectCardSizingReference(modifier: Modifier = Modifier) {
 }
 
 @Composable
+private fun TypeDropdown(
+    type: SubjectType,
+    onTypeChange: (SubjectType) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var triggerWidth by remember { mutableStateOf(0) }
+    val shape = RoundedCornerShape(16.dp)
+    val density = LocalDensity.current
+
+    Box(modifier = modifier) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .onSizeChanged { triggerWidth = it.width }
+                .clip(shape)
+                .border(1.dp, MaterialTheme.colorScheme.outline, shape)
+                .clickable { expanded = true }
+                .padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(type.labelRes()),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                modifier = Modifier.weight(1f)
+            )
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowDown,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.width(with(density) { triggerWidth.toDp() })
+        ) {
+            SubjectType.entries.forEach { option ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = stringResource(option.labelRes()),
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    },
+                    onClick = {
+                        onTypeChange(option)
+                        expanded = false
+                    },
+                    trailingIcon = if (option == type) {
+                        {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    } else {
+                        null
+                    }
+                )
+            }
+        }
+    }
+}
+
+private fun SubjectType.labelRes(): Int = when (this) {
+    SubjectType.FRAGMENT -> R.string.fragment_mode
+    SubjectType.NOTEBOOK -> R.string.notebook_mode
+    SubjectType.TODO -> R.string.todo_mode
+}
+
+@Composable
 private fun TypeChip(
     label: String,
     selected: Boolean,
@@ -932,7 +1008,7 @@ private fun AddSubjectDialog(
     onConfirm: (String, SubjectType) -> Unit
 ) {
     var title by remember { mutableStateOf("") }
-    var isNotebook by remember { mutableStateOf(false) }
+    var type by remember { mutableStateOf(SubjectType.FRAGMENT) }
 
     LingjiDialog(
         onDismissRequest = onDismiss,
@@ -945,13 +1021,24 @@ private fun AddSubjectDialog(
                     label = { Text(stringResource(R.string.hint_subject_title)) },
                     singleLine = true
                 )
-                LingjiDialogDismissButton(
-                    text = stringResource(
-                        R.string.mode_format,
-                        stringResource(if (isNotebook) R.string.notebook_mode else R.string.fragment_mode)
-                    ),
-                    onClick = { isNotebook = !isNotebook }
-                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TypeChip(
+                        label = stringResource(R.string.fragment_mode),
+                        selected = type == SubjectType.FRAGMENT,
+                        onClick = { type = SubjectType.FRAGMENT }
+                    )
+                    TypeChip(
+                        label = stringResource(R.string.notebook_mode),
+                        selected = type == SubjectType.NOTEBOOK,
+                        onClick = { type = SubjectType.NOTEBOOK }
+                    )
+                    TypeChip(
+                        label = stringResource(R.string.todo_mode),
+                        selected = type == SubjectType.TODO,
+                        onClick = { type = SubjectType.TODO }
+                    )
+                }
             }
         },
         confirmButton = {
@@ -959,7 +1046,7 @@ private fun AddSubjectDialog(
                 text = stringResource(R.string.save),
                 enabled = title.isNotBlank(),
                 onClick = {
-                    onConfirm(title, if (isNotebook) SubjectType.NOTEBOOK else SubjectType.FRAGMENT)
+                    onConfirm(title, type)
                     onDismiss()
                 }
             )

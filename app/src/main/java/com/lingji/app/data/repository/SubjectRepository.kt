@@ -7,12 +7,14 @@ import com.lingji.app.data.db.dao.NoteRevisionDao
 import com.lingji.app.data.db.dao.SubjectDao
 import com.lingji.app.data.db.dao.SubjectSummaryDao
 import com.lingji.app.data.db.dao.SyncTombstoneDao
+import com.lingji.app.data.db.dao.TodoItemDao
 import com.lingji.app.data.db.entities.FragmentEntity
 import com.lingji.app.data.db.entities.FolderEntity
 import com.lingji.app.data.db.entities.NotebookPageEntity
 import com.lingji.app.data.db.entities.NoteRevisionEntity
 import com.lingji.app.data.db.entities.SubjectEntity
 import com.lingji.app.data.db.entities.SyncTombstoneEntity
+import com.lingji.app.data.db.entities.TodoItemEntity
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.lingji.app.domain.model.Folder
@@ -23,6 +25,9 @@ import com.lingji.app.domain.model.PageIndex
 import com.lingji.app.domain.model.PageIndexEntry
 import com.lingji.app.domain.model.Subject
 import com.lingji.app.domain.model.SubjectType
+import com.lingji.app.domain.model.TodoItem
+import com.lingji.app.domain.model.TodoRepeat
+import com.lingji.app.domain.model.TodoRepeatType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -41,7 +46,8 @@ class SubjectRepository @Inject constructor(
     private val folderDao: FolderDao,
     private val revisionDao: NoteRevisionDao,
     private val summaryDao: SubjectSummaryDao,
-    private val tombstoneDao: SyncTombstoneDao
+    private val tombstoneDao: SyncTombstoneDao,
+    private val todoItemDao: TodoItemDao
 ) {
     private val gson = Gson()
 
@@ -54,34 +60,41 @@ class SubjectRepository @Inject constructor(
     fun getAllSubjects(): Flow<List<Subject>> = combine(
         subjectDao.getAllSubjects(),
         fragmentDao.getAllFragments(),
-        pageDao.getAllPages()
-    ) { subjects, fragments, pages ->
+        pageDao.getAllPages(),
+        todoItemDao.getAllTodoItems()
+    ) { subjects, fragments, pages, todoItems ->
         subjects.map { entity ->
             val subjectFragments = fragments.filter { it.subjectId == entity.id }
             val subjectPages = pages.filter { it.subjectId == entity.id }
-            assemble(entity, subjectFragments, subjectPages)
+            val subjectTodoItems = todoItems.filter { it.subjectId == entity.id }
+            assemble(entity, subjectFragments, subjectPages, subjectTodoItems)
         }
     }
 
     fun getSubjectById(id: String): Flow<Subject?> = combine(
         subjectDao.getAllSubjects().map { list -> list.find { it.id == id } },
         fragmentDao.getFragmentsBySubject(id),
-        pageDao.getPagesBySubject(id)
-    ) { entity, fragments, pages ->
-        entity?.let { assemble(it, fragments, pages) }
+        pageDao.getPagesBySubject(id),
+        todoItemDao.getAllTodoItems()
+    ) { entity, fragments, pages, todoItems ->
+        entity?.let {
+            assemble(it, fragments, pages, todoItems.filter { item -> item.subjectId == id })
+        }
     }
 
     suspend fun getSubjectByIdOnce(id: String): Subject? {
         val entity = subjectDao.getSubjectById(id) ?: return null
         val fragments = fragmentDao.getFragmentsBySubjectOnce(id)
         val pages = pageDao.getPagesBySubjectOnce(id)
-        return assemble(entity, fragments, pages)
+        val todoItems = todoItemDao.getTodoItemsBySubjectOnce(id)
+        return assemble(entity, fragments, pages, todoItems)
     }
 
     suspend fun insert(subject: Subject) {
         subjectDao.upsert(subject.toEntity())
         syncFragments(subject)
         syncPages(subject)
+        syncTodoItems(subject)
     }
 
     suspend fun delete(id: String) {
@@ -89,14 +102,17 @@ class SubjectRepository @Inject constructor(
         // 先收集将被级联删除的实体 id，为其记录墓碑
         val fragmentIds = fragmentDao.getFragmentsBySubjectOnce(id).map { it.id }
         val pageIds = pageDao.getPagesBySubjectOnce(id).map { it.id }
+        val todoItemIds = todoItemDao.getTodoItemsBySubjectOnce(id).map { it.id }
         subjectDao.delete(entity)
         fragmentDao.deleteBySubject(id)
         pageDao.deleteBySubject(id)
+        todoItemDao.deleteBySubject(id)
         summaryDao.deleteBySubjectId(id)
         recordTombstones(
             *arrayOf("subjects" to id, "subject_summaries" to id) +
                 fragmentIds.map { "fragments" to it } +
-                pageIds.map { "notebook_pages" to it }
+                pageIds.map { "notebook_pages" to it } +
+                todoItemIds.map { "todo_items" to it }
         )
     }
 
@@ -178,6 +194,42 @@ class SubjectRepository @Inject constructor(
 
     suspend fun completeBatchMerge(subjectId: String, mergedFragmentIds: List<String>) {
         fragmentDao.markUnmergedMergedByIds(subjectId, mergedFragmentIds, System.currentTimeMillis())
+    }
+
+    // ───────────────────────── 待办列表 ─────────────────────────
+
+    suspend fun addTodoItem(subjectId: String, content: String) {
+        todoItemDao.insert(TodoItem(content = content).toEntity(subjectId))
+    }
+
+    suspend fun setTodoItemDone(itemId: String, isDone: Boolean) {
+        todoItemDao.updateDone(itemId, isDone, System.currentTimeMillis())
+    }
+
+    suspend fun deleteTodoItem(itemId: String) {
+        todoItemDao.deleteById(itemId)
+        recordTombstones("todo_items" to itemId)
+    }
+
+    suspend fun updateTodoRepeat(subjectId: String, repeat: TodoRepeat) {
+        val now = System.currentTimeMillis()
+        // 修改重复设置即开启新周期，避免刚改完就被判定为需要清除勾选
+        subjectDao.updateTodoRepeat(
+            id = subjectId,
+            type = repeat.type.name,
+            days = repeat.weekDays.sorted().joinToString(","),
+            intervalDays = repeat.intervalDays.coerceAtLeast(1),
+            anchorAt = repeat.anchorAt,
+            lastResetAt = now,
+            updatedAt = now
+        )
+    }
+
+    /** 新周期开始时清除所有勾选，并记录本次重置时间。 */
+    suspend fun resetTodoDone(subjectId: String, lastResetAt: Long) {
+        val now = System.currentTimeMillis()
+        todoItemDao.resetDoneBySubject(subjectId, now)
+        subjectDao.updateTodoLastResetAt(subjectId, lastResetAt, now)
     }
 
     suspend fun addPage(subjectId: String, page: NotebookPage) {
@@ -314,10 +366,16 @@ class SubjectRepository @Inject constructor(
     private suspend fun loadSubject(entity: SubjectEntity): Subject {
         val fragments = fragmentDao.getFragmentsBySubjectOnce(entity.id)
         val pages = pageDao.getPagesBySubjectOnce(entity.id)
-        return assemble(entity, fragments, pages)
+        val todoItems = todoItemDao.getTodoItemsBySubjectOnce(entity.id)
+        return assemble(entity, fragments, pages, todoItems)
     }
 
-    private fun assemble(entity: SubjectEntity, fragments: List<FragmentEntity>, pages: List<NotebookPageEntity>): Subject {
+    private fun assemble(
+        entity: SubjectEntity,
+        fragments: List<FragmentEntity>,
+        pages: List<NotebookPageEntity>,
+        todoItems: List<TodoItemEntity> = emptyList()
+    ): Subject {
         val domainFragments = fragments.filter { !it.isUnmerged }.map { it.toDomain() }
         val unmerged = fragments.filter { it.isUnmerged }.map { it.toDomain() }
         val domainPages = pages.map { it.toDomain() }
@@ -342,7 +400,19 @@ class SubjectRepository @Inject constructor(
             pageIndex = if (entity.type.equals("notebook", true)) domainPages.mapIndexed { idx, p -> PageIndex(p.id, p.title, idx) } else null,
             pageIndexEntries = if (entity.type.equals("notebook", true)) pageIndexEntries else null,
             lastOpenedPageId = entity.lastOpenedPageId,
-            folderId = entity.folderId
+            folderId = entity.folderId,
+            todoItems = todoItems.map { it.toDomain() },
+            todoRepeat = TodoRepeat(
+                type = runCatching { TodoRepeatType.valueOf(entity.todoRepeatType.uppercase()) }
+                    .getOrDefault(TodoRepeatType.ONCE),
+                weekDays = entity.todoRepeatDays.split(",")
+                    .mapNotNull { it.trim().toIntOrNull() }
+                    .filter { it in 1..7 }
+                    .toSet(),
+                intervalDays = entity.todoIntervalDays.coerceAtLeast(1),
+                anchorAt = entity.todoRepeatAnchorAt
+            ),
+            todoLastResetAt = entity.todoLastResetAt
         )
     }
 
@@ -359,6 +429,12 @@ class SubjectRepository @Inject constructor(
         pageDao.insertAll(subject.pages.mapIndexed { idx, p -> p.toEntity(subject.id, idx) })
     }
 
+    private suspend fun syncTodoItems(subject: Subject) {
+        if (subject.type != SubjectType.TODO) return
+        todoItemDao.deleteBySubject(subject.id)
+        todoItemDao.insertAll(subject.todoItems.map { it.toEntity(subject.id) })
+    }
+
     private fun Subject.toEntity() = SubjectEntity(
         id = id,
         title = title,
@@ -370,7 +446,27 @@ class SubjectRepository @Inject constructor(
         orderIndex = orderIndex,
         pageIndexJson = pageIndexEntries?.let { gson.toJson(it) } ?: "",
         lastOpenedPageId = lastOpenedPageId,
-        folderId = folderId
+        folderId = folderId,
+        todoRepeatType = todoRepeat.type.name,
+        todoRepeatDays = todoRepeat.weekDays.sorted().joinToString(","),
+        todoIntervalDays = todoRepeat.intervalDays.coerceAtLeast(1),
+        todoRepeatAnchorAt = todoRepeat.anchorAt,
+        todoLastResetAt = todoLastResetAt
+    )
+
+    private fun TodoItem.toEntity(subjectId: String) = TodoItemEntity(
+        id = id,
+        subjectId = subjectId,
+        content = content,
+        isDone = isDone,
+        createdAt = createdAt
+    )
+
+    private fun TodoItemEntity.toDomain() = TodoItem(
+        id = id,
+        content = content,
+        isDone = isDone,
+        createdAt = createdAt
     )
 
     private fun Fragment.toEntity(subjectId: String, isUnmerged: Boolean) = FragmentEntity(

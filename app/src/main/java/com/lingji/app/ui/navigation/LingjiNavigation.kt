@@ -26,6 +26,7 @@ import com.lingji.app.ui.viewmodel.UpdateViewModel
 import com.lingji.app.ui.screens.NotebookSubjectScreen
 import com.lingji.app.ui.screens.SettingsScreen
 import com.lingji.app.ui.screens.SubjectGalleryScreen
+import com.lingji.app.ui.screens.TodoSubjectScreen
 import com.lingji.app.ui.viewmodel.SubjectViewModel
 
 private const val NAV_TRANSITION_MS = 320
@@ -89,6 +90,12 @@ fun LingjiNavigation(updateViewModel: UpdateViewModel) {
                 when (subject.type) {
                     com.lingji.app.domain.model.SubjectType.NOTEBOOK ->
                         NotebookSubjectScreen(
+                            viewModel = viewModel,
+                            subject = subject,
+                            onBack = { navController.popBackStack() }
+                        )
+                    com.lingji.app.domain.model.SubjectType.TODO ->
+                        TodoSubjectScreen(
                             viewModel = viewModel,
                             subject = subject,
                             onBack = { navController.popBackStack() }

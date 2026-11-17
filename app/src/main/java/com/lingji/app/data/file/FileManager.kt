@@ -5,6 +5,7 @@ import android.net.Uri
 import com.google.gson.Gson
 import com.lingji.app.domain.model.Subject
 import com.lingji.app.domain.model.SubjectType
+import com.lingji.app.domain.model.TodoRepeat
 import com.lingji.app.util.Codec82
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -32,7 +33,7 @@ class FileManager @Inject constructor(
             val trimmed = text.trim()
             val decoded = Codec82.decode(trimmed)
             val jsonTree = gson.toJsonTree(decoded)
-            if (jsonTree.isJsonObject) {
+            val parsed = if (jsonTree.isJsonObject) {
                 val obj = jsonTree.asJsonObject
                 if (!obj.has("type")) {
                     obj.addProperty("type", SubjectType.FRAGMENT.name)
@@ -41,8 +42,20 @@ class FileManager @Inject constructor(
             } else {
                 gson.fromJson(jsonTree, Subject::class.java)
             }
+            normalizeImportedSubject(parsed)
         }.getOrNull()
     }
+
+    /**
+     * 兼容旧版本导出文件：Gson 直接写入字段、不执行 Kotlin 默认参数，
+     * 新增字段在旧文件中缺失时会变成 null，这里统一补默认值。
+     */
+    @Suppress("SENSELESS_COMPARISON")
+    private fun normalizeImportedSubject(subject: Subject): Subject = subject.copy(
+        todoItems = subject.todoItems ?: emptyList(),
+        todoRepeat = subject.todoRepeat ?: TodoRepeat(),
+        todoLastResetAt = subject.todoLastResetAt
+    )
 
     suspend fun exportSubject(subject: Subject, uri: Uri) = withContext(Dispatchers.IO) {
         val encoded = encodeSubject(subject)

@@ -2,6 +2,7 @@ package com.lingji.app.ui.components
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
@@ -29,6 +30,7 @@ fun GlassOutlinedTextField(
     minLines: Int = 1,
     maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
     readOnly: Boolean = false,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     trailingIcon: @Composable (() -> Unit)? = null,
     leadingIcon: @Composable (() -> Unit)? = null
 ) {
@@ -42,6 +44,7 @@ fun GlassOutlinedTextField(
             minLines = minLines,
             maxLines = maxLines,
             readOnly = readOnly,
+            keyboardOptions = keyboardOptions,
             trailingIcon = trailingIcon,
             leadingIcon = leadingIcon,
             modifier = Modifier

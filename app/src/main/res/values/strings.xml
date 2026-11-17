@@ -11,18 +11,19 @@
     <string name="import_label">导入</string>
     <string name="export">导出</string>
 
-    <!-- 学科首页 -->
+    <!-- 内容首页 -->
     <string name="gallery_title">灵记</string>
-    <string name="add_subject">添加学科</string>
-    <string name="new_subject">新建学科</string>
+    <string name="add_subject">新建内容</string>
+    <string name="new_subject">新建内容</string>
     <string name="new_subject_hint">输入主题名称…</string>
     <string name="fragment_mode">碎片模式</string>
     <string name="notebook_mode">笔记本模式</string>
+    <string name="todo_mode">待办列表</string>
     <string name="mode_format">模式：%1$s</string>
-    <string name="empty_subjects">还没有学科，点击 + 创建</string>
+    <string name="empty_subjects">还没有内容，点击 + 创建</string>
     <string name="import_success">导入成功</string>
     <string name="import_failed">导入失败</string>
-    <string name="rename_subject">重命名学科</string>
+    <string name="rename_subject">重命名内容</string>
     <string name="new_title">新名称</string>
     <string name="cd_import">导入</string>
     <string name="cd_settings">设置</string>
@@ -32,6 +33,29 @@
     <string name="move_to_top">置顶</string>
     <string name="move_up">上移</string>
     <string name="move_down">下移</string>
+
+    <!-- 待办列表 -->
+    <string name="todo_item_hint">添加待办事项…</string>
+    <string name="todo_empty_title">还没有待办事项</string>
+    <string name="todo_empty_hint">在下方输入框添加第一条待办</string>
+    <string name="todo_repeat_settings">重复设置</string>
+    <string name="todo_repeat_once">一次性待办</string>
+    <string name="todo_repeat_daily">每日委托</string>
+    <string name="todo_repeat_weekdays">仅工作日重复</string>
+    <string name="todo_repeat_weekends">仅休息日重复</string>
+    <string name="todo_repeat_interval">间隔时间重复</string>
+    <string name="todo_repeat_interval_label">间隔天数</string>
+    <string name="todo_repeat_interval_days">每 %1$d 天重复</string>
+    <string name="todo_repeat_custom">自定义重复</string>
+    <string name="todo_repeat_custom_summary">%1$s 重复</string>
+    <string name="todo_progress">%1$d/%2$d</string>
+    <string name="weekday_mon">周一</string>
+    <string name="weekday_tue">周二</string>
+    <string name="weekday_wed">周三</string>
+    <string name="weekday_thu">周四</string>
+    <string name="weekday_fri">周五</string>
+    <string name="weekday_sat">周六</string>
+    <string name="weekday_sun">周日</string>
 
     <!-- 文件夹 -->
     <string name="new_folder">新建文件夹</string>

@@ -47,6 +47,26 @@ interface SubjectDao {
     @Query("UPDATE subjects SET folderId = :folderId, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateFolderId(id: String, folderId: String?, updatedAt: Long)
 
+    // ── 待办列表 ──
+
+    @Query(
+        "UPDATE subjects SET todoRepeatType = :type, todoRepeatDays = :days, " +
+            "todoIntervalDays = :intervalDays, todoRepeatAnchorAt = :anchorAt, " +
+            "todoLastResetAt = :lastResetAt, updatedAt = :updatedAt WHERE id = :id"
+    )
+    suspend fun updateTodoRepeat(
+        id: String,
+        type: String,
+        days: String,
+        intervalDays: Int,
+        anchorAt: Long,
+        lastResetAt: Long,
+        updatedAt: Long
+    )
+
+    @Query("UPDATE subjects SET todoLastResetAt = :lastResetAt, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateTodoLastResetAt(id: String, lastResetAt: Long, updatedAt: Long)
+
     @Query("SELECT * FROM subjects WHERE folderId IS :folderId ORDER BY orderIndex DESC, createdAt DESC")
     suspend fun getSubjectsByFolderOnce(folderId: String?): List<SubjectEntity>
 

@@ -13,6 +13,7 @@ import com.lingji.app.data.db.dao.SettingsDao
 import com.lingji.app.data.db.dao.SubjectDao
 import com.lingji.app.data.db.dao.SubjectSummaryDao
 import com.lingji.app.data.db.dao.SyncTombstoneDao
+import com.lingji.app.data.db.dao.TodoItemDao
 import com.lingji.app.data.db.entities.FragmentEntity
 import com.lingji.app.data.db.entities.FolderEntity
 import com.lingji.app.data.db.entities.HomeConversationEntity
@@ -24,6 +25,7 @@ import com.lingji.app.data.db.entities.SettingsEntity
 import com.lingji.app.data.db.entities.SubjectEntity
 import com.lingji.app.data.db.entities.SubjectSummaryEntity
 import com.lingji.app.data.db.entities.SyncTombstoneEntity
+import com.lingji.app.data.db.entities.TodoItemEntity
 
 @Database(
     entities = [
@@ -37,9 +39,10 @@ import com.lingji.app.data.db.entities.SyncTombstoneEntity
         HomeFragmentEntity::class,
         FolderEntity::class,
         NoteRevisionEntity::class,
-        SyncTombstoneEntity::class
+        SyncTombstoneEntity::class,
+        TodoItemEntity::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = false
 )
 abstract class LingjiDatabase : RoomDatabase() {
@@ -190,6 +193,27 @@ abstract class LingjiDatabase : RoomDatabase() {
                 )
             }
         }
+
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 待办列表：新增待办项表与重复设置列
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS todo_items (" +
+                        "id TEXT NOT NULL PRIMARY KEY, " +
+                        "subjectId TEXT NOT NULL, " +
+                        "content TEXT NOT NULL, " +
+                        "isDone INTEGER NOT NULL DEFAULT 0, " +
+                        "createdAt INTEGER NOT NULL, " +
+                        "updatedAt INTEGER NOT NULL DEFAULT 0)"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_todo_items_subjectId ON todo_items(subjectId)")
+                db.execSQL("ALTER TABLE subjects ADD COLUMN todoRepeatType TEXT NOT NULL DEFAULT 'ONCE'")
+                db.execSQL("ALTER TABLE subjects ADD COLUMN todoRepeatDays TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE subjects ADD COLUMN todoIntervalDays INTEGER NOT NULL DEFAULT 2")
+                db.execSQL("ALTER TABLE subjects ADD COLUMN todoRepeatAnchorAt INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE subjects ADD COLUMN todoLastResetAt INTEGER NOT NULL DEFAULT 0")
+            }
+        }
     }
     abstract fun subjectDao(): SubjectDao
     abstract fun fragmentDao(): FragmentDao
@@ -200,4 +224,5 @@ abstract class LingjiDatabase : RoomDatabase() {
     abstract fun folderDao(): FolderDao
     abstract fun noteRevisionDao(): NoteRevisionDao
     abstract fun syncTombstoneDao(): SyncTombstoneDao
+    abstract fun todoItemDao(): TodoItemDao
 }

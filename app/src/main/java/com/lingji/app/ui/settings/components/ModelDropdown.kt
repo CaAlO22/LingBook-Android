@@ -2,7 +2,6 @@ package com.lingji.app.ui.settings.components
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
@@ -17,6 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.lingji.app.R
 import com.lingji.app.domain.provider.ProviderModel
+import com.lingji.app.ui.components.DropdownMenu
+import com.lingji.app.ui.components.DropdownMenuItem
 import com.lingji.app.ui.components.SettingsOutlinedTextField
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -45,9 +46,10 @@ fun ModelDropdown(
                 .fillMaxWidth()
                 .menuAnchor()
         )
-        ExposedDropdownMenu(
+        DropdownMenu(
             expanded = expanded,
-            onDismissRequest = { expanded = false }
+            onDismissRequest = { expanded = false },
+            matchAnchorWidth = true
         ) {
             models.forEach { model ->
                 DropdownMenuItem(

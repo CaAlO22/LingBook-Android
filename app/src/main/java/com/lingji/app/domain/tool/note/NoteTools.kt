@@ -145,6 +145,7 @@ object NoteTools {
                     repo.updateAggregatedNote(subjectId, newContent)
                     """{"success":true}"""
                 }
+                SubjectType.TODO -> "Error: 待办列表不支持文本替换，请直接管理待办项"
             }
         }
 

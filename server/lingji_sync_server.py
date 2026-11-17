@@ -50,6 +50,7 @@ TABLES = {
     "home_conversations": ("id", "updated_at"),
     "home_messages": ("id", "updatedAt"),
     "subject_summaries": ("subjectId", "updatedAt"),
+    "todo_items": ("id", "updatedAt"),
 }
 
 MAX_BODY_BYTES = 64 * 1024 * 1024  # 64 MB
