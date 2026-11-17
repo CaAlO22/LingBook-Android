@@ -206,6 +206,11 @@ class SubjectRepository @Inject constructor(
         todoItemDao.updateDone(itemId, isDone, System.currentTimeMillis())
     }
 
+    /** 信息岛：待办条目编辑——仅更新正文并刷新 updatedAt，供云同步感知修改。 */
+    suspend fun updateTodoItemContent(itemId: String, content: String) {
+        todoItemDao.updateContent(itemId, content, System.currentTimeMillis())
+    }
+
     suspend fun deleteTodoItem(itemId: String) {
         todoItemDao.deleteById(itemId)
         recordTombstones("todo_items" to itemId)

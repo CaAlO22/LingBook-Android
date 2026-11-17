@@ -450,9 +450,9 @@ fun SubjectGalleryScreen(
                                 .width(160.dp),
                             shape = RoundedCornerShape(16.dp),
                             colors = CardDefaults.cardColors(
-                                // 半透明直接落在容器色上：若用 Modifier.alpha 包住带 elevation 的卡片，
-                                // 阴影会被绘制进离屏图层并按矩形边界裁切，四角阴影圆角会缺失。
-                                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
+                                // 必须使用不透明容器色：带 alpha 的卡片在提升阴影下会让文字区域
+                                // 透出一块直角白色矩形（文字底色无圆角），实色可完全避免该问题。
+                                containerColor = MaterialTheme.colorScheme.surface
                             ),
                             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
                         ) {

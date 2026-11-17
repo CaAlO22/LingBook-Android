@@ -36,6 +36,7 @@
 
     <!-- 待办列表 -->
     <string name="todo_item_hint">添加待办事项…</string>
+    <string name="todo_edit_title">编辑待办</string>
     <string name="todo_empty_title">还没有待办事项</string>
     <string name="todo_empty_hint">在下方输入框添加第一条待办</string>
     <string name="todo_repeat_settings">重复设置</string>

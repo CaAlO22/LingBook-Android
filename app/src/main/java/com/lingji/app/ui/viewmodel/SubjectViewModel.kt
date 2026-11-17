@@ -276,6 +276,12 @@ class SubjectViewModel @Inject constructor(
         viewModelScope.launch { subjectRepository.setTodoItemDone(itemId, isDone) }
     }
 
+    fun updateTodoItemContent(itemId: String, content: String) {
+        val trimmed = content.trim()
+        if (trimmed.isEmpty()) return
+        viewModelScope.launch { subjectRepository.updateTodoItemContent(itemId, trimmed) }
+    }
+
     fun deleteTodoItem(itemId: String) {
         viewModelScope.launch { subjectRepository.deleteTodoItem(itemId) }
     }

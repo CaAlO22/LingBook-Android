@@ -30,6 +30,9 @@ interface TodoItemDao {
     @Query("UPDATE todo_items SET isDone = :isDone, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateDone(id: String, isDone: Boolean, updatedAt: Long)
 
+    @Query("UPDATE todo_items SET content = :content, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateContent(id: String, content: String, updatedAt: Long)
+
     @Query("UPDATE todo_items SET isDone = 0, updatedAt = :updatedAt WHERE subjectId = :subjectId AND isDone = 1")
     suspend fun resetDoneBySubject(subjectId: String, updatedAt: Long)
 

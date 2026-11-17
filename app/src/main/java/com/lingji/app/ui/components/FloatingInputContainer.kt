@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
@@ -50,7 +51,14 @@ fun FloatingInputContainer(
     val density = LocalDensity.current
     // WindowInsets.ime 本身随系统键盘动画逐帧更新，直接使用才能与输入法完全同步；
     // 再叠加一层补间动画会始终落后于键盘，产生可见的跟随延迟。
-    val keyboardPadding = with(density) { WindowInsets.ime.getBottom(density).toDp() }
+    val imeBottomPx = WindowInsets.ime.getBottom(density)
+    val navigationBottomPx = WindowInsets.navigationBars.getBottom(density)
+    // 调用方位于 Scaffold 内容区，底部已让出导航栏；而 ime inset 包含导航栏区域，
+    // 直接叠加会把悬浮栏推得比输入法高出「导航栏 + 常规间距」，键盘弹出后离输入法过远。
+    // 扣除导航栏高度后，键盘弹出时仍保持 bottomOffset 的贴合间距。
+    val keyboardPadding = with(density) {
+        if (imeBottomPx > 0) (imeBottomPx - navigationBottomPx).coerceAtLeast(0).toDp() else 0.dp
+    }
 
     // HazeState 连接模糊源（页面内容）与模糊目标（悬浮栏）。
     val hazeState = remember { HazeState() }

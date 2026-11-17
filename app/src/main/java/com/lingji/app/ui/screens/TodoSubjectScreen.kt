@@ -12,8 +12,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -26,10 +24,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Repeat
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -62,7 +59,9 @@ import com.lingji.app.domain.model.Subject
 import com.lingji.app.domain.model.TodoItem
 import com.lingji.app.domain.model.TodoRepeat
 import com.lingji.app.domain.model.TodoRepeatType
+import com.lingji.app.ui.components.FloatingInputContainer
 import com.lingji.app.ui.components.GlassOutlinedTextField
+import com.lingji.app.ui.components.InputCapsule
 import com.lingji.app.ui.components.LingjiDialog
 import com.lingji.app.ui.components.LingjiDialogConfirmButton
 import com.lingji.app.ui.components.LingjiDialogDismissButton
@@ -85,6 +84,7 @@ fun TodoSubjectScreen(
         uiState.subjects.find { it.id == subject.id } ?: subject
     }
     var showRepeatDialog by remember { mutableStateOf(false) }
+    var editingItem by remember { mutableStateOf<TodoItem?>(null) } // 信息岛：待办条目编辑
 
     // 进入页面时检查是否已跨入新的重复周期，若是则清除上一周期的勾选。
     LaunchedEffect(liveSubject.id, liveSubject.todoRepeat, liveSubject.todoLastResetAt) {
@@ -115,59 +115,75 @@ fun TodoSubjectScreen(
             )
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .navigationBarsPadding()
-                .imePadding() // 输入法弹出时整体上抬，保证底部新增输入栏可见
-        ) {
-            RepeatSummaryCard(
-                repeat = liveSubject.todoRepeat,
-                onClick = { showRepeatDialog = true }
-            )
-            if (liveSubject.todoItems.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = stringResource(R.string.todo_empty_title),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = stringResource(R.string.todo_empty_hint),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(liveSubject.todoItems, key = { it.id }) { item ->
-                        TodoItemRow(
-                            item = item,
-                            onToggle = { viewModel.setTodoItemDone(item.id, it) },
-                            onDelete = { viewModel.deleteTodoItem(item.id) }
-                        )
+        // 信息岛：待办输入栏改为悬浮在内容之上（与碎片/笔记页一致），
+        // 不再作为独占底栏占据布局高度。
+        FloatingInputContainer(
+            modifier = Modifier.padding(padding),
+            horizontalMargin = 24.dp,
+            bottomOffset = 16.dp,
+            floatingBar = {
+                InputCapsule(
+                    hint = stringResource(R.string.todo_item_hint),
+                    onSend = { viewModel.addTodoItem(liveSubject.id, it) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            content = {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    RepeatSummaryCard(
+                        repeat = liveSubject.todoRepeat,
+                        onClick = { showRepeatDialog = true }
+                    )
+                    if (liveSubject.todoItems.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 32.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.todo_empty_title),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = stringResource(R.string.todo_empty_hint),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.weight(1f),
+                            // 底部预留悬浮输入胶囊高度，使最后一条待办可滚动到其上方。
+                            contentPadding = PaddingValues(
+                                start = 16.dp,
+                                end = 16.dp,
+                                top = 8.dp,
+                                bottom = 100.dp
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(liveSubject.todoItems, key = { it.id }) { item ->
+                                TodoItemRow(
+                                    item = item,
+                                    onToggle = { viewModel.setTodoItemDone(item.id, it) },
+                                    onEdit = { editingItem = item },
+                                    onDelete = { viewModel.deleteTodoItem(item.id) }
+                                )
+                            }
+                        }
                     }
                 }
             }
-            TodoInputBar(onAdd = { viewModel.addTodoItem(liveSubject.id, it) })
-        }
+        )
     }
 
     if (showRepeatDialog) {
@@ -177,6 +193,18 @@ fun TodoSubjectScreen(
             onConfirm = { repeat ->
                 viewModel.updateTodoRepeat(liveSubject.id, repeat)
                 showRepeatDialog = false
+            }
+        )
+    }
+
+    // 信息岛：待办条目编辑弹窗
+    editingItem?.let { item ->
+        TodoEditDialog(
+            item = item,
+            onDismiss = { editingItem = null },
+            onConfirm = { content ->
+                viewModel.updateTodoItemContent(item.id, content)
+                editingItem = null
             }
         )
     }
@@ -227,7 +255,12 @@ private fun RepeatSummaryCard(repeat: TodoRepeat, onClick: () -> Unit) {
 }
 
 @Composable
-private fun TodoItemRow(item: TodoItem, onToggle: (Boolean) -> Unit, onDelete: () -> Unit) {
+private fun TodoItemRow(
+    item: TodoItem,
+    onToggle: (Boolean) -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
@@ -248,6 +281,14 @@ private fun TodoItemRow(item: TodoItem, onToggle: (Boolean) -> Unit, onDelete: (
                 else MaterialTheme.colorScheme.onSurface,
                 textDecoration = if (item.isDone) TextDecoration.LineThrough else TextDecoration.None
             )
+            IconButton(onClick = onEdit) {
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = stringResource(R.string.cd_edit),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
             IconButton(onClick = onDelete) {
                 Icon(
                     imageVector = Icons.Default.Delete,
@@ -260,40 +301,35 @@ private fun TodoItemRow(item: TodoItem, onToggle: (Boolean) -> Unit, onDelete: (
     }
 }
 
+/** 信息岛：待办条目编辑弹窗——预填当前内容，保存后仅更新正文。 */
 @Composable
-private fun TodoInputBar(onAdd: (String) -> Unit) {
-    var text by remember { mutableStateOf("") }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        GlassOutlinedTextField(
-            value = text,
-            onValueChange = { text = it },
-            modifier = Modifier.weight(1f),
-            placeholder = { Text(stringResource(R.string.todo_item_hint)) },
-            singleLine = true
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Button(
-            onClick = {
-                if (text.isNotBlank()) {
-                    onAdd(text)
-                    text = ""
-                }
-            },
-            enabled = text.isNotBlank(),
-            shape = MaterialTheme.shapes.medium
-        ) {
-            Icon(
-                imageVector = Icons.Default.Add,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp)
+private fun TodoEditDialog(item: TodoItem, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    var text by remember(item.id) { mutableStateOf(item.content) }
+    LingjiDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.todo_edit_title)) },
+        text = {
+            GlassOutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                placeholder = { Text(stringResource(R.string.todo_item_hint)) },
+                singleLine = true
+            )
+        },
+        confirmButton = {
+            LingjiDialogConfirmButton(
+                text = stringResource(R.string.save),
+                enabled = text.isNotBlank(),
+                onClick = { onConfirm(text) }
+            )
+        },
+        dismissButton = {
+            LingjiDialogDismissButton(
+                text = stringResource(R.string.cancel),
+                onClick = onDismiss
             )
         }
-    }
+    )
 }
 
 @Composable
