@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -119,6 +120,7 @@ fun TodoSubjectScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .navigationBarsPadding()
+                .imePadding() // 输入法弹出时整体上抬，保证底部新增输入栏可见
         ) {
             RepeatSummaryCard(
                 repeat = liveSubject.todoRepeat,
