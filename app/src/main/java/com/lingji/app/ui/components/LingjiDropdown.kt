@@ -105,11 +105,12 @@ fun DropdownMenu(
                 val gapX = with(density) { offset.x.roundToPx() }
                 val gapY = with(density) { offset.y.roundToPx() }
                 val margin = with(density) { 8.dp.roundToPx() }
-                // anchorBounds 相对锚点所在窗口；Popup 子窗口的 x 落在屏幕坐标而 y 相对父窗口，
-                // 故仅 x 需补锚点窗口的屏幕原点，否则横屏下菜单左偏。
+                // anchorBounds 与返回的 IntOffset 同处锚点所在窗口的坐标系（弹窗内即为弹窗窗口），
+                // 因此 x 直接取 anchorBounds.left 即可与锚点左边缘对齐；
+                // 再叠加窗口屏幕原点会在弹窗窗口（窗口原点不为 0）里把菜单整体右移一个原点宽度。
                 val windowOrigin = IntArray(2)
                 anchorView.getLocationOnScreen(windowOrigin)
-                // 屏幕坐标仅用于计算两侧可用空间
+                // 屏幕坐标只用于计算纵向两侧可用空间
                 val anchorTopScreen = anchorBounds.top + windowOrigin[1]
                 val anchorBottomScreen = anchorBounds.bottom + windowOrigin[1]
                 val spaceBelow = (windowSize.height - margin - anchorBottomScreen - gapY).coerceAtLeast(0)
@@ -119,8 +120,6 @@ fun DropdownMenu(
                 val openDown = popupContentSize.height <= spaceBelow || spaceBelow >= spaceAbove
                 expandDown = openDown
                 menuMaxHeightPx = if (openDown) spaceBelow else spaceAbove
-                // Popup 是锚点窗口的子窗口：y 与 anchorBounds 同处父窗口空间，无需补原点；
-                // x 落在屏幕坐标，需补父窗口原点（见下方 x/menuLeftPx 计算）
                 val y = if (openDown) {
                     anchorBounds.bottom + gapY
                 } else {
@@ -131,10 +130,10 @@ fun DropdownMenu(
                     // 窗口宽度一旦随首帧测量结果变化，系统会重新摆放窗口，
                     // 表现为菜单从左侧滑入。菜单的水平位置改由窗口内的偏移承担。
                     val maxLeft = (windowSize.width - anchorBounds.width - margin).coerceAtLeast(margin)
-                    menuLeftPx = (windowOrigin[0] + anchorBounds.left + gapX).coerceIn(margin, maxLeft)
+                    menuLeftPx = (anchorBounds.left + gapX).coerceIn(margin, maxLeft)
                     return IntOffset(0, y)
                 }
-                val x = (windowOrigin[0] + anchorBounds.left + gapX).coerceIn(
+                val x = (anchorBounds.left + gapX).coerceIn(
                     margin,
                     (windowSize.width - popupContentSize.width - margin).coerceAtLeast(margin)
                 )

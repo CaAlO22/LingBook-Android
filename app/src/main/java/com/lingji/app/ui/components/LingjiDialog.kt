@@ -24,8 +24,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -33,6 +38,15 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import com.lingji.app.R
+
+/**
+ * 弹窗正文滚动区的当前高度（px）。
+ *
+ * 小窗 / 分屏下弹出输入法时，弹窗窗口会被压缩，正文视口高度随之连续变化；
+ * 输入框据此在视口变化后重新滚动，保证聚焦的输入框最终完整可见。
+ * 不在弹窗内时为 null。
+ */
+val LocalDialogBodyHeight = staticCompositionLocalOf<State<Int>?> { null }
 
 /**
  * 灵记风格弹窗容器。
@@ -57,6 +71,7 @@ fun LingjiDialog(
         onDismissRequest = onDismissRequest,
         properties = properties
     ) {
+        val bodyHeight = remember { mutableIntStateOf(0) }
         // 弹窗是独立 Window：Compose 在 SDK >= 31 时不设置 softInputMode，
         // 系统对 wrap_content 浮窗默认按 ADJUST_PAN 处理（弹窗整体被平移），
         // 会与输入框获得焦点后的自动滚动互相拉扯；小窗中系统还会在弹出输入法时压缩窗口高度，
@@ -111,9 +126,11 @@ fun LingjiDialog(
                             // 正文区收缩到剩余空间内滚动，避免弹窗超出窗口导致整窗被夹住来回跳动。
                             .weight(1f, fill = false)
                             .heightIn(max = 380.dp)
+                            .onSizeChanged { bodyHeight.intValue = it.height }
                     ) {
                         CompositionLocalProvider(
-                            LocalTextStyle provides MaterialTheme.typography.bodyMedium
+                            LocalTextStyle provides MaterialTheme.typography.bodyMedium,
+                            LocalDialogBodyHeight provides bodyHeight
                         ) {
                             it()
                         }

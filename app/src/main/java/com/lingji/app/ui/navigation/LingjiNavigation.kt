@@ -53,6 +53,7 @@ import com.lingji.app.ui.screens.SettingsScreen
 import com.lingji.app.ui.screens.SubjectGalleryScreen
 import com.lingji.app.ui.screens.TodoSubjectScreen
 import com.lingji.app.ui.viewmodel.SubjectViewModel
+import kotlin.math.abs
 
 private const val NAV_TRANSITION_MS = 240
 // 返回离场的目标缩放：缩到很小再淡出，让用户完整看到页面收成一张小卡片的过程
@@ -69,13 +70,16 @@ private const val ENTER_SCALE_MS = 240
 private const val ENTER_FADE_MS = 160
 // 预测式返回拖到底时，小卡片保留的不透明度
 private const val PREDICTIVE_BACK_ALPHA = 0.6f
+// 预测手势拖动只消费动画时间轴的前 50%，提交后由 NavHost 继续播放剩余部分
+private const val PREDICTIVE_BACK_DRAG_FRACTION = 0.5f
+// 判定“推走方向”所需的最小水平位移（归一化），不足时退回手指高度的镜像兜底
+private const val PUSH_DIRECTION_MIN_DX = 0.02f
 // 打开时背景缩小到的比例，关闭时背景从该比例放大回来
 private const val BACKGROUND_SCALE = 0.8f
 // 应用内返回键的退出终点：左上角返回键的位置（归一化坐标）
 private val BACK_EXIT_ORIGIN = TransformOrigin(0.08f, 0.09f)
-// 手势返回的退出终点：手指对侧的中点——右侧边缘滑入收向左中，左侧边缘滑入收向右中
+// 手势返回的退出终点兜底：拿不到手指坐标时收向左侧中间（按常见的右侧滑入处理）
 private val LEFT_MIDDLE_ORIGIN = TransformOrigin(0f, 0.5f)
-private val RIGHT_MIDDLE_ORIGIN = TransformOrigin(1f, 0.5f)
 // 一次点击/按下在多长时间内视为触发了本次转场
 private const val PRESS_ANCHOR_FRESH_MS = 1200L
 // 信息岛：非线性速度——卡片越大速度越慢，最慢为线性速度的 0.5 倍。
@@ -115,24 +119,53 @@ private object NavPressAnchor {
 }
 
 /**
- * 信息岛：返回手势起始边
+ * 信息岛：返回手势状态
  *
- * NavHost 自带的预测式返回只消费 BackEvent 的进度，不读取起始边。
+ * NavHost 自带的预测式返回只消费 BackEvent 的进度，不读取起始边与触摸坐标。
  * 因此在窗口的 OnBackInvokedDispatcher 上以 PRIORITY_OVERLAY 注册一个动画回调，
- * 先于 navigation-compose 收到 BackEvent：记录起始边后原样转发给 OnBackPressedDispatcher，
- * 既保留 NavHost 原有的预测动画与返回行为，又能让退出终点跟随手势方向。
+ * 先于 navigation-compose 收到 BackEvent：记录起始边与采样点后转发给
+ * OnBackPressedDispatcher，既保留 NavHost 原有的预测动画与返回行为，
+ * 又能让退出终点落在“推走方向”与对侧屏幕边缘的交点上。
  */
 private object NavBackGesture {
     @Volatile private var startedAt = 0L
     @Volatile private var swipeEdge = BackEventCompat.EDGE_RIGHT
+    @Volatile private var exitY = 0.5f
+    private var startX = 0.5f
+    private var startY = 0.5f
+    private var resolved = false
 
-    fun record(edge: Int) {
+    /** 手势开始：记录起始边与起点，终点先退回“起点关于屏幕中心的镜像”作为兜底。 */
+    fun start(edge: Int, x: Float, y: Float) {
         swipeEdge = edge
+        startX = x.coerceIn(0f, 1f)
+        startY = y.coerceIn(0f, 1f)
+        exitY = 1f - startY
+        resolved = false
         startedAt = SystemClock.uptimeMillis()
+    }
+
+    /**
+     * 手势移动：把起点与当前采样点的连线延长到手指对侧的屏幕边缘，交点即退出终点，
+     * 纵向超出屏幕时夹到边缘，做出“手指把页面推走”的动线。
+     * 水平位移不足或方向朝外时返回 null，等待更明确的采样。
+     */
+    fun resolveExitY(x: Float, y: Float): Float? {
+        if (resolved) return exitY
+        val dx = x.coerceIn(0f, 1f) - startX
+        val dy = y.coerceIn(0f, 1f) - startY
+        if (abs(dx) < PUSH_DIRECTION_MIN_DX) return null
+        val exitX = if (swipeEdge == BackEventCompat.EDGE_RIGHT) 0f else 1f
+        val t = (exitX - startX) / dx
+        if (t <= 0f) return null
+        exitY = (startY + t * dy).coerceIn(0f, 1f)
+        resolved = true
+        return exitY
     }
 
     fun clear() {
         startedAt = 0L
+        resolved = false
     }
 
     /**
@@ -143,6 +176,9 @@ private object NavBackGesture {
      * 应用内返回键按下会刷新按下时间，下一次按下之后的转场不会再命中旧手势。
      */
     fun edgeStartedAfter(after: Long): Int? = if (startedAt > after) swipeEdge else null
+
+    /** 与 [edgeStartedAfter] 同一次手势的退出终点纵向位置（0 = 顶部，1 = 底部）。 */
+    fun exitYStartedAfter(after: Long): Float? = if (startedAt > after) exitY else null
 }
 
 /** 从 Compose 的 Context 链上找到宿主 Activity。 */
@@ -231,22 +267,61 @@ fun LingjiNavigation(updateViewModel: UpdateViewModel) {
             val backPressedDispatcher = activity.onBackPressedDispatcher
             val invokedDispatcher = activity.onBackInvokedDispatcher
             val callback = object : OnBackAnimationCallback {
+                // 预测返回要等第二个采样点算出推走方向后再启动：
+                // NavHost 一旦收到 started 就会创建转场并固定终点，之后再改已来不及。
+                private var startedForwarded = false
+                private var pendingStart: BackEventCompat? = null
+
+                private fun touchFractions(backEvent: BackEvent): Pair<Float, Float> {
+                    val decor = activity.window.decorView
+                    val width = decor.width.takeIf { it > 0 }
+                        ?: context.resources.displayMetrics.widthPixels
+                    val height = decor.height.takeIf { it > 0 }
+                        ?: context.resources.displayMetrics.heightPixels
+                    return backEvent.touchX / width.toFloat() to backEvent.touchY / height.toFloat()
+                }
+
                 override fun onBackStarted(backEvent: BackEvent) {
-                    NavBackGesture.record(backEvent.swipeEdge)
-                    backPressedDispatcher.dispatchOnBackStarted(BackEventCompat(backEvent))
+                    val (x, y) = touchFractions(backEvent)
+                    pendingStart = BackEventCompat(backEvent)
+                    startedForwarded = false
+                    // 终点先按镜像兜底，拿到第二个采样点后覆盖为推走方向与对侧边缘的交点
+                    NavBackGesture.start(edge = backEvent.swipeEdge, x = x, y = y)
                 }
 
                 override fun onBackProgressed(backEvent: BackEvent) {
-                    backPressedDispatcher.dispatchOnBackProgressed(BackEventCompat(backEvent))
+                    val (x, y) = touchFractions(backEvent)
+                    if (!startedForwarded) {
+                        // 方向不明确时先不启动转场，避免终点被固定在兜底位置
+                        if (NavBackGesture.resolveExitY(x, y) == null) return
+                        pendingStart?.let { backPressedDispatcher.dispatchOnBackStarted(it) }
+                        startedForwarded = true
+                    }
+                    // 拖动只消费时间轴前 50%：拖到底时动画刚好走完一半，
+                    // 松手后 NavHost 的 animateTo 会从当前进度继续播放剩余部分。
+                    backPressedDispatcher.dispatchOnBackProgressed(
+                        BackEventCompat(
+                            backEvent.touchX,
+                            backEvent.touchY,
+                            backEvent.progress * PREDICTIVE_BACK_DRAG_FRACTION,
+                            backEvent.swipeEdge
+                        )
+                    )
                 }
 
                 override fun onBackCancelled() {
+                    // 没启动过预测转场时无需转发取消，NavHost 也未进入预测状态
+                    if (startedForwarded) backPressedDispatcher.dispatchOnBackCancelled()
+                    startedForwarded = false
+                    pendingStart = null
                     NavBackGesture.clear()
-                    backPressedDispatcher.dispatchOnBackCancelled()
                 }
 
                 override fun onBackInvoked() {
-                    // 不在这里清理起始边：popExitTransition 会在返回栈变化后的重组中读取它
+                    // 未启动预测转场（如快速轻扫）时直接走普通返回；
+                    // 不在这里清理记录：popExitTransition 会在重组时读取已确定的终点。
+                    startedForwarded = false
+                    pendingStart = null
                     backPressedDispatcher.onBackPressed()
                 }
             }
@@ -299,13 +374,15 @@ fun LingjiNavigation(updateViewModel: UpdateViewModel) {
             },
             popExitTransition = {
                 // 信息岛：返回终点按来源区分——
-                // 系统手势返回收向手指对侧的中点：右侧滑入→左侧中间，左侧滑入→右侧中间；
+                // 系统手势返回沿“起点→第二采样点”的推走方向，落在对侧屏幕边缘的交点上；
                 // 应用内返回键收向左上角返回键的位置，强化“从哪来、回哪去”的动线。
-                val gestureEdge = NavBackGesture.edgeStartedAfter(NavPressAnchor.lastDownAt())
+                val downAt = NavPressAnchor.lastDownAt()
+                val gestureEdge = NavBackGesture.edgeStartedAfter(downAt)
                 val fromGesture = gestureEdge != null || (hasGestureNav && NavPressAnchor.recent() == null)
+                val exitY = NavBackGesture.exitYStartedAfter(downAt) ?: 0.5f
                 val origin = when {
-                    gestureEdge == BackEventCompat.EDGE_LEFT -> RIGHT_MIDDLE_ORIGIN
-                    gestureEdge == BackEventCompat.EDGE_RIGHT -> LEFT_MIDDLE_ORIGIN
+                    gestureEdge == BackEventCompat.EDGE_LEFT -> TransformOrigin(1f, exitY)
+                    gestureEdge == BackEventCompat.EDGE_RIGHT -> TransformOrigin(0f, exitY)
                     // 老系统拿不到起始边，按常见的右侧滑入处理
                     fromGesture -> LEFT_MIDDLE_ORIGIN
                     else -> BACK_EXIT_ORIGIN

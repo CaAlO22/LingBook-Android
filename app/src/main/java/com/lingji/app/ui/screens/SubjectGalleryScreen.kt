@@ -8,7 +8,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -52,9 +51,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -946,48 +943,6 @@ private fun SubjectType.labelRes(): Int = when (this) {
     SubjectType.TODO -> R.string.todo_mode
 }
 
-@Composable
-private fun TypeChip(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    if (selected) {
-        Button(
-            onClick = onClick,
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            ),
-            modifier = modifier
-        ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onPrimary
-            )
-        }
-    } else {
-        OutlinedButton(
-            onClick = onClick,
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.outlinedButtonColors(
-                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-            ),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-            modifier = modifier
-        ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
 private fun Modifier.dashedBorder(color: androidx.compose.ui.graphics.Color) = drawBehind {
     val strokeWidth = 2.dp.toPx()
     drawRoundRect(
@@ -1025,23 +980,11 @@ private fun AddSubjectDialog(
                     singleLine = true
                 )
                 Spacer(modifier = Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TypeChip(
-                        label = stringResource(R.string.fragment_mode),
-                        selected = type == SubjectType.FRAGMENT,
-                        onClick = { type = SubjectType.FRAGMENT }
-                    )
-                    TypeChip(
-                        label = stringResource(R.string.notebook_mode),
-                        selected = type == SubjectType.NOTEBOOK,
-                        onClick = { type = SubjectType.NOTEBOOK }
-                    )
-                    TypeChip(
-                        label = stringResource(R.string.todo_mode),
-                        selected = type == SubjectType.TODO,
-                        onClick = { type = SubjectType.TODO }
-                    )
-                }
+                TypeDropdown(
+                    type = type,
+                    onTypeChange = { type = it },
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         },
         confirmButton = {

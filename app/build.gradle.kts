@@ -15,8 +15,8 @@ android {
         applicationId = "com.lingji.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 42
-        versionName = "2.0.0b"
+        versionCode = 43
+        versionName = "2.0.0c"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
