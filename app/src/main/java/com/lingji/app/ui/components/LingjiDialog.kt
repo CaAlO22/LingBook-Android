@@ -79,6 +79,9 @@ fun LingjiDialog(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
+                            // fill = false：窗口（分屏 / 小窗 / 键盘弹出后）高度不足时，
+                            // 正文区收缩到剩余空间内滚动，避免弹窗超出窗口导致整窗被夹住来回跳动。
+                            .weight(1f, fill = false)
                             .heightIn(max = 380.dp)
                     ) {
                         CompositionLocalProvider(

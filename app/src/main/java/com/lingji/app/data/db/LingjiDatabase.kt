@@ -1,5 +1,6 @@
 package com.lingji.app.data.db
 
+import android.content.ContentValues
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
@@ -28,6 +29,9 @@ import com.lingji.app.data.db.entities.SubjectEntity
 import com.lingji.app.data.db.entities.SubjectSummaryEntity
 import com.lingji.app.data.db.entities.SyncTombstoneEntity
 import com.lingji.app.data.db.entities.TodoItemEntity
+import com.lingji.app.domain.model.APIProvider
+import com.lingji.app.domain.provider.ProviderRegistry
+import org.json.JSONObject
 
 @Database(
     entities = [
@@ -45,7 +49,7 @@ import com.lingji.app.data.db.entities.TodoItemEntity
         TodoItemEntity::class,
         ModelConfigEntity::class
     ],
-    version = 19,
+    version = 20,
     exportSchema = false
 )
 abstract class LingjiDatabase : RoomDatabase() {
@@ -225,6 +229,25 @@ abstract class LingjiDatabase : RoomDatabase() {
             }
         }
 
+        /** 1.x 设置页可一键填充的预设 Base URL（MiMo 有两种套餐）。
+         *  切换供应商时也会自动填充默认 URL，因此“无 key + 预设 URL”只代表浏览过，不代表配置过。 */
+        private val LEGACY_PRESET_URLS: Map<String, Set<String>> = mapOf(
+            "OPENAI" to setOf("https://api.openai.com/v1"),
+            "DOUBAO" to setOf("https://ark.cn-beijing.volces.com/api/v3"),
+            "XIAOMI" to setOf("https://api.xiaomimimo.com/v1", "https://token-plan-cn.xiaomimimo.com/v1"),
+            "BAILIAN" to setOf("https://dashscope.aliyuncs.com/compatible-mode/v1"),
+            "ZHIPU" to setOf("https://open.bigmodel.cn/api/paas/v4"),
+            "DEEPSEEK" to setOf("https://api.deepseek.com"),
+            "KIMI" to setOf("https://api.moonshot.cn/v1")
+        )
+
+        private fun isPresetUrl(provider: String, baseUrl: String): Boolean {
+            if (baseUrl.isBlank()) return false
+            if (baseUrl in (LEGACY_PRESET_URLS[provider] ?: emptySet())) return true
+            val p = runCatching { APIProvider.valueOf(provider) }.getOrNull() ?: return false
+            return baseUrl == ProviderRegistry.config(p).defaultBaseUrl
+        }
+
         val MIGRATION_16_17 = object : Migration(16, 17) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // 模型配置独立成表，主模型/辅助模型改为引用 model_configs.id
@@ -238,20 +261,91 @@ abstract class LingjiDatabase : RoomDatabase() {
                         "enableThinking INTEGER NOT NULL DEFAULT 0, " +
                         "createdAt INTEGER NOT NULL)"
                 )
-                // 把旧的主模型配置迁移为一条模型配置
-                db.execSQL(
-                    "INSERT INTO model_configs (id, provider, baseUrl, apiKey, modelName, enableThinking, createdAt) " +
-                        "SELECT 'migrated-primary', provider, baseUrl, apiKey, modelName, enableThinking, " +
-                        "CAST(strftime('%s','now') AS INTEGER) * 1000 FROM settings " +
-                        "WHERE id = 'singleton' AND (apiKey != '' OR baseUrl != '')"
-                )
-                // 把旧的轻量模型配置迁移为辅助模型
-                db.execSQL(
-                    "INSERT INTO model_configs (id, provider, baseUrl, apiKey, modelName, enableThinking, createdAt) " +
-                        "SELECT 'migrated-assistant', liteProvider, liteBaseUrl, liteApiKey, liteModelName, liteEnableThinking, " +
-                        "CAST(strftime('%s','now') AS INTEGER) * 1000 FROM settings " +
-                        "WHERE id = 'singleton' AND (liteApiKey != '' OR liteBaseUrl != '')"
-                )
+                // 旧版 settings 单例行只反映升级前最后停留的供应商界面，
+                // 真正填过 key 的供应商记录在 providerApiKeys JSON 中，需逐供应商迁移，
+                // 否则已配置的模型会丢失、最后浏览的供应商反而变成幻影模型。
+                var primaryId = ""
+                var assistantId = ""
+                db.query("SELECT * FROM settings WHERE id = 'singleton'").use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        fun str(column: String): String {
+                            val i = cursor.getColumnIndex(column)
+                            return if (i >= 0) cursor.getString(i) ?: "" else ""
+                        }
+                        fun int(column: String): Int {
+                            val i = cursor.getColumnIndex(column)
+                            return if (i >= 0) cursor.getInt(i) else 0
+                        }
+                        val now = System.currentTimeMillis()
+                        val rows = LinkedHashMap<String, ContentValues>()
+                        fun putRow(id: String, provider: String, baseUrl: String, apiKey: String, modelName: String, enableThinking: Int) {
+                            rows[id] = ContentValues().apply {
+                                put("id", id)
+                                put("provider", provider)
+                                put("baseUrl", baseUrl)
+                                put("apiKey", apiKey)
+                                put("modelName", modelName)
+                                put("enableThinking", enableThinking)
+                                put("createdAt", now)
+                            }
+                        }
+                        // 1) 每个填过 key 的供应商迁移为一条模型配置（URL/模型用当前默认值）
+                        val keys = runCatching { JSONObject(str("providerApiKeys")) }.getOrNull()
+                        if (keys != null) {
+                            for (name in keys.keys()) {
+                                val key = keys.optString(name, "")
+                                val p = runCatching { APIProvider.valueOf(name) }.getOrNull() ?: continue
+                                if (key.isBlank()) continue
+                                val config = ProviderRegistry.config(p)
+                                putRow("migrated-$name", name, config.defaultBaseUrl, key, config.defaultModelId, 0)
+                            }
+                        }
+                        // 2) 最后停留的主模型界面：有 key 或自定义 URL 才算配置过；
+                        //    配置过则覆盖同供应商的 map 行，保留界面上改过的 URL/模型/思考开关
+                        val provider = str("provider").uppercase()
+                        val activeProvider = runCatching { APIProvider.valueOf(provider) }.getOrNull()
+                        val apiKey = str("apiKey")
+                        val baseUrl = str("baseUrl")
+                        val activeConfigured = activeProvider != null &&
+                            (apiKey.isNotBlank() || (baseUrl.isNotBlank() && !isPresetUrl(provider, baseUrl)))
+                        if (activeProvider != null) {
+                            val id = "migrated-$provider"
+                            val existing = rows[id]
+                            if (activeConfigured) {
+                                val config = ProviderRegistry.config(activeProvider)
+                                putRow(
+                                    id, provider,
+                                    baseUrl.ifBlank { existing?.getAsString("baseUrl") ?: config.defaultBaseUrl },
+                                    apiKey.ifBlank { existing?.getAsString("apiKey") ?: "" },
+                                    str("modelName").ifBlank { existing?.getAsString("modelName") ?: config.defaultModelId },
+                                    int("enableThinking")
+                                )
+                                primaryId = id
+                            } else if (existing != null) {
+                                primaryId = id
+                            }
+                        }
+                        // 3) 轻量模型迁移为辅助模型（独立行，避免与主模型同供应商时主键冲突）
+                        val liteProvider = str("liteProvider").uppercase()
+                        val liteProviderEnum = runCatching { APIProvider.valueOf(liteProvider) }.getOrNull()
+                        val liteApiKey = str("liteApiKey")
+                        val liteBaseUrl = str("liteBaseUrl")
+                        val liteConfigured = liteProviderEnum != null &&
+                            (liteApiKey.isNotBlank() || (liteBaseUrl.isNotBlank() && !isPresetUrl(liteProvider, liteBaseUrl)))
+                        if (liteConfigured && liteProviderEnum != null) {
+                            val config = ProviderRegistry.config(liteProviderEnum)
+                            putRow(
+                                "migrated-assistant", liteProvider,
+                                liteBaseUrl.ifBlank { config.defaultBaseUrl },
+                                liteApiKey,
+                                str("liteModelName").ifBlank { config.defaultModelId },
+                                int("liteEnableThinking")
+                            )
+                            assistantId = "migrated-assistant"
+                        }
+                        rows.values.forEach { db.insert("model_configs", android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE, it) }
+                    }
+                }
                 // 重建 settings 表，移除已迁移到 model_configs 的列
                 db.execSQL(
                     "CREATE TABLE IF NOT EXISTS settings_new (" +
@@ -263,10 +357,8 @@ abstract class LingjiDatabase : RoomDatabase() {
                 )
                 db.execSQL(
                     "INSERT INTO settings_new (id, primaryModelId, assistantModelId, agentTemperature, horizontalSwipeAction) " +
-                        "SELECT id, " +
-                        "CASE WHEN apiKey != '' OR baseUrl != '' THEN 'migrated-primary' ELSE '' END, " +
-                        "CASE WHEN liteApiKey != '' OR liteBaseUrl != '' THEN 'migrated-assistant' ELSE '' END, " +
-                        "agentTemperature, horizontalSwipeAction FROM settings"
+                        "SELECT id, ?, ?, agentTemperature, horizontalSwipeAction FROM settings",
+                    arrayOf(primaryId, assistantId)
                 )
                 db.execSQL("DROP TABLE settings")
                 db.execSQL("ALTER TABLE settings_new RENAME TO settings")
@@ -305,6 +397,32 @@ abstract class LingjiDatabase : RoomDatabase() {
                         "FROM model_configs_legacy"
                 )
                 db.execSQL("DROP TABLE model_configs_legacy")
+            }
+        }
+
+        val MIGRATION_19_20 = object : Migration(19, 20) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 旧版 16_17 只迁移了升级前停留的供应商界面：未填 key 时因切换供应商
+                // 自动填充的预设 URL 会留下幻影模型行（如空 key 的 Kimi）。清除这类行并解除引用。
+                val phantomIds = mutableListOf<String>()
+                db.query(
+                    "SELECT id, provider, baseUrl, apiKey FROM model_configs " +
+                        "WHERE id IN ('migrated-primary', 'migrated-assistant')"
+                ).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        if (cursor.getString(3).isNotBlank()) continue
+                        if (isPresetUrl(cursor.getString(1), cursor.getString(2))) {
+                            phantomIds += cursor.getString(0)
+                        }
+                    }
+                }
+                if (phantomIds.isNotEmpty()) {
+                    val placeholders = phantomIds.joinToString(", ") { "?" }
+                    val args = phantomIds.toTypedArray()
+                    db.execSQL("DELETE FROM model_configs WHERE id IN ($placeholders)", args)
+                    db.execSQL("UPDATE settings SET primaryModelId = '' WHERE primaryModelId IN ($placeholders)", args)
+                    db.execSQL("UPDATE settings SET assistantModelId = '' WHERE assistantModelId IN ($placeholders)", args)
+                }
             }
         }
     }

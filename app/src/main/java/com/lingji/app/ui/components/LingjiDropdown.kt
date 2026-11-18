@@ -40,6 +40,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.IntOffset
@@ -69,9 +70,12 @@ fun DropdownMenu(
 ) {
     val shape = RoundedCornerShape(16.dp)
     val density = LocalDensity.current
+    val anchorView = LocalView.current
     var anchorWidth by remember { mutableStateOf(0) }
     // 与锚点等宽时，菜单在铺满全屏的弹窗窗口内的水平偏移
     var menuLeftPx by remember { mutableStateOf(0) }
+    // 菜单最大高度：所选方向空间不足时收窄菜单，使其紧贴锚点、超出部分内部滚动
+    var menuMaxHeightPx by remember { mutableStateOf(Int.MAX_VALUE) }
 
     // 1 = 完全展开，0 = 完全收起。展开时从锚点一侧向打开方向“展开”，收起时反向收回。
     val progress = remember { Animatable(if (expanded) 1f else 0f) }
@@ -89,7 +93,7 @@ fun DropdownMenu(
     }
     if (!popupVisible) return
 
-    val positionProvider = remember(density, offset, matchAnchorWidth) {
+    val positionProvider = remember(density, offset, matchAnchorWidth, anchorView) {
         object : PopupPositionProvider {
             override fun calculatePosition(
                 anchorBounds: IntRect,
@@ -101,20 +105,36 @@ fun DropdownMenu(
                 val gapX = with(density) { offset.x.roundToPx() }
                 val gapY = with(density) { offset.y.roundToPx() }
                 val margin = with(density) { 8.dp.roundToPx() }
-                val belowY = anchorBounds.bottom + gapY
-                val aboveY = anchorBounds.top - popupContentSize.height - gapY
-                val openDown = belowY + popupContentSize.height <= windowSize.height - margin
+                // anchorBounds 相对锚点所在窗口；Popup 子窗口的 x 落在屏幕坐标而 y 相对父窗口，
+                // 故仅 x 需补锚点窗口的屏幕原点，否则横屏下菜单左偏。
+                val windowOrigin = IntArray(2)
+                anchorView.getLocationOnScreen(windowOrigin)
+                // 屏幕坐标仅用于计算两侧可用空间
+                val anchorTopScreen = anchorBounds.top + windowOrigin[1]
+                val anchorBottomScreen = anchorBounds.bottom + windowOrigin[1]
+                val spaceBelow = (windowSize.height - margin - anchorBottomScreen - gapY).coerceAtLeast(0)
+                val spaceAbove = (anchorTopScreen - gapY - margin).coerceAtLeast(0)
+                // 优先向下；放不下时选空间更大的一侧，菜单高度限制在该侧可用空间内，
+                // 避免整屏高度的菜单被夹到屏幕边缘而远离锚点
+                val openDown = popupContentSize.height <= spaceBelow || spaceBelow >= spaceAbove
                 expandDown = openDown
-                val y = if (openDown) belowY else aboveY.coerceAtLeast(margin)
+                menuMaxHeightPx = if (openDown) spaceBelow else spaceAbove
+                // Popup 是锚点窗口的子窗口：y 与 anchorBounds 同处父窗口空间，无需补原点；
+                // x 落在屏幕坐标，需补父窗口原点（见下方 x/menuLeftPx 计算）
+                val y = if (openDown) {
+                    anchorBounds.bottom + gapY
+                } else {
+                    anchorBounds.top - gapY - minOf(popupContentSize.height, spaceAbove)
+                }
                 if (matchAnchorWidth) {
                     // 与锚点等宽时，让弹窗窗口横向铺满且位置固定在 0：
                     // 窗口宽度一旦随首帧测量结果变化，系统会重新摆放窗口，
                     // 表现为菜单从左侧滑入。菜单的水平位置改由窗口内的偏移承担。
                     val maxLeft = (windowSize.width - anchorBounds.width - margin).coerceAtLeast(margin)
-                    menuLeftPx = (anchorBounds.left + gapX).coerceIn(margin, maxLeft)
+                    menuLeftPx = (windowOrigin[0] + anchorBounds.left + gapX).coerceIn(margin, maxLeft)
                     return IntOffset(0, y)
                 }
-                val x = (anchorBounds.left + gapX).coerceIn(
+                val x = (windowOrigin[0] + anchorBounds.left + gapX).coerceIn(
                     margin,
                     (windowSize.width - popupContentSize.width - margin).coerceAtLeast(margin)
                 )
@@ -142,6 +162,7 @@ fun DropdownMenu(
             Surface(
                 modifier = modifier
                     .then(widthModifier)
+                    .heightIn(max = with(density) { menuMaxHeightPx.toDp() })
                     .graphicsLayer {
                         // 只做缩放，透明度放到内层内容上：
                         // alpha 包裹带 elevation 的 Surface 会生成离屏图层，把阴影按矩形裁切，
