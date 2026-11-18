@@ -44,5 +44,10 @@ fun ProviderEndpointSettings(
             onSettingsChange = onSettingsChange,
             modifier = modifier
         )
+        APIProvider.HUNYUAN -> HunyuanEndpointSettings(
+            settings = settings,
+            onSettingsChange = onSettingsChange,
+            modifier = modifier
+        )
     }
 }

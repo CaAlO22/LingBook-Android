@@ -12,9 +12,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -23,22 +25,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.SystemUpdate
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -54,23 +53,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lingji.app.R
 import com.lingji.app.data.remote.UpdateSource
-import com.lingji.app.domain.model.APIProvider
 import com.lingji.app.domain.model.AISettings
-import com.lingji.app.domain.model.HorizontalSwipeAction
-import com.lingji.app.domain.model.toAISettings
-import com.lingji.app.domain.model.toLiteModelConfig
-import com.lingji.app.domain.provider.ProviderRegistry
-import com.lingji.app.ui.components.DropdownMenu
-import com.lingji.app.ui.components.DropdownMenuItem
-import com.lingji.app.ui.components.SettingsOutlinedTextField
-import com.lingji.app.ui.settings.ProviderEndpointSettings
-import com.lingji.app.ui.settings.ProviderModelSettings
-import com.lingji.app.ui.settings.providerDisplayName
+import com.lingji.app.domain.model.ModelConfig
+import com.lingji.app.ui.components.DeleteConfirmDialog
+import com.lingji.app.ui.settings.ModelConfigEditorDialog
+import com.lingji.app.ui.settings.components.ModelConfigPicker
+import com.lingji.app.ui.settings.components.ModelConfigRow
 import com.lingji.app.ui.settings.sync.SyncSettingsContent
 import com.lingji.app.ui.theme.NotoSerifCJKsc
 import com.lingji.app.ui.viewmodel.CheckMessage
@@ -79,6 +73,7 @@ import com.lingji.app.ui.viewmodel.UpdateViewModel
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,10 +84,14 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val settings = uiState.settings
-    var expanded by remember { mutableStateOf(false) }
+    // 信息岛：内容绘制到导航栏之下，用底部留白让末尾设置项不被小白条遮挡。
+    val density = LocalDensity.current
+    val navBarBottom = with(density) { WindowInsets.navigationBars.getBottom(this).toDp() }
     var testResult by remember { mutableStateOf("") }
-    var liteTestResult by remember { mutableStateOf("") }
-    var liteExpanded by remember { mutableStateOf(false) }
+    var assistantTestResult by remember { mutableStateOf("") }
+    var showModelEditor by remember { mutableStateOf(false) }
+    var editingModelConfig by remember { mutableStateOf<ModelConfig?>(null) }
+    var deletingModelConfig by remember { mutableStateOf<ModelConfig?>(null) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val isCheckingUpdate by updateViewModel.isChecking.collectAsState()
@@ -124,6 +123,7 @@ fun SettingsScreen(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 modifier = Modifier.statusBarsPadding(),
@@ -167,253 +167,216 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                .padding(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 16.dp,
+                    bottom = 16.dp + navBarBottom
+                ),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // AI 配置
-            SettingsCard(title = stringResource(R.string.ai_settings)) {
-                ExposedDropdownMenuBox(
-                    expanded = expanded,
-                    onExpandedChange = { expanded = it }
-                ) {
-                    SettingsOutlinedTextField(
-                        value = providerDisplayName(settings.provider),
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text(stringResource(R.string.provider)) },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .menuAnchor()
-                    )
-                    DropdownMenu(
-                        expanded = expanded,
-                        onDismissRequest = { expanded = false },
-                        matchAnchorWidth = true
-                    ) {
-                        APIProvider.entries.forEach { provider ->
-                            DropdownMenuItem(
-                                text = { Text(providerDisplayName(provider)) },
-                                onClick = {
-                                    viewModel.saveSettings(
-                                        applyProviderPreset(settings, provider)
-                                    )
-                                    expanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-                ProviderEndpointSettings(
-                    provider = settings.provider,
-                    settings = settings,
-                    onSettingsChange = { viewModel.saveSettings(it) }
-                )
-                SettingsTextField(
-                    value = settings.baseUrl,
-                    onValueChange = { viewModel.saveSettings(settings.copy(baseUrl = it)) },
-                    label = stringResource(R.string.base_url)
-                )
-                ApiKeyField(
-                    value = settings.apiKey,
-                    onValueChange = {
-                        viewModel.saveSettings(settings.copy(
-                            apiKey = it,
-                            providerApiKeys = settings.providerApiKeys.toMutableMap().apply {
-                                if (it.isNotBlank()) put(settings.provider.name, it) else remove(settings.provider.name)
-                            }
-                        ))
-                    },
-                    onCopy = {
-                        val key = settings.apiKey
-                        if (key.isBlank()) {
-                            Toast.makeText(context, R.string.api_key_empty, Toast.LENGTH_SHORT).show()
-                        } else {
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("API Key", key))
-                            Toast.makeText(context, R.string.api_key_copied, Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                )
-                ProviderModelSettings(
-                    provider = settings.provider,
-                    settings = settings,
-                    onSettingsChange = { viewModel.saveSettings(it) }
-                )
-                Button(
-                    onClick = {
-                        testResult = ""
-                        viewModel.testConnection { testResult = it.second }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp)
-                ) {
-                    Text(stringResource(R.string.test_connection))
-                }
-                Button(
-                    onClick = {
-                        val base64 = context.getEmbeddedTestImageBase64()
-                        if (base64 != null) {
-                            testResult = context.getString(R.string.multimodal_test_pending)
-                            viewModel.testMultimodalConnection(base64) { testResult = it.second }
-                        } else {
-                            testResult = "无法加载测试图片"
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp)
-                ) {
-                    Text(stringResource(R.string.test_multimodal_connection))
-                }
-                if (testResult.isNotBlank()) {
-                    Text(
-                        text = testResult,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (testResult.contains("成功") || testResult.contains("ok", ignoreCase = true)) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.error
-                        },
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-                }
-            }
-
-            // 轻量模型配置
-            SettingsCard(title = stringResource(R.string.lite_model_settings)) {
+            // 模型配置：用户添加的模型列表
+            SettingsCard(title = stringResource(R.string.model_configs_title)) {
                 Text(
-                    text = stringResource(R.string.lite_model_description),
+                    text = stringResource(R.string.model_configs_description),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
-                val lite = settings.liteModel
-                val liteAsSettings = lite.toAISettings(settings.providerApiKeys)
-
-                ExposedDropdownMenuBox(
-                    expanded = liteExpanded,
-                    onExpandedChange = { liteExpanded = it }
-                ) {
-                    SettingsOutlinedTextField(
-                        value = providerDisplayName(lite.provider),
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text(stringResource(R.string.provider)) },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = liteExpanded) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .menuAnchor()
+                if (uiState.modelConfigs.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.model_configs_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 8.dp)
                     )
-                    DropdownMenu(
-                        expanded = liteExpanded,
-                        onDismissRequest = { liteExpanded = false },
-                        matchAnchorWidth = true
-                    ) {
-                        APIProvider.entries.forEach { provider ->
-                            DropdownMenuItem(
-                                text = { Text(providerDisplayName(provider)) },
-                                onClick = {
-                                    val preset = applyProviderPreset(liteAsSettings, provider)
-                                    viewModel.saveSettings(
-                                        settings.copy(
-                                            liteModel = preset.toLiteModelConfig(),
-                                            providerApiKeys = preset.providerApiKeys
-                                        )
-                                    )
-                                    liteExpanded = false
-                                }
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        uiState.modelConfigs.forEach { config ->
+                            ModelConfigRow(
+                                config = config,
+                                isPrimary = config.id == settings.primaryModelId,
+                                isAssistant = config.id == settings.assistantModelId,
+                                onEdit = {
+                                    editingModelConfig = config
+                                    showModelEditor = true
+                                },
+                                onDelete = { deletingModelConfig = config }
                             )
                         }
                     }
                 }
-                ProviderEndpointSettings(
-                    provider = lite.provider,
-                    settings = liteAsSettings,
-                    onSettingsChange = { newSettings ->
-                        viewModel.saveLiteModelSettings(newSettings.toLiteModelConfig())
-                    }
-                )
-                SettingsTextField(
-                    value = lite.baseUrl,
-                    onValueChange = { viewModel.saveLiteModelSettings(lite.copy(baseUrl = it)) },
-                    label = stringResource(R.string.base_url)
-                )
-                ApiKeyField(
-                    value = lite.apiKey,
-                    onValueChange = {
-                        viewModel.saveSettings(settings.copy(
-                            liteModel = lite.copy(apiKey = it),
-                            providerApiKeys = settings.providerApiKeys.toMutableMap().apply {
-                                if (it.isNotBlank()) put(lite.provider.name, it) else remove(lite.provider.name)
-                            }
-                        ))
-                    },
-                    onCopy = {
-                        val key = lite.apiKey
-                        if (key.isBlank()) {
-                            Toast.makeText(context, R.string.api_key_empty, Toast.LENGTH_SHORT).show()
-                        } else {
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("API Key", key))
-                            Toast.makeText(context, R.string.api_key_copied, Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                )
-                ProviderModelSettings(
-                    provider = lite.provider,
-                    settings = liteAsSettings,
-                    onSettingsChange = { newSettings ->
-                        viewModel.saveLiteModelSettings(newSettings.toLiteModelConfig())
-                    }
-                )
                 Button(
                     onClick = {
-                        liteTestResult = ""
-                        viewModel.testLiteModelConnection { liteTestResult = it.second }
+                        editingModelConfig = null
+                        showModelEditor = true
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 8.dp)
+                        .padding(top = 12.dp)
                 ) {
-                    Text(stringResource(R.string.test_connection))
-                }
-                Button(
-                    onClick = {
-                        val base64 = context.getEmbeddedTestImageBase64()
-                        if (base64 != null) {
-                            liteTestResult = context.getString(R.string.multimodal_test_pending)
-                            viewModel.testLiteMultimodalConnection(base64) { liteTestResult = it.second }
-                        } else {
-                            liteTestResult = "无法加载测试图片"
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp)
-                ) {
-                    Text(stringResource(R.string.test_multimodal_connection))
-                }
-                if (liteTestResult.isNotBlank()) {
+                    Icon(Icons.Default.Add, contentDescription = null)
                     Text(
-                        text = liteTestResult,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (liteTestResult.contains("成功") || liteTestResult.contains("ok", ignoreCase = true)) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.error
-                        },
-                        modifier = Modifier.padding(top = 8.dp)
+                        text = stringResource(R.string.add_model),
+                        modifier = Modifier.padding(start = 8.dp)
                     )
                 }
             }
 
-            // 应用
-            SettingsCard(title = stringResource(R.string.editor_gesture_settings)) {
-                HorizontalSwipeSetting(
-                    current = settings.horizontalSwipeAction,
-                    onChange = { viewModel.saveSettings(settings.copy(horizontalSwipeAction = it)) }
+            // 主模型配置
+            SettingsCard(title = stringResource(R.string.primary_model_config)) {
+                if (uiState.modelConfigs.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.primary_model_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    ModelConfigPicker(
+                        label = stringResource(R.string.primary_model),
+                        configs = uiState.modelConfigs,
+                        selectedId = settings.primaryModelId,
+                        onSelect = { viewModel.selectPrimaryModel(it) }
+                    )
+                    AgentTemperatureSetting(
+                        value = settings.agentTemperature,
+                        onChange = { viewModel.saveSettings(settings.copy(agentTemperature = it)) }
+                    )
+                    Button(
+                        onClick = {
+                            testResult = ""
+                            viewModel.testConnection { testResult = it.second }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                    ) {
+                        Text(stringResource(R.string.test_connection))
+                    }
+                    Button(
+                        onClick = {
+                            val base64 = context.getEmbeddedTestImageBase64()
+                            if (base64 != null) {
+                                testResult = context.getString(R.string.multimodal_test_pending)
+                                viewModel.testMultimodalConnection(base64) { testResult = it.second }
+                            } else {
+                                testResult = "无法加载测试图片"
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                    ) {
+                        Text(stringResource(R.string.test_multimodal_connection))
+                    }
+                    if (testResult.isNotBlank()) {
+                        Text(
+                            text = testResult,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (testResult.contains("成功") || testResult.contains("ok", ignoreCase = true)) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.error
+                            },
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                }
+            }
+
+            // 辅助模型配置
+            SettingsCard(title = stringResource(R.string.assistant_model_config)) {
+                Text(
+                    text = stringResource(R.string.assistant_model_description),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                if (uiState.modelConfigs.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.primary_model_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    ModelConfigPicker(
+                        label = stringResource(R.string.assistant_model),
+                        configs = uiState.modelConfigs,
+                        selectedId = settings.assistantModelId,
+                        noneLabel = stringResource(R.string.assistant_model_none),
+                        onSelect = { viewModel.selectAssistantModel(it) }
+                    )
+                    Button(
+                        onClick = {
+                            assistantTestResult = ""
+                            viewModel.testAssistantModelConnection { assistantTestResult = it.second }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                    ) {
+                        Text(stringResource(R.string.test_connection))
+                    }
+                    Button(
+                        onClick = {
+                            val base64 = context.getEmbeddedTestImageBase64()
+                            if (base64 != null) {
+                                assistantTestResult = context.getString(R.string.multimodal_test_pending)
+                                viewModel.testAssistantMultimodalConnection(base64) { assistantTestResult = it.second }
+                            } else {
+                                assistantTestResult = "无法加载测试图片"
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                    ) {
+                        Text(stringResource(R.string.test_multimodal_connection))
+                    }
+                    if (assistantTestResult.isNotBlank()) {
+                        Text(
+                            text = assistantTestResult,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (assistantTestResult.contains("成功") || assistantTestResult.contains("ok", ignoreCase = true)) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.error
+                            },
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                }
+            }
+
+            // 信息岛：Agent 能力说明（首页 / 笔记内两处 Agent 的工具与任务）
+            SettingsCard(title = stringResource(R.string.agent_guide_title)) {
+                Text(
+                    text = stringResource(R.string.agent_guide_description),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                AgentGuideSection(
+                    title = stringResource(R.string.agent_guide_home_title),
+                    lines = listOf(
+                        stringResource(R.string.agent_guide_home_entry),
+                        stringResource(R.string.agent_guide_home_tools),
+                        stringResource(R.string.agent_guide_home_tasks)
+                    )
+                )
+                AgentGuideSection(
+                    title = stringResource(R.string.agent_guide_note_title),
+                    lines = listOf(
+                        stringResource(R.string.agent_guide_note_entry),
+                        stringResource(R.string.agent_guide_note_tools),
+                        stringResource(R.string.agent_guide_note_tasks)
+                    )
+                )
+                Text(
+                    text = stringResource(R.string.agent_guide_subagent),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    modifier = Modifier.padding(top = 12.dp)
                 )
             }
 
@@ -520,6 +483,34 @@ fun SettingsScreen(
                 }
             }
 
+            if (showModelEditor) {
+                ModelConfigEditorDialog(
+                    initial = editingModelConfig,
+                    onDismiss = { showModelEditor = false },
+                    onSave = { config ->
+                        viewModel.saveModelConfig(config)
+                        showModelEditor = false
+                    }
+                )
+            }
+
+            deletingModelConfig?.let { config ->
+                val isSelected = config.id == settings.primaryModelId || config.id == settings.assistantModelId
+                DeleteConfirmDialog(
+                    title = stringResource(R.string.delete_model),
+                    text = stringResource(
+                        if (isSelected) R.string.model_config_delete_confirm_selected
+                        else R.string.model_config_delete_confirm,
+                        config.modelName
+                    ),
+                    onConfirm = {
+                        viewModel.deleteModelConfig(config.id)
+                        deletingModelConfig = null
+                    },
+                    onDismiss = { deletingModelConfig = null }
+                )
+            }
+
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
@@ -555,146 +546,64 @@ private fun SettingsCard(
 }
 
 @Composable
-private fun SettingsTextField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    label: String
+private fun AgentGuideSection(
+    title: String,
+    lines: List<String>
 ) {
-    SettingsOutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        label = { Text(label) },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true
-    )
-}
-
-@Composable
-private fun ApiKeyField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    onCopy: () -> Unit
-) {
-    var revealed by remember { mutableStateOf(false) }
-    SettingsOutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        label = { Text(stringResource(R.string.api_key)) },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true,
-        visualTransformation = if (revealed) {
-            androidx.compose.ui.text.input.VisualTransformation.None
-        } else {
-            ApiKeyMaskTransformation
-        },
-        trailingIcon = {
-            Row {
-                IconButton(onClick = { revealed = !revealed }) {
-                    Icon(
-                        imageVector = if (revealed) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                        contentDescription = stringResource(R.string.cd_toggle_api_key_visibility)
-                    )
-                }
-                IconButton(onClick = onCopy) {
-                    Icon(
-                        imageVector = Icons.Default.ContentCopy,
-                        contentDescription = stringResource(R.string.cd_copy_api_key)
-                    )
-                }
-            }
-        }
-    )
-}
-
-private object ApiKeyMaskTransformation : androidx.compose.ui.text.input.VisualTransformation {
-    override fun filter(text: androidx.compose.ui.text.AnnotatedString): androidx.compose.ui.text.input.TransformedText {
-        val raw = text.text
-        val masked = maskApiKey(raw)
-        // 由于掩码长度与原文不一致，使用映射将光标固定到掩码末尾。
-        val offsetMapping = object : androidx.compose.ui.text.input.OffsetMapping {
-            override fun originalToTransformed(offset: Int): Int = masked.length
-            override fun transformedToOriginal(offset: Int): Int = raw.length
-        }
-        return androidx.compose.ui.text.input.TransformedText(
-            androidx.compose.ui.text.AnnotatedString(masked),
-            offsetMapping
+    Column(modifier = Modifier.padding(top = 12.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary
         )
+        lines.forEach { line ->
+            Text(
+                text = line,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
     }
 }
 
-private fun maskApiKey(key: String): String {
-    if (key.isEmpty()) return ""
-    if (key.length <= 8) return "*".repeat(key.length)
-    val prefix = key.take(3)
-    val suffix = key.takeLast(4)
-    return "$prefix****$suffix"
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun HorizontalSwipeSetting(
-    current: HorizontalSwipeAction,
-    onChange: (HorizontalSwipeAction) -> Unit
+private fun AgentTemperatureSetting(
+    value: Double,
+    onChange: (Double) -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    val label = when (current) {
-        HorizontalSwipeAction.NONE -> stringResource(R.string.horizontal_swipe_none)
-        HorizontalSwipeAction.TOGGLE_PREVIEW -> stringResource(R.string.horizontal_swipe_toggle_preview)
-        HorizontalSwipeAction.CHANGE_PAGE -> stringResource(R.string.horizontal_swipe_change_page)
-    }
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = it }
-    ) {
-        SettingsOutlinedTextField(
-            value = label,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(stringResource(R.string.horizontal_swipe_action)) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .menuAnchor()
-        )
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            matchAnchorWidth = true
+    // 拖动过程中只更新本地值，松手后再落库，避免每次移动都写设置表。
+    var local by remember(value) { mutableStateOf(value.toFloat()) }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            HorizontalSwipeAction.entries.forEach { action ->
-                val text = when (action) {
-                    HorizontalSwipeAction.NONE -> stringResource(R.string.horizontal_swipe_none)
-                    HorizontalSwipeAction.TOGGLE_PREVIEW -> stringResource(R.string.horizontal_swipe_toggle_preview)
-                    HorizontalSwipeAction.CHANGE_PAGE -> stringResource(R.string.horizontal_swipe_change_page)
-                }
-                DropdownMenuItem(
-                    text = { Text(text) },
-                    onClick = {
-                        onChange(action)
-                        expanded = false
-                    }
-                )
-            }
+            Text(
+                text = stringResource(R.string.agent_temperature),
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                text = String.format(java.util.Locale.US, "%.1f", local),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
         }
+        Slider(
+            value = local,
+            onValueChange = { local = it },
+            onValueChangeFinished = { onChange((local * 10).roundToInt() / 10.0) },
+            valueRange = 0f..1.5f,
+            steps = 14,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Text(
+            text = stringResource(R.string.agent_temperature_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+        )
     }
-}
-
-private fun applyProviderPreset(settings: AISettings, provider: APIProvider): AISettings {
-    val config = ProviderRegistry.config(provider)
-    // 保存当前供应商的 key 到缓存，加载目标供应商的缓存 key
-    val updatedKeys = settings.providerApiKeys.toMutableMap().apply {
-        if (settings.apiKey.isNotBlank()) {
-            put(settings.provider.name, settings.apiKey)
-        }
-    }
-    return settings.copy(
-        provider = provider,
-        baseUrl = config.defaultBaseUrl,
-        modelName = config.defaultModelId,
-        enableThinking = if (config.supportsThinking) settings.enableThinking else false,
-        apiKey = updatedKeys[provider.name] ?: "",
-        providerApiKeys = updatedKeys
-    )
 }
 
 private fun Context.getEmbeddedTestImageBase64(): String? {

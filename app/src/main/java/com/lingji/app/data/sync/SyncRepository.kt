@@ -7,7 +7,9 @@ import com.google.gson.JsonObject
 import com.lingji.app.data.db.dao.FragmentDao
 import com.lingji.app.data.db.dao.FolderDao
 import com.lingji.app.data.db.dao.HomeChatDao
+import com.lingji.app.data.db.dao.ModelConfigDao
 import com.lingji.app.data.db.dao.NotebookPageDao
+import com.lingji.app.data.db.dao.SettingsDao
 import com.lingji.app.data.db.dao.SubjectDao
 import com.lingji.app.data.db.dao.SubjectSummaryDao
 import com.lingji.app.data.db.dao.SyncTombstoneDao
@@ -16,6 +18,7 @@ import com.lingji.app.data.db.entities.FolderEntity
 import com.lingji.app.data.db.entities.FragmentEntity
 import com.lingji.app.data.db.entities.HomeConversationEntity
 import com.lingji.app.data.db.entities.HomeMessageEntity
+import com.lingji.app.data.db.entities.ModelConfigEntity
 import com.lingji.app.data.db.entities.NotebookPageEntity
 import com.lingji.app.data.db.entities.SubjectEntity
 import com.lingji.app.data.db.entities.SubjectSummaryEntity
@@ -56,7 +59,9 @@ class SyncRepository @Inject constructor(
     private val homeChatDao: HomeChatDao,
     private val summaryDao: SubjectSummaryDao,
     private val tombstoneDao: SyncTombstoneDao,
-    private val todoItemDao: TodoItemDao
+    private val todoItemDao: TodoItemDao,
+    private val modelConfigDao: ModelConfigDao,
+    private val settingsDao: SettingsDao
 ) {
     private val gson = Gson()
     private val syncMutex = Mutex()
@@ -77,6 +82,7 @@ class SyncRepository @Inject constructor(
             val messages = homeChatDao.getMessagesUpdatedSince(watermark)
             val summaries = summaryDao.getUpdatedSince(watermark)
             val todoItems = todoItemDao.getUpdatedSince(watermark)
+            val modelConfigs = modelConfigDao.getUpdatedSince(watermark)
             val tombstones = tombstoneDao.getSince(watermark)
 
             val payload = JsonObject().apply {
@@ -91,6 +97,7 @@ class SyncRepository @Inject constructor(
                     addEntityArray(TBL_MESSAGES, messages)
                     addEntityArray(TBL_SUMMARIES, summaries)
                     addEntityArray(TBL_TODOS, todoItems)
+                    addEntityArray(TBL_MODEL_CONFIGS, modelConfigs)
                 })
                 add("tombstones", JsonArray().apply {
                     tombstones.forEach { ts ->
@@ -119,10 +126,13 @@ class SyncRepository @Inject constructor(
                 messages.maxOfOrNull { it.updatedAt },
                 summaries.maxOfOrNull { it.updatedAt },
                 todoItems.maxOfOrNull { it.updatedAt },
+                modelConfigs.maxOfOrNull { it.updatedAt },
                 tombstones.maxOfOrNull { it.deletedAt }
             ).filterNotNull().maxOrNull()?.let { maxSeen = maxOf(maxSeen, it) }
 
             val changes = response.getAsJsonObject("changes") ?: JsonObject()
+            // 远端记录的时间戳也必须计入水位线，否则下一轮会把这些刚拉下来的数据再推回去（回声）
+            maxSeen = maxOf(maxSeen, maxUpdatedAt(changes))
             pulled += applyFolders(changes)
             pulled += applySubjects(changes)
             pulled += applyConversations(changes)
@@ -131,6 +141,7 @@ class SyncRepository @Inject constructor(
             pulled += applyPages(changes)
             pulled += applySummaries(changes)
             pulled += applyTodoItems(changes)
+            pulled += applyModelConfigs(changes)
 
             val remoteTombstones = response.getAsJsonArray("tombstones") ?: JsonArray()
             for (element in remoteTombstones) {
@@ -150,7 +161,8 @@ class SyncRepository @Inject constructor(
             tombstoneDao.deleteOlderThan(System.currentTimeMillis() - TOMBSTONE_RETENTION_MS)
 
             val pushed = subjects.size + fragments.size + pages.size + folders.size +
-                conversations.size + messages.size + summaries.size + todoItems.size + tombstones.size
+                conversations.size + messages.size + summaries.size + todoItems.size +
+                modelConfigs.size + tombstones.size
             SyncResult.Success(pushed = pushed, pulled = pulled, deleted = deleted)
         } catch (e: Exception) {
             Log.w(TAG, "sync failed: ${e.message}")
@@ -159,6 +171,22 @@ class SyncRepository @Inject constructor(
     }
 
     // ── 远端变更应用 ──
+
+    /** 取本轮拉取数据中最大的更新时间（会话/消息用 updated_at，其余用 updatedAt）。 */
+    private fun maxUpdatedAt(changes: JsonObject): Long {
+        var max = 0L
+        for ((_, value) in changes.entrySet()) {
+            val array = value.takeIf { it.isJsonArray }?.asJsonArray ?: continue
+            for (element in array) {
+                val obj = element.takeIf { it.isJsonObject }?.asJsonObject ?: continue
+                val ts = obj.get("updatedAt")?.takeIf { it.isJsonPrimitive }?.asLong
+                    ?: obj.get("updated_at")?.takeIf { it.isJsonPrimitive }?.asLong
+                    ?: 0L
+                if (ts > max) max = ts
+            }
+        }
+        return max
+    }
 
     private fun entityRows(changes: JsonObject, tbl: String): List<JsonObject> =
         changes.getAsJsonArray(tbl)?.mapNotNull { it.takeIf { e -> e.isJsonObject }?.asJsonObject }
@@ -275,6 +303,17 @@ class SyncRepository @Inject constructor(
         return count
     }
 
+    private suspend fun applyModelConfigs(changes: JsonObject): Int {
+        var count = 0
+        for (json in entityRows(changes, TBL_MODEL_CONFIGS)) {
+            runCatching {
+                modelConfigDao.upsert(gson.fromJson(json, ModelConfigEntity::class.java))
+                count++
+            }
+        }
+        return count
+    }
+
     private suspend fun applyTombstone(tbl: String, id: String): Boolean = runCatching {
         when (tbl) {
             TBL_SUBJECTS -> subjectDao.deleteById(id)
@@ -285,6 +324,10 @@ class SyncRepository @Inject constructor(
             TBL_MESSAGES -> homeChatDao.deleteMessageById(id)
             TBL_SUMMARIES -> summaryDao.deleteBySubjectId(id)
             TBL_TODOS -> todoItemDao.deleteById(id)
+            TBL_MODEL_CONFIGS -> {
+                modelConfigDao.deleteById(id)
+                settingsDao.clearModelReference(id)
+            }
             else -> return false
         }
         true
@@ -307,5 +350,6 @@ class SyncRepository @Inject constructor(
         const val TBL_MESSAGES = "home_messages"
         const val TBL_SUMMARIES = "subject_summaries"
         const val TBL_TODOS = "todo_items"
+        const val TBL_MODEL_CONFIGS = "model_configs"
     }
 }

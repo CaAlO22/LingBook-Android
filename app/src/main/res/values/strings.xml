@@ -5,6 +5,7 @@
     <!-- 通用 -->
     <string name="save">保存</string>
     <string name="cancel">取消</string>
+    <string name="done">完成</string>
     <string name="delete">删除</string>
     <string name="rename">重命名</string>
     <string name="confirm">确认</string>
@@ -185,23 +186,66 @@
 
     <!-- 设置 -->
     <string name="settings_title">设置</string>
-    <string name="ai_settings">AI 配置</string>
+    <!-- 设置：模型管理 -->
+    <string name="model_configs_title">模型配置</string>
+    <string name="model_configs_description">添加模型后可在此统一管理，主模型与辅助模型都从这里选择</string>
+    <string name="model_configs_empty">尚未添加模型，点击下方按钮添加</string>
+    <string name="add_model">添加模型</string>
+    <string name="edit_model">编辑模型</string>
+    <string name="delete_model">删除模型</string>
+    <string name="model_config_delete_confirm">确定要删除模型“%1$s”吗？此操作不可撤销。</string>
+    <string name="model_config_delete_confirm_selected">确定要删除模型“%1$s”吗？删除后对应的主模型或辅助模型选择会被清空。</string>
+    <string name="primary_model_config">主模型配置</string>
+    <string name="primary_model">主模型</string>
+    <string name="primary_model_empty">请先在上方添加模型</string>
+    <string name="model_not_selected">未选择</string>
+    <string name="assistant_model_config">辅助模型配置</string>
+    <string name="assistant_model">辅助模型</string>
+    <string name="assistant_model_description">用于低成本高频调用的辅助模型，例如标题生成、摘要等</string>
+    <string name="assistant_model_none">不使用辅助模型</string>
+    <string name="model_badge_primary">主</string>
+    <string name="model_badge_assistant">辅助</string>
     <string name="app_settings">应用</string>
     <string name="provider">提供商</string>
     <string name="base_url">Base URL</string>
     <string name="api_key">API Key</string>
     <string name="model_name">模型名称</string>
-    <string name="enable_thinking">开启深度思考</string>
-    <string name="enable_thinking_hint">控制模型思考模式（开启为 enabled，关闭为 disabled）</string>
+    <string name="model_name_hint">选择预设或手动输入模型 ID</string>
+    <string name="model_name_select">选择模型</string>
+    <string name="model_alias">模型 ID</string>
+    <string name="model_alias_hint">用于列表展示的别名，留空时默认使用模型名称</string>
+    <string name="enable_thinking">思考程度</string>
+    <string name="enable_thinking_hint">控制模型的思考深度，可选档位由模型能力决定</string>
+    <string name="thinking_level_off">关闭</string>
+    <string name="thinking_level_on">开启</string>
+    <string name="thinking_level_low">低</string>
+    <string name="thinking_level_medium">中</string>
+    <string name="thinking_level_high">高</string>
+    <string name="thinking_level_max">最高</string>
+    <string name="agent_temperature">Agent 温度</string>
+    <string name="agent_temperature_hint">控制 Agent 工具调用的随机性。越低越稳定（建议 0.2），调高会更发散，但也更容易跳过工具调用。</string>
+    <!-- 设置：Agent 能力说明 -->
+    <string name="agent_guide_title">Agent 能力说明</string>
+    <string name="agent_guide_description">灵记有两处 Agent 入口，都能通过工具直接读写笔记；配置辅助模型后，两处 Agent 都会额外获得 subagent 工具。</string>
+    <string name="agent_guide_home_title">首页对话 Agent</string>
+    <string name="agent_guide_home_entry">位置：首页底部对话栏切换到「Agent」。</string>
+    <string name="agent_guide_home_tools">可用工具：笔记管理 list_subjects / create_subject / rename_subject / delete_subject / summarize_all_notes；页面 list_pages / get_page / create_page / update_page / delete_page；碎片 list_fragments / add_fragment / update_fragment / delete_fragment / search_fragments；内容读取与编辑 get_aggregated_note / update_aggregated_note / edit_replace；学习计划 get_study_plan / update_study_plan；检索 get_page_index / search_pages；图片 insert_img。</string>
+    <string name="agent_guide_home_tasks">可完成任务：创建、重命名、删除笔记；跨笔记检索与摘要；管理页面和碎片；局部替换编辑笔记内容；生成学习计划；把对话中发送的图片插入笔记本页面。</string>
+    <string name="agent_guide_note_title">笔记内对话 Agent</string>
+    <string name="agent_guide_note_entry">位置：笔记本或碎片笔记内的对话栏切换到「Agent」模式。</string>
+    <string name="agent_guide_note_tools">可用工具：笔记信息 get_subject / rename_subject；页面 list_pages / get_page / create_page / update_page / delete_page；碎片 list_fragments / add_fragment / update_fragment / delete_fragment / search_fragments；内容读取与编辑 get_aggregated_note / edit_replace；学习计划 get_study_plan / update_study_plan；检索 get_page_index / search_pages。</string>
+    <string name="agent_guide_note_tasks">可完成任务：在当前笔记内读写页面与碎片；局部替换编辑内容；读取聚合笔记、维护学习计划；按关键词或语义检索本笔记。为限定作用范围，不能新建或删除笔记、生成全局摘要、插入对话图片。</string>
+    <string name="agent_guide_subagent">子代理（subagent）：仅在配置辅助模型后可用，用于把独立、多步的子任务交给辅助模型执行；子代理可调用同一套工具，但不能再派生子代理。</string>
 
     <!-- 设置：供应商名称 -->
-    <string name="provider_openai">OpenAI</string>
+    <string name="provider_openai">OpenAI（兼容）</string>
     <string name="provider_volcano">火山引擎</string>
     <string name="provider_mimo">MiMo</string>
     <string name="provider_bailian">阿里云百炼</string>
     <string name="provider_zhipu">智谱 AI</string>
     <string name="provider_deepseek">DeepSeek</string>
     <string name="provider_kimi">Kimi</string>
+    <string name="provider_hunyuan">腾讯混元</string>
 
     <!-- 设置：Zhipu -->
     <string name="zhipu_url_preset">URL 预设</string>
@@ -233,13 +277,15 @@
     <string name="volcano_url_preset">URL 预设</string>
     <string name="volcano_ark_url">火山方舟 API</string>
     <string name="volcano_custom_url">自定义 URL</string>
+
+    <!-- 设置：腾讯混元 -->
+    <string name="hunyuan_url_preset">URL 预设</string>
+    <string name="hunyuan_official_url">腾讯混元 TokenHub（OpenAI 兼容）</string>
+    <string name="hunyuan_custom_url">自定义 URL</string>
     <string name="test_connection">测试连接</string>
     <string name="test_multimodal_connection">测试多模态连接</string>
     <string name="multimodal_test_pending">正在测试多模态连接…</string>
 
-    <!-- 设置：轻量模型 -->
-    <string name="lite_model_settings">轻量模型配置</string>
-    <string name="lite_model_description">用于低成本频繁调用的小模型，配置方式与主模型一致</string>
     <string name="import_ling_json">导入 .ling / JSON</string>
     <string name="import_from_file">从文件导入</string>
     <string name="import_from_clipboard">从剪切板导入</string>
@@ -286,6 +332,7 @@
     <string name="api_key_empty">API Key 为空</string>
 
     <!-- 设置：编辑器手势 -->
+    <string name="note_settings">笔记设置</string>
     <string name="editor_gesture_settings">编辑器</string>
     <string name="horizontal_swipe_action">横滑手势</string>
     <string name="horizontal_swipe_none">关闭</string>
@@ -331,7 +378,7 @@
 
     <!-- 设置：云同步 -->
     <string name="sync_settings">云同步</string>
-    <string name="sync_description">配置自建同步服务器后，笔记、碎片、会话等数据将在多设备间自动同步。服务器不可用时不影响本地使用；AI 设置与 API Key 不会被同步。</string>
+    <string name="sync_description">配置自建同步服务器后，笔记、碎片、会话、模型配置等数据将在多设备间自动同步。服务器不可用时不影响本地使用；模型配置（含 API Key）会被同步，请确保服务器由你本人掌控。</string>
     <string name="sync_enable">启用云同步</string>
     <string name="sync_host">服务器地址</string>
     <string name="sync_port">端口</string>

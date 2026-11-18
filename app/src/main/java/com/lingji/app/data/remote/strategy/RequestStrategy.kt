@@ -10,11 +10,12 @@ interface RequestStrategy {
     /** 在请求 Builder 上追加该供应商所需的认证头。 */
     fun applyHeaders(builder: Request.Builder, apiKey: String)
 
-    /** 构造符合该供应商要求的 ChatRequest 请求体。 */
+    /** 构造符合该供应商要求的 ChatRequest 请求体。temperature 为空时使用默认值。 */
     fun buildChatRequestBody(
         settings: AISettings,
         messages: List<ChatMessage>,
         stream: Boolean,
-        tools: JsonArray? = null
+        tools: JsonArray? = null,
+        temperature: Double? = null
     ): ChatRequest
 }

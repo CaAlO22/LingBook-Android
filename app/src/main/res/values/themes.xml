@@ -5,6 +5,8 @@
         <item name="android:windowBackground">@color/paper</item>
         <item name="android:statusBarColor">@color/paper</item>
         <item name="android:windowLightStatusBar">true</item>
-        <item name="android:navigationBarColor">@color/paper</item>
+        <!-- 信息岛：导航栏透明，配合 enableEdgeToEdge 让手势小白条悬浮在内容之上 -->
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightNavigationBar">true</item>
     </style>
 </resources>

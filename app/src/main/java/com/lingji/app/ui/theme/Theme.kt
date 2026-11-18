@@ -1,6 +1,7 @@
 package com.lingji.app.ui.theme
 
 import android.app.Activity
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -79,8 +80,16 @@ fun LingjiTheme(
         SideEffect {
             val window = (view.context as Activity).window
             window.statusBarColor = colorScheme.background.toArgb()
-            window.navigationBarColor = colorScheme.background.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            // 信息岛：底部导航栏保持透明，让手势小白条悬浮在页面内容之上，
+            // 而不是用背景色独占底部一块区域。只调整图标明暗以适配浅色内容。
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // 关闭系统为透明导航栏自动叠加的对比度遮罩，否则仍会显示成一条底栏。
+                window.isNavigationBarContrastEnforced = false
+            }
+            WindowCompat.getInsetsController(window, view).apply {
+                isAppearanceLightStatusBars = !darkTheme
+                isAppearanceLightNavigationBars = !darkTheme
+            }
         }
     }
 

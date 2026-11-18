@@ -17,4 +17,12 @@ interface SettingsDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(settings: SettingsEntity)
+
+    /** 云同步：远端删除了某个模型配置时，清空本机对它的引用。 */
+    @Query(
+        "UPDATE settings SET " +
+            "primaryModelId = CASE WHEN primaryModelId = :id THEN '' ELSE primaryModelId END, " +
+            "assistantModelId = CASE WHEN assistantModelId = :id THEN '' ELSE assistantModelId END"
+    )
+    suspend fun clearModelReference(id: String)
 }

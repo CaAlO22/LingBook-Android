@@ -43,7 +43,7 @@ class SubjectRepositoryUndoTest {
     fun setup() {
         repo = SubjectRepository(
             subjectDao, fragmentDao, pageDao, folderDao, revisionDao,
-            mockk(relaxed = true), mockk(relaxed = true)
+            mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true)
         )
     }
 

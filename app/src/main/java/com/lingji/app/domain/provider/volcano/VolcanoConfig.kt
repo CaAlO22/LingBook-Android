@@ -1,6 +1,7 @@
 package com.lingji.app.domain.provider.volcano
 
 import com.lingji.app.R
+import com.lingji.app.domain.model.ThinkingLevel
 import com.lingji.app.domain.provider.ProviderConfig
 import com.lingji.app.domain.provider.ProviderModel
 
@@ -27,8 +28,7 @@ object VolcanoConfig : ProviderConfig {
         ProviderModel(
             id = "doubao-seed-evolving",
             name = "Doubao Seed Evolving",
-            description = "周级迭代的 Coding & Agent 模型，能力持续进化",
-            supportsVision = true
+            description = "周级迭代的 Coding & Agent 模型，1M 上下文，能力持续进化"
         ),
         ProviderModel(
             id = "doubao-seed-2-1-pro-260628",
@@ -41,22 +41,15 @@ object VolcanoConfig : ProviderConfig {
             name = "Doubao Seed 2.1 Turbo",
             description = "效果与成本均衡，适合高频调用",
             supportsVision = true
-        ),
-        ProviderModel(
-            id = "doubao-seed-2-0-lite-260428",
-            name = "Doubao Seed 2.0 Lite",
-            description = "豆包首款全模态理解模型，音视图文统一理解",
-            supportsVision = true
-        ),
-        ProviderModel(
-            id = "doubao-seed-2-0-mini-260428",
-            name = "Doubao Seed 2.0 Mini",
-            description = "低时延、低成本的全模态理解模型",
-            supportsVision = true
         )
     )
-    override val supportsThinking = true
-    override val supportsThinkingField = true
+    /** Seed 2.x 支持 thinking.type + reasoning_effort（minimal/low/medium/high）。 */
+    override val defaultThinkingLevels = listOf(
+        ThinkingLevel.OFF,
+        ThinkingLevel.LOW,
+        ThinkingLevel.MEDIUM,
+        ThinkingLevel.HIGH
+    )
     override val authHeaderName = "Authorization"
     override val authHeaderPrefix = "Bearer "
 }

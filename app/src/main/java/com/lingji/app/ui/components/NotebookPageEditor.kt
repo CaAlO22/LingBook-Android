@@ -49,6 +49,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
@@ -137,6 +139,8 @@ class NotebookPageEditorHostState internal constructor() {
     var scrollByOp by mutableStateOf<((Float) -> Unit)?>(null)
         internal set
     var scrollViewportTop by mutableStateOf(0f)
+        internal set
+    var scrollViewportBottom by mutableStateOf(0f)
         internal set
     var isScrollInProgress by mutableStateOf(false)
         internal set
@@ -237,6 +241,12 @@ fun NotebookPageEditor(
         onCursorYChange?.invoke(focusedCoordsY + layout.getCursorRect(focusedSelection).top)
     }
 
+    // 失焦（如滚轮滚动、点击空白）后清空对外汇报的光标坐标，
+    // 避免宿主持有陈旧坐标继续触发光标保持滚动。
+    LaunchedEffect(focusedTextIndex) {
+        if (focusedTextIndex == null) onCursorYChange?.invoke(0f)
+    }
+
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
@@ -287,11 +297,14 @@ fun NotebookPageEditor(
         // 将平滑滚动能力暴露给宿主（光标跟随功能）。
         SideEffect {
             hostState.scrollByOp = { delta ->
-                isProgrammaticScroll = true
                 scope.launch {
+                    // 已到滚动边界时目标值不变，直接放弃，避免光标保持逻辑反复发起无效滚动。
+                    val target = (scrollState.value + delta.toInt())
+                        .coerceIn(0, scrollState.maxValue)
+                    if (target == scrollState.value) return@launch
+                    isProgrammaticScroll = true
                     if (abs(delta) > 160f) {
                         // 大跨度修正（如点击远处文本）用动画平滑过渡。
-                        val target = (scrollState.value + delta.toInt()).coerceIn(0, scrollState.maxValue)
                         Log.d("NbEditorDebug", "scrollBy(anim) delta=$delta target=$target current=${scrollState.value} max=${scrollState.maxValue}")
                         scrollState.animateScrollTo(target)
                     } else {
@@ -374,7 +387,24 @@ fun NotebookPageEditor(
                 modifier = Modifier
                     .weight(1f)
                     .onGloballyPositioned { coords ->
-                        hostState.scrollViewportTop = coords.positionInRoot().y
+                        val top = coords.positionInRoot().y
+                        hostState.scrollViewportTop = top
+                        hostState.scrollViewportBottom =
+                            top + coords.size.height.toFloat()
+                    }
+                    // 信息岛：键鼠场景下的滚轮浏览——滚轮滚动不经过触摸拖动，
+                    // 编辑器不会自动失焦，光标保持机制会把内容一次次拉回去与滚轮打架。
+                    // 这里把滚轮事件视为用户主动浏览，直接清除焦点让两者不再互相拉扯。
+                    .pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                if (event.type == PointerEventType.Scroll) {
+                                    userScrolledWhileIme = true
+                                    focusManager.clearFocus()
+                                }
+                            }
+                        }
                     }
                     .verticalScroll(scrollState)
                     .padding(bottom = 160.dp)

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -108,6 +109,7 @@ import com.lingji.app.ui.screens.notebook.NotebookSubjectTopBar
 import com.lingji.app.ui.theme.NotoSerifCJKsc
 import com.lingji.app.ui.viewmodel.SubjectViewModel
 import com.lingji.app.util.MarkdownPdfExporter
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val MAX_NOTEBOOK_PAGE_CONTENT_CHARS = 1_200_000
@@ -198,6 +200,7 @@ fun NotebookSubjectScreen(
     var debugBarTopY by remember { mutableStateOf(0f) }
     var debugBarHeight by remember { mutableStateOf(0f) }
     var debugVpTop by remember { mutableStateOf(0f) }
+    var debugVpBottom by remember { mutableStateOf(0f) }
     var debugScrollInfo by remember { mutableStateOf("") }
     // 持久化调试：上次滚动的触发条件、方向、量（保持到下次触发才更新）
     var debugTrigger by remember { mutableStateOf("—") }
@@ -217,9 +220,31 @@ fun NotebookSubjectScreen(
         debugVpTop = editorHostState.scrollViewportTop
     }
 
+    // 跟踪编辑器可视区底部
+    LaunchedEffect(editorHostState.scrollViewportBottom) {
+        debugVpBottom = editorHostState.scrollViewportBottom
+    }
+
     // ── 光标跟随：确保光标始终在可视区域内 ──
     val density = LocalDensity.current
-    LaunchedEffect(debugCursorY, debugBarTopY, debugBarHeight, debugVpTop, editorHostState.isScrollInProgress) {
+    // 信息岛：可见区域几何（键盘弹升、悬浮栏重排）刚发生变化的瞬态帧不做修正，
+    // 待其稳定后再统一修正一次，避免与键盘抬升动画逐帧互推。
+    var viewportGeometryStable by remember { mutableStateOf(true) }
+    LaunchedEffect(debugVpTop, debugVpBottom, debugBarTopY) {
+        viewportGeometryStable = false
+        delay(150)
+        viewportGeometryStable = true
+    }
+    val minCursorBandPx = with(density) { 48.dp.toPx() }
+    LaunchedEffect(
+        debugCursorY,
+        debugBarTopY,
+        debugBarHeight,
+        debugVpTop,
+        debugVpBottom,
+        viewportGeometryStable,
+        editorHostState.isScrollInProgress
+    ) {
         val margin = with(density) { 4.dp.toPx() }
         val vpTop = debugVpTop
         val barTop = debugBarTopY
@@ -229,17 +254,26 @@ fun NotebookSubjectScreen(
         // 滚动动画进行中时跳过修正，避免基于中间帧的坐标触发多余滚动。
         // 动画结束后 isScrollInProgress 变化会重新触发此 effect 进行修正。
         if (editorHostState.isScrollInProgress) return@LaunchedEffect
+        if (!viewportGeometryStable) return@LaunchedEffect
 
-        if (cursorY > barTop - 60f + margin) {
-            // 光标进入对话框遮挡区域（barTop 以下）→ 上滚
-            val delta = cursorY - barTop + 60f + margin
+        // 可见带 = 编辑器可视区顶部 ~ min(悬浮栏遮挡线, 可视区底部)。
+        // 必须同时受可视区底部约束：设备过矮时键盘抬升后可视区极窄，
+        // 若仍按悬浮栏位置强行修正，只会把光标在键盘与栏之间来回顶。
+        val bandBottom = minOf(barTop - 60f, debugVpBottom)
+        // 信息岛：可见高度不足以容纳一行光标时，任何修正都无法让光标稳定停留，
+        // 直接放弃修正，避免"下滚撞输入法→反弹上滚"的强烈抖动。
+        if (bandBottom - vpTop < minCursorBandPx) return@LaunchedEffect
+
+        if (cursorY > bandBottom + margin) {
+            // 光标进入不可见区域（悬浮栏/键盘遮挡）→ 上滚
+            val delta = cursorY - bandBottom + margin
             debugTrigger = "cursorBelowBar"
             debugDir = "↓上滚(${delta.toInt()}px)"
             debugAmount = ""
             editorHostState.scrollBy(delta)
         } else if (cursorY < vpTop - margin) {
-            // 光标在编辑区上方 → 下滚
-            val delta = cursorY - vpTop + margin
+            // 光标在编辑区上方 → 下滚，落点留在可视区内侧，避免刚好卡回边界再次触发
+            val delta = cursorY - vpTop - margin
             debugTrigger = "cursorAboveVp"
             debugDir = "↑下滚(${delta.toInt()}px)"
             debugAmount = ""
@@ -327,6 +361,8 @@ fun NotebookSubjectScreen(
     }
 
     Scaffold(
+        // 信息岛：内容全屏绘制到系统导航栏之下，导航栏不再占据独立底栏。
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             NotebookSubjectTopBar(
                 title = liveSubject.title,
@@ -361,6 +397,10 @@ fun NotebookSubjectScreen(
                         val msg = if (undone) R.string.undone else R.string.nothing_to_undo
                         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                     }
+                },
+                horizontalSwipeAction = uiState.settings.horizontalSwipeAction,
+                onHorizontalSwipeActionChange = { action ->
+                    viewModel.saveSettings(uiState.settings.copy(horizontalSwipeAction = action))
                 }
             )
         }

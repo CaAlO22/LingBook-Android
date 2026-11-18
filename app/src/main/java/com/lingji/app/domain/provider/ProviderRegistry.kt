@@ -3,6 +3,7 @@ package com.lingji.app.domain.provider
 import com.lingji.app.domain.model.APIProvider
 import com.lingji.app.domain.provider.bailian.BailianConfig
 import com.lingji.app.domain.provider.deepseek.DeepSeekConfig
+import com.lingji.app.domain.provider.hunyuan.HunyuanConfig
 import com.lingji.app.domain.provider.kimi.KimiConfig
 import com.lingji.app.domain.provider.mimo.MimoConfig
 import com.lingji.app.domain.provider.openai.OpenAIConfig
@@ -17,7 +18,8 @@ object ProviderRegistry {
         APIProvider.BAILIAN to BailianConfig,
         APIProvider.ZHIPU to ZhipuConfig,
         APIProvider.DEEPSEEK to DeepSeekConfig,
-        APIProvider.KIMI to KimiConfig
+        APIProvider.KIMI to KimiConfig,
+        APIProvider.HUNYUAN to HunyuanConfig
     )
 
     fun config(provider: APIProvider): ProviderConfig =

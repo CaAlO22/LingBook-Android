@@ -1,6 +1,7 @@
 package com.lingji.app.data.remote
 
 import com.google.gson.Gson
+import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.lingji.app.data.remote.models.ChatMessage
 import com.lingji.app.data.remote.models.ChatResponse
@@ -11,6 +12,7 @@ import com.lingji.app.data.remote.models.TextContentPart
 import com.lingji.app.data.repository.SettingsRepository
 import com.lingji.app.domain.provider.ProviderRegistry
 import com.lingji.app.domain.tool.ToolRegistry
+import com.lingji.app.domain.tool.agent.SubagentTool
 import com.lingji.app.domain.tool.image.ConversationImageStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -40,7 +42,15 @@ class HomeAgentService @Inject constructor(
     ) = withContext(Dispatchers.IO) {
         try {
             val settings = settingsRepository.getSettingsOnce()
-            val tools = toolRegistry.toOpenAITools()
+            // 子代理可用时追加 subagent 工具；子代理自身持有除 subagent 外的全部工具
+            val allTools = toolRegistry.toOpenAITools()
+            val assistant = settings.assistantModel
+            val tools = if (assistant != null) {
+                JsonArray().apply {
+                    addAll(allTools)
+                    add(SubagentTool.schema)
+                }
+            } else allTools
 
             val imageNumbers = if (images.isNotEmpty()) {
                 conversationImageStore.addImages(images)
@@ -56,7 +66,14 @@ class HomeAgentService @Inject constructor(
 
 【图片插入能力】当用户在对话中发送图片时，每张图片会被自动编号（从1开始递增）。你可以使用 insert_img 工具将指定编号的图片插入到笔记本笔记的指定页面。insert_img 参数说明：subject_id（笔记本 ID）、page_id（页面 ID，可通过 list_pages 获取）、image_number（图片编号）。仅支持 notebook 类型笔记。
 
-判断原则：优先判断用户是否在「求知」。只要用户想得到一个答案、而非想「动笔记」，就直接回答并在末尾询问是否写入笔记；只有用户明确表达要管理或记录笔记时，才调用笔记工具。"""
+判断原则：优先判断用户是否在「求知」。只要用户想得到一个答案、而非想「动笔记」，就直接回答并在末尾询问是否写入笔记；只有用户明确表达要管理或记录笔记时，才调用笔记工具。
+
+硬性要求：
+1. 任何写操作（新增/修改/删除笔记、页面、碎片）都必须先实际调用对应工具；只有工具返回成功后才能说“已完成”。
+2. 工具返回值里的 id 是唯一可信的 id，禁止自行编造 UUID 或任何 id。
+3. 工具返回以 "Error:" 开头时必须如实告知用户失败原因，不得声称操作已完成。${if (assistant != null) """
+
+【子代理】已配置辅助模型：遇到相对独立、步骤较多的子任务，可调用 subagent 工具委托执行；task 需写清完整上下文与期望产出，主线任务仍由你自己完成。""" else ""}"""
 
             val messages = mutableListOf(ChatMessage("system", systemPrompt))
             messages.addAll(priorMessages)
@@ -111,7 +128,23 @@ class HomeAgentService @Inject constructor(
                     } catch (e: Exception) {
                         JsonObject()
                     }
-                    val result = toolRegistry.executeTool(toolName, params)
+                    val result = if (toolName == SubagentTool.NAME && assistant != null) {
+                        val task = params.get("task")?.takeIf { it.isJsonPrimitive }?.asString
+                        if (task.isNullOrBlank()) {
+                            "Error: 缺少 task 参数"
+                        } else {
+                            SubagentTool.run(
+                                task = task,
+                                toolSchemas = allTools,
+                                executeTool = { name, args -> toolRegistry.executeTool(name, args) },
+                                llmService = llmService,
+                                assistant = assistant,
+                                parentSettings = settings
+                            )
+                        }
+                    } else {
+                        toolRegistry.executeTool(toolName, params)
+                    }
                     onToolCall(toolName, argsString, result)
                     messages.add(ChatMessage(
                         role = "tool",

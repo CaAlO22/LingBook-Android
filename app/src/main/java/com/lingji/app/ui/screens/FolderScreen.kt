@@ -8,7 +8,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -32,6 +34,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.lingji.app.R
@@ -58,6 +61,9 @@ fun FolderScreen(
         .sortedByDescending { it.orderIndex }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // 信息岛：内容绘制到导航栏之下，用底部留白让最后一行仍可完整滚动到小白条上方。
+    val density = LocalDensity.current
+    val navBarBottom = with(density) { WindowInsets.navigationBars.getBottom(this).toDp() }
 
     var renameSubjectId by remember { mutableStateOf<String?>(null) }
     var renameDefault by remember { mutableStateOf("") }
@@ -81,6 +87,7 @@ fun FolderScreen(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 title = { Text(folder?.name ?: "") },
@@ -98,7 +105,12 @@ fun FolderScreen(
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(160.dp),
-                contentPadding = PaddingValues(16.dp),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 16.dp,
+                    bottom = 16.dp + navBarBottom
+                ),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier.fillMaxSize()

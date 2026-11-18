@@ -4,6 +4,7 @@ import com.lingji.app.data.db.entities.HomeConversationEntity
 import com.lingji.app.domain.model.AISettings
 import com.lingji.app.domain.model.Folder
 import com.lingji.app.domain.model.HomeItem
+import com.lingji.app.domain.model.ModelConfig
 import com.lingji.app.domain.model.Subject
 import com.lingji.app.ui.components.ChatMode
 
@@ -23,6 +24,8 @@ data class SubjectUiState(
     val subjects: List<Subject> = emptyList(),
     val currentSubjectId: String? = null,
     val settings: AISettings = AISettings(),
+    /** 用户添加的模型配置，主模型与辅助模型从该列表中选择。 */
+    val modelConfigs: List<ModelConfig> = emptyList(),
     val isProcessing: Boolean = false,
     val processingMessage: String? = null,
     val processingStreamLine: String = "",

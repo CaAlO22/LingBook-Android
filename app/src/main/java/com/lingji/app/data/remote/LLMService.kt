@@ -17,6 +17,7 @@ import com.lingji.app.data.remote.models.ToolCallFunction
 import com.lingji.app.data.remote.strategy.RequestStrategy
 import com.lingji.app.data.remote.strategy.RequestStrategyRegistry
 import com.lingji.app.domain.model.AISettings
+import com.lingji.app.domain.model.ThinkingLevel
 import com.lingji.app.domain.provider.ProviderRegistry
 import com.lingji.app.domain.model.Fragment
 import kotlinx.coroutines.Dispatchers
@@ -118,7 +119,7 @@ class LLMService @Inject constructor() {
     ): ChatResponse = withContext(Dispatchers.IO) {
         val endpoint = resolveEndpoint(settings.baseUrl)
         val strategy = RequestStrategyRegistry.get(settings.provider)
-        val body = strategy.buildChatRequestBody(settings, messages, stream = false, tools = tools)
+        val body = strategy.buildChatRequestBody(settings, messages, stream = false, tools = tools, temperature = settings.agentTemperature)
         val request = buildRequest(endpoint, body, strategy, settings)
 
         client.newCall(request).execute().use { response ->
@@ -151,7 +152,7 @@ class LLMService @Inject constructor() {
     ): ChatResponse = withContext(Dispatchers.IO) {
         val endpoint = resolveEndpoint(settings.baseUrl)
         val strategy = RequestStrategyRegistry.get(settings.provider)
-        val body = strategy.buildChatRequestBody(settings, messages, stream = true, tools = tools)
+        val body = strategy.buildChatRequestBody(settings, messages, stream = true, tools = tools, temperature = settings.agentTemperature)
         val request = buildRequest(endpoint, body, strategy, settings)
 
         val contentBuilder = StringBuilder()
@@ -310,7 +311,7 @@ class LLMService @Inject constructor() {
 
     suspend fun testConnection(settings: AISettings): Pair<Boolean, String> = withContext(Dispatchers.IO) {
         runCatching {
-            val output = generate("PING", settings.copy(enableThinking = false), "只回复OK")
+            val output = generate("PING", settings.copy(thinkingLevel = ThinkingLevel.OFF), "只回复OK")
             val ok = Regex("\\b(ok|pong)\\b", RegexOption.IGNORE_CASE).containsMatchIn(output)
             ok to if (ok) "连接正常" else "返回异常: $output"
         }.getOrElse { false to (it.message ?: "连接失败") }
@@ -323,7 +324,7 @@ class LLMService @Inject constructor() {
         runCatching {
             val output = generate(
                 prompt = "请用一句话简要描述这张图片的主要内容。",
-                settings = settings.copy(enableThinking = false),
+                settings = settings.copy(thinkingLevel = ThinkingLevel.OFF),
                 systemPrompt = "你是一个视觉助手，请根据用户提供的图片内容作答。",
                 images = listOf(imageBase64)
             )

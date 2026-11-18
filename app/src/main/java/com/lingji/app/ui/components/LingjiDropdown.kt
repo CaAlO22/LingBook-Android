@@ -11,12 +11,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -129,7 +131,12 @@ fun DropdownMenu(
         val widthModifier = if (matchAnchorWidth && anchorWidth > 0) {
             Modifier.width(with(density) { anchorWidth.toDp() })
         } else {
+            // 不与锚点等宽时按内容自适应宽度：
+            // 弹窗窗口的测量上限是整屏，菜单项里的 fillMaxWidth 会被撑满整屏，
+            // 因此这里显式收窄到内容固有宽度，并限制最大宽度避免长文本贴边。
             Modifier
+                .widthIn(max = 320.dp)
+                .width(IntrinsicSize.Max)
         }
         val menu: @Composable () -> Unit = {
             Surface(

@@ -53,12 +53,11 @@ fun FloatingInputContainer(
     // 再叠加一层补间动画会始终落后于键盘，产生可见的跟随延迟。
     val imeBottomPx = WindowInsets.ime.getBottom(density)
     val navigationBottomPx = WindowInsets.navigationBars.getBottom(density)
-    // 调用方位于 Scaffold 内容区，底部已让出导航栏；而 ime inset 包含导航栏区域，
-    // 直接叠加会把悬浮栏推得比输入法高出「导航栏 + 常规间距」，键盘弹出后离输入法过远。
-    // 扣除导航栏高度后，键盘弹出时仍保持 bottomOffset 的贴合间距。
-    val keyboardPadding = with(density) {
-        if (imeBottomPx > 0) (imeBottomPx - navigationBottomPx).coerceAtLeast(0).toDp() else 0.dp
-    }
+    // 页面已全屏绘制到系统导航栏之下（沉浸式），悬浮栏需要主动让开系统手势区/键盘：
+    // 键盘弹出时 ime inset 已包含导航栏高度，直接用它；否则让出导航栏高度。
+    // 两者都取系统原值，才能与键盘/导航栏动画逐帧同步。
+    val systemBottomPx = if (imeBottomPx > 0) imeBottomPx else navigationBottomPx
+    val systemBottomPadding = with(density) { systemBottomPx.toDp() }
 
     // HazeState 连接模糊源（页面内容）与模糊目标（悬浮栏）。
     val hazeState = remember { HazeState() }
@@ -80,7 +79,7 @@ fun FloatingInputContainer(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(horizontal = horizontalMargin)
-                .padding(bottom = bottomOffset + keyboardPadding)
+                .padding(bottom = bottomOffset + systemBottomPadding)
                 .fillMaxWidth()
                 // 信息岛：Web 质感玻璃——柔和外阴影 + 不透明模糊承接层 + 无颗粒背景模糊。
                 .shadow(

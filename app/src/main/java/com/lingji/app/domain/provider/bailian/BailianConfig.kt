@@ -1,6 +1,7 @@
 package com.lingji.app.domain.provider.bailian
 
 import com.lingji.app.R
+import com.lingji.app.domain.model.ThinkingLevel
 import com.lingji.app.domain.provider.ProviderConfig
 import com.lingji.app.domain.provider.ProviderModel
 
@@ -10,72 +11,54 @@ object BailianConfig : ProviderConfig {
     override val id = "BAILIAN"
     override val displayNameRes = R.string.provider_bailian
     override val defaultBaseUrl = DASHSCOPE_URL
-    override val defaultModelId = "qwen3.8-max"
+    override val defaultModelId = "qwen4-max"
     override val models = listOf(
         ProviderModel(
-            id = "qwen3.8-max",
-            name = "Qwen 3.8 Max",
-            description = "最新旗舰，1M 上下文，最强推理与视觉理解",
+            id = "qwen4-max",
+            name = "Qwen 4 Max",
+            description = "最新旗舰，1M 上下文，推理、视觉与 Agent 能力全面升级",
+            supportsVision = true,
+            thinkingLevels = listOf(
+                ThinkingLevel.OFF,
+                ThinkingLevel.LOW,
+                ThinkingLevel.MEDIUM,
+                ThinkingLevel.HIGH,
+                ThinkingLevel.MAX
+            )
+        ),
+        ProviderModel(
+            id = "qwen3.7-plus",
+            name = "Qwen 3.7 Plus",
+            description = "均衡之选，1M 上下文，文本、图像与视频理解，成本更优",
             supportsVision = true
         ),
         ProviderModel(
             id = "qwen3.8-flash",
             name = "Qwen 3.8 Flash",
-            description = "效果接近旗舰，1M 上下文，成本更低",
+            description = "成本优先，1M 上下文，适合高频规模化调用",
             supportsVision = true
         ),
         ProviderModel(
-            id = "qwen3.5-plus",
-            name = "Qwen 3.5 Plus",
-            description = "支持文本/图像/视频输入，效果速度成本均衡",
-            supportsVision = true
+            id = "qwen3.8-max",
+            name = "Qwen 3.8 Max",
+            description = "上一代旗舰，1M 上下文，推理与视觉理解",
+            supportsVision = true,
+            thinkingLevels = listOf(
+                ThinkingLevel.OFF,
+                ThinkingLevel.LOW,
+                ThinkingLevel.MEDIUM,
+                ThinkingLevel.MAX
+            )
         ),
         ProviderModel(
-            id = "qwen3.5-flash",
-            name = "Qwen 3.5 Flash",
-            description = "速度快成本低，适合简单任务与高频调用",
-            supportsVision = true
-        ),
-        ProviderModel(
-            id = "qwen-plus-latest",
-            name = "Qwen Plus",
-            description = "千问 Plus 稳定版，长上下文，支持思考模式"
-        ),
-        ProviderModel(
-            id = "qwen-flash-latest",
-            name = "Qwen Flash",
-            description = "千问 Flash 稳定版，极速响应"
-        ),
-        ProviderModel(
-            id = "qwen-max-latest",
-            name = "Qwen Max",
-            description = "千问 Max 稳定版，复杂任务首选"
-        ),
-        ProviderModel(
-            id = "qwen3-vl-plus",
-            name = "Qwen3 VL Plus",
-            description = "视觉理解模型，图像/视频分析与推理",
-            supportsVision = true
-        ),
-        ProviderModel(
-            id = "qwen3-vl-flash",
-            name = "Qwen3 VL Flash",
-            description = "快速视觉理解模型，性价比高",
-            supportsVision = true
-        ),
-        ProviderModel(
-            id = "qwq-plus",
-            name = "QwQ Plus",
-            description = "专注推理的模型，数学与代码能力强"
-        ),
-        ProviderModel(
-            id = "qwen-long-latest",
+            id = "qwen-long",
             name = "Qwen Long",
-            description = "1000 万上下文，适合长文档分析与总结"
+            description = "1000 万上下文，适合长文档分析与总结",
+            thinkingLevels = emptyList()
         )
     )
-    override val supportsThinking = true
-    override val supportsThinkingField = true
+    /** 其余 Qwen 模型只支持开启/关闭思考。 */
+    override val defaultThinkingLevels = listOf(ThinkingLevel.OFF, ThinkingLevel.ON)
     override val authHeaderName = "Authorization"
     override val authHeaderPrefix = "Bearer "
 }

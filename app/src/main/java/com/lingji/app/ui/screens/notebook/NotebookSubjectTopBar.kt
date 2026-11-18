@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import com.lingji.app.ui.components.DropdownMenu
 import com.lingji.app.ui.components.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -40,6 +41,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lingji.app.R
+import com.lingji.app.domain.model.HorizontalSwipeAction
 import com.lingji.app.ui.components.ModeChip
 import com.lingji.app.ui.theme.NotoSerifCJKsc
 import kotlinx.coroutines.CoroutineScope
@@ -58,9 +60,12 @@ fun NotebookSubjectTopBar(
     onExport: () -> Unit,
     onExportPdf: () -> Unit,
     onCopyToClipboard: () -> Unit,
-    onUndoEdit: () -> Unit
+    onUndoEdit: () -> Unit,
+    horizontalSwipeAction: HorizontalSwipeAction,
+    onHorizontalSwipeActionChange: (HorizontalSwipeAction) -> Unit
 ) {
     var showMoreMenu by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
 
     Row(
         modifier = Modifier
@@ -192,8 +197,26 @@ fun NotebookSubjectTopBar(
                             Icon(Icons.Default.ContentCopy, contentDescription = null)
                         }
                     )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.note_settings)) },
+                        onClick = {
+                            showMoreMenu = false
+                            showSettings = true
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Default.Settings, contentDescription = null)
+                        }
+                    )
                 }
             }
         }
+    }
+
+    if (showSettings) {
+        NoteSettingsDialog(
+            horizontalSwipeAction = horizontalSwipeAction,
+            onHorizontalSwipeActionChange = onHorizontalSwipeActionChange,
+            onDismiss = { showSettings = false }
+        )
     }
 }

@@ -1,6 +1,7 @@
 package com.lingji.app.domain.provider.mimo
 
 import com.lingji.app.R
+import com.lingji.app.domain.model.ThinkingLevel
 import com.lingji.app.domain.provider.ProviderConfig
 import com.lingji.app.domain.provider.ProviderModel
 
@@ -32,8 +33,8 @@ object MimoConfig : ProviderConfig {
             supportsVision = true
         )
     )
-    override val supportsThinking = true
-    override val supportsThinkingField = true
+    /** MiMo 只支持 thinking.type 开关，没有强度档位。 */
+    override val defaultThinkingLevels = listOf(ThinkingLevel.OFF, ThinkingLevel.ON)
     override val authHeaderName = "api-key"
     override val authHeaderPrefix = ""
 }

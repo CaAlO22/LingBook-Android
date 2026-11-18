@@ -41,6 +41,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.res.stringResource
@@ -75,6 +77,17 @@ fun PageChatBar(
     var chatMode by remember { mutableStateOf(ChatMode.ASK) }
     var chatScope by remember { mutableStateOf(initialScope) }
     val hasHistory = conversationHistory.isNotEmpty() || currentAnswer.isNotBlank() || isLoading
+
+    // 请求进行中会禁用输入框，而禁用会清掉焦点；请求结束后主动拿回焦点，
+    // 否则用户发送完必须重新点一下输入框才能继续输入。
+    val inputFocusRequester = remember { FocusRequester() }
+    var wasLoading by remember { mutableStateOf(false) }
+    LaunchedEffect(isLoading) {
+        if (wasLoading && !isLoading) {
+            runCatching { inputFocusRequester.requestFocus() }
+        }
+        wasLoading = isLoading
+    }
 
     val modeAskLabel = stringResource(R.string.chat_mode_ask)
     val modeAgentLabel = stringResource(R.string.chat_mode_agent)
@@ -331,6 +344,7 @@ fun PageChatBar(
                     modifier = Modifier
                         .weight(1f)
                         .padding(horizontal = 12.dp, vertical = 10.dp)
+                        .focusRequester(inputFocusRequester)
                         // 方向键在 Preview 阶段被接管，避免焦点跳到相邻按钮。
                         .arrowKeyCursorBehavior(question, { question = it }) { textLayout }
                         .enterSendBehavior(submitQuestion),

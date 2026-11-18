@@ -23,7 +23,7 @@ import com.lingji.app.data.remote.models.ToolCall
 import com.lingji.app.data.repository.SettingsRepository
 import com.lingji.app.data.repository.SubjectRepository
 import com.lingji.app.domain.model.AISettings
-import com.lingji.app.domain.model.LiteModelConfig
+import com.lingji.app.domain.model.ModelConfig
 import com.lingji.app.domain.model.toAISettings
 import com.lingji.app.ui.viewmodel.AiIslandLine
 import com.lingji.app.domain.model.Folder
@@ -76,6 +76,11 @@ class SubjectViewModel @Inject constructor(
     private val gson = Gson()
     private val homeMessageCache = mutableMapOf<String, List<HomeChatMessage>>()
     private val homeAgentMessageCache = mutableMapOf<String, List<ChatMessage>>()
+    /**
+     * 单笔记 Agent 的完整对话消息（含 assistant.tool_calls 与 tool 结果），按笔记 ID 缓存。
+     * 只回传文本对会让模型在下一轮看不到工具调用痕迹，从而模仿"只说不做"。
+     */
+    private val noteAgentMessageCache = mutableMapOf<String, List<ChatMessage>>()
     private var messagesCollectJob: Job? = null
     private var conversationsCollectJob: Job? = null
     private var fragmentsCollectJob: Job? = null
@@ -85,13 +90,15 @@ class SubjectViewModel @Inject constructor(
         combine(
             subjectRepository.getAllSubjects(),
             subjectRepository.getAllFolders(),
-            settingsRepository.getSettings()
-        ) { subjects, folders, settings ->
+            settingsRepository.getSettings(),
+            settingsRepository.getModelConfigs()
+        ) { subjects, folders, settings, modelConfigs ->
             _uiState.update {
                 it.copy(
                     subjects = subjects,
                     folders = folders,
                     settings = settings,
+                    modelConfigs = modelConfigs,
                     isSettingsOpen = it.isSettingsOpen || !settings.isConfigured()
                 )
             }
@@ -581,9 +588,11 @@ class SubjectViewModel @Inject constructor(
                 agentService.runAgentLoop(
                     subjectId = subjectId,
                     question = question,
-                    priorMessages = conversationHistory.flatMap { (q, a) ->
-                        listOf(ChatMessage(role = "user", content = q), ChatMessage(role = "assistant", content = a))
-                    },
+                    // 优先使用带工具调用痕迹的缓存，冷启动时才退回到纯文本问答对。
+                    priorMessages = noteAgentMessageCache[subjectId]
+                        ?: conversationHistory.flatMap { (q, a) ->
+                            listOf(ChatMessage(role = "user", content = q), ChatMessage(role = "assistant", content = a))
+                        },
                     onReasoning = { reasoning -> appendReasoning(reasoning) },
             onToolCall = { toolName, args, result ->
                         val display = buildString {
@@ -602,6 +611,10 @@ class SubjectViewModel @Inject constructor(
                     onError = { msg ->
                         _uiState.update { it.copy(aiErrorMessage = msg) }
                         onError(msg)
+                    },
+                    onAgentMessages = { messages ->
+                        // 去掉 system，保留工具调用与工具结果，供下一轮沿用。
+                        noteAgentMessageCache[subjectId] = messages.filter { it.role != "system" }
                     },
                     onAssessment = { decision, reason, extraSteps ->
                         val display = if (decision == "CONTINUE") {
@@ -639,6 +652,7 @@ class SubjectViewModel @Inject constructor(
     }
 
     fun clearNoteChatHistory(subjectId: String) {
+        noteAgentMessageCache.remove(subjectId)
         _uiState.update { it.copy(noteChatHistories = it.noteChatHistories - subjectId) }
     }
 
@@ -782,20 +796,38 @@ class SubjectViewModel @Inject constructor(
         }
     }
 
-    fun saveLiteModelSettings(liteModel: LiteModelConfig) {
+    fun saveModelConfig(config: ModelConfig) {
+        viewModelScope.launch { settingsRepository.saveModelConfig(config) }
+    }
+
+    fun deleteModelConfig(id: String) {
+        viewModelScope.launch { settingsRepository.deleteModelConfig(id) }
+    }
+
+    fun selectPrimaryModel(id: String) {
         viewModelScope.launch {
-            settingsRepository.save(_uiState.value.settings.copy(liteModel = liteModel))
+            settingsRepository.save(_uiState.value.settings.copy(primaryModelId = id))
         }
     }
 
-    fun testLiteModelConnection(onResult: (Pair<Boolean, String>) -> Unit) {
-        if (_uiState.value.isProcessing) return
+    fun selectAssistantModel(id: String) {
         viewModelScope.launch {
-            setProcessing(true, "正在测试轻量模型连接…")
+            settingsRepository.save(_uiState.value.settings.copy(assistantModelId = id))
+        }
+    }
+
+    fun testAssistantModelConnection(onResult: (Pair<Boolean, String>) -> Unit) {
+        if (_uiState.value.isProcessing) return
+        val settings = _uiState.value.settings
+        val assistant = settings.assistantModel
+        if (assistant == null) {
+            onResult(false to "未选择辅助模型")
+            return
+        }
+        viewModelScope.launch {
+            setProcessing(true, "正在测试辅助模型连接…")
             try {
-                val liteSettings = _uiState.value.settings.liteModel
-                    .toAISettings(_uiState.value.settings.providerApiKeys)
-                val result = llmService.testConnection(liteSettings)
+                val result = llmService.testConnection(assistant.toAISettings(settings.agentTemperature))
                 onResult(result)
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -807,14 +839,21 @@ class SubjectViewModel @Inject constructor(
         }
     }
 
-    fun testLiteMultimodalConnection(imageBase64: String, onResult: (Pair<Boolean, String>) -> Unit) {
+    fun testAssistantMultimodalConnection(imageBase64: String, onResult: (Pair<Boolean, String>) -> Unit) {
         if (_uiState.value.isProcessing) return
+        val settings = _uiState.value.settings
+        val assistant = settings.assistantModel
+        if (assistant == null) {
+            onResult(false to "未选择辅助模型")
+            return
+        }
         viewModelScope.launch {
-            setProcessing(true, "正在测试轻量模型多模态连接…")
+            setProcessing(true, "正在测试辅助模型多模态连接…")
             try {
-                val liteSettings = _uiState.value.settings.liteModel
-                    .toAISettings(_uiState.value.settings.providerApiKeys)
-                val result = llmService.testMultimodalConnection(liteSettings, imageBase64)
+                val result = llmService.testMultimodalConnection(
+                    assistant.toAISettings(settings.agentTemperature),
+                    imageBase64
+                )
                 onResult(result)
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -997,14 +1036,18 @@ class SubjectViewModel @Inject constructor(
                 }
                 homeMessageCache[id] = messages
                 _uiState.update { it.copy(homeMessages = messages) }
-                homeAgentMessageCache["_current"] = entities.map { e ->
-                    if (e.tool_calls_json != null) {
-                        val tc = Gson().fromJson(e.tool_calls_json, Array<ToolCall>::class.java)
-                        ChatMessage(role = e.role, content = e.content, tool_calls = tc?.toList())
-                    } else {
-                        ChatMessage(role = e.role, content = e.content)
+                homeAgentMessageCache["_current"] = entities
+                    // 数据库里只存了工具调用的中文描述（没有 tool_call_id / arguments），
+                    // 直接当作 tool 消息回传会破坏 assistant(tool_calls) + tool 的配对，接口会报错。
+                    .filter { it.role != "tool" && it.role != "system" }
+                    .map { e ->
+                        if (e.tool_calls_json != null) {
+                            val tc = Gson().fromJson(e.tool_calls_json, Array<ToolCall>::class.java)
+                            ChatMessage(role = e.role, content = e.content, tool_calls = tc?.toList())
+                        } else {
+                            ChatMessage(role = e.role, content = e.content)
+                        }
                     }
-                }
             }
         }
     }
@@ -1159,7 +1202,8 @@ class SubjectViewModel @Inject constructor(
             },
             onAgentMessages = { messages ->
                 collectedMessages.clear(); collectedMessages.addAll(messages)
-                homeAgentMessageCache["_current"] = messages
+                // 去掉 system，避免下一轮重复注入系统提示词
+                homeAgentMessageCache["_current"] = messages.filter { it.role != "system" }
             },
             onComplete = { answer ->
                 setProcessing(false)

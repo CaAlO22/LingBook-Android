@@ -7,6 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.lingji.app.data.db.dao.FragmentDao
 import com.lingji.app.data.db.dao.FolderDao
 import com.lingji.app.data.db.dao.HomeChatDao
+import com.lingji.app.data.db.dao.ModelConfigDao
 import com.lingji.app.data.db.dao.NotebookPageDao
 import com.lingji.app.data.db.dao.NoteRevisionDao
 import com.lingji.app.data.db.dao.SettingsDao
@@ -19,6 +20,7 @@ import com.lingji.app.data.db.entities.FolderEntity
 import com.lingji.app.data.db.entities.HomeConversationEntity
 import com.lingji.app.data.db.entities.HomeFragmentEntity
 import com.lingji.app.data.db.entities.HomeMessageEntity
+import com.lingji.app.data.db.entities.ModelConfigEntity
 import com.lingji.app.data.db.entities.NotebookPageEntity
 import com.lingji.app.data.db.entities.NoteRevisionEntity
 import com.lingji.app.data.db.entities.SettingsEntity
@@ -40,9 +42,10 @@ import com.lingji.app.data.db.entities.TodoItemEntity
         FolderEntity::class,
         NoteRevisionEntity::class,
         SyncTombstoneEntity::class,
-        TodoItemEntity::class
+        TodoItemEntity::class,
+        ModelConfigEntity::class
     ],
-    version = 15,
+    version = 19,
     exportSchema = false
 )
 abstract class LingjiDatabase : RoomDatabase() {
@@ -214,6 +217,96 @@ abstract class LingjiDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE subjects ADD COLUMN todoLastResetAt INTEGER NOT NULL DEFAULT 0")
             }
         }
+
+        val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Agent 工具调用温度可配置，默认 0.2
+                db.execSQL("ALTER TABLE settings ADD COLUMN agentTemperature REAL NOT NULL DEFAULT 0.2")
+            }
+        }
+
+        val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 模型配置独立成表，主模型/辅助模型改为引用 model_configs.id
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS model_configs (" +
+                        "id TEXT NOT NULL PRIMARY KEY, " +
+                        "provider TEXT NOT NULL, " +
+                        "baseUrl TEXT NOT NULL, " +
+                        "apiKey TEXT NOT NULL, " +
+                        "modelName TEXT NOT NULL, " +
+                        "enableThinking INTEGER NOT NULL DEFAULT 0, " +
+                        "createdAt INTEGER NOT NULL)"
+                )
+                // 把旧的主模型配置迁移为一条模型配置
+                db.execSQL(
+                    "INSERT INTO model_configs (id, provider, baseUrl, apiKey, modelName, enableThinking, createdAt) " +
+                        "SELECT 'migrated-primary', provider, baseUrl, apiKey, modelName, enableThinking, " +
+                        "CAST(strftime('%s','now') AS INTEGER) * 1000 FROM settings " +
+                        "WHERE id = 'singleton' AND (apiKey != '' OR baseUrl != '')"
+                )
+                // 把旧的轻量模型配置迁移为辅助模型
+                db.execSQL(
+                    "INSERT INTO model_configs (id, provider, baseUrl, apiKey, modelName, enableThinking, createdAt) " +
+                        "SELECT 'migrated-assistant', liteProvider, liteBaseUrl, liteApiKey, liteModelName, liteEnableThinking, " +
+                        "CAST(strftime('%s','now') AS INTEGER) * 1000 FROM settings " +
+                        "WHERE id = 'singleton' AND (liteApiKey != '' OR liteBaseUrl != '')"
+                )
+                // 重建 settings 表，移除已迁移到 model_configs 的列
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS settings_new (" +
+                        "id TEXT NOT NULL PRIMARY KEY, " +
+                        "primaryModelId TEXT NOT NULL DEFAULT '', " +
+                        "assistantModelId TEXT NOT NULL DEFAULT '', " +
+                        "agentTemperature REAL NOT NULL DEFAULT 0.2, " +
+                        "horizontalSwipeAction TEXT NOT NULL DEFAULT 'TOGGLE_PREVIEW')"
+                )
+                db.execSQL(
+                    "INSERT INTO settings_new (id, primaryModelId, assistantModelId, agentTemperature, horizontalSwipeAction) " +
+                        "SELECT id, " +
+                        "CASE WHEN apiKey != '' OR baseUrl != '' THEN 'migrated-primary' ELSE '' END, " +
+                        "CASE WHEN liteApiKey != '' OR liteBaseUrl != '' THEN 'migrated-assistant' ELSE '' END, " +
+                        "agentTemperature, horizontalSwipeAction FROM settings"
+                )
+                db.execSQL("DROP TABLE settings")
+                db.execSQL("ALTER TABLE settings_new RENAME TO settings")
+            }
+        }
+
+        val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 模型配置新增用户自定义别名，默认与模型名称一致
+                db.execSQL("ALTER TABLE model_configs ADD COLUMN alias TEXT NOT NULL DEFAULT ''")
+                db.execSQL("UPDATE model_configs SET alias = modelName WHERE alias = ''")
+            }
+        }
+        val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 思考开关升级为思考程度，同时补充云同步所需的 updatedAt。
+                // 旧列 enableThinking 不再保留，因此重建表以与实体结构严格一致。
+                db.execSQL("ALTER TABLE model_configs RENAME TO model_configs_legacy")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS model_configs (" +
+                        "id TEXT NOT NULL PRIMARY KEY, " +
+                        "alias TEXT NOT NULL, " +
+                        "provider TEXT NOT NULL, " +
+                        "baseUrl TEXT NOT NULL, " +
+                        "apiKey TEXT NOT NULL, " +
+                        "modelName TEXT NOT NULL, " +
+                        "thinkingLevel TEXT NOT NULL, " +
+                        "createdAt INTEGER NOT NULL, " +
+                        "updatedAt INTEGER NOT NULL)"
+                )
+                db.execSQL(
+                    "INSERT INTO model_configs " +
+                        "(id, alias, provider, baseUrl, apiKey, modelName, thinkingLevel, createdAt, updatedAt) " +
+                        "SELECT id, alias, provider, baseUrl, apiKey, modelName, " +
+                        "CASE WHEN enableThinking = 1 THEN 'HIGH' ELSE 'OFF' END, createdAt, createdAt " +
+                        "FROM model_configs_legacy"
+                )
+                db.execSQL("DROP TABLE model_configs_legacy")
+            }
+        }
     }
     abstract fun subjectDao(): SubjectDao
     abstract fun fragmentDao(): FragmentDao
@@ -225,4 +318,5 @@ abstract class LingjiDatabase : RoomDatabase() {
     abstract fun noteRevisionDao(): NoteRevisionDao
     abstract fun syncTombstoneDao(): SyncTombstoneDao
     abstract fun todoItemDao(): TodoItemDao
+    abstract fun modelConfigDao(): ModelConfigDao
 }

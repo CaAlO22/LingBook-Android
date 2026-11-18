@@ -3,55 +3,74 @@ package com.lingji.app.domain.model
 import java.util.Calendar
 import java.util.UUID
 
-enum class APIProvider { OPENAI, DOUBAO, XIAOMI, BAILIAN, ZHIPU, DEEPSEEK, KIMI }
+enum class APIProvider { OPENAI, DOUBAO, XIAOMI, BAILIAN, ZHIPU, DEEPSEEK, KIMI, HUNYUAN }
 enum class SubjectType { FRAGMENT, NOTEBOOK, TODO }
 enum class HorizontalSwipeAction { NONE, TOGGLE_PREVIEW, CHANGE_PAGE }
+
+/**
+ * 思考程度。
+ *
+ * 各家模型对“思考”的粒度不同：有的只能开关（[ON]），有的提供多档强度。
+ * 具体某个模型支持哪些档位由 [com.lingji.app.domain.provider.ProviderModel.thinkingLevels] 声明，
+ * 请求侧再按供应商文档映射为各自字段（reasoning_effort / thinking.type / thinking_budget 等）。
+ */
+enum class ThinkingLevel { OFF, ON, LOW, MEDIUM, HIGH, MAX }
 
 // 云同步多设备场景下 8 位短 ID 碰撞风险过高，统一使用完整 UUID
 fun generateId(): String = UUID.randomUUID().toString()
 
-data class AISettings(
+/**
+ * 用户在设置中自行添加的模型配置。
+ *
+ * 模型配置独立于运行期设置存放，主模型与辅助模型都只是对该列表的引用（[AISettings.primaryModelId]
+ * / [AISettings.assistantModelId]），因此修改模型参数不会影响已选中的引用关系。
+ */
+data class ModelConfig(
+    val id: String = generateId(),
+    /** 用户自定义的模型 ID（别名），用于在列表中展示；留空时回退为 [modelName]。 */
+    val alias: String = "",
     val provider: APIProvider = APIProvider.OPENAI,
     val baseUrl: String = "",
     val apiKey: String = "",
-    val modelName: String = "gpt-4o",
-    val enableThinking: Boolean = false,
-    val horizontalSwipeAction: HorizontalSwipeAction = HorizontalSwipeAction.TOGGLE_PREVIEW,
-    /** 按供应商名缓存的 API Key，切换供应商时自动保存/恢复。 */
-    val providerApiKeys: Map<String, String> = emptyMap(),
-    /** 轻量模型配置：用于低成本频繁调用的小模型。 */
-    val liteModel: LiteModelConfig = LiteModelConfig()
+    /** 实际请求使用的模型 ID。 */
+    val modelName: String = "",
+    val thinkingLevel: ThinkingLevel = ThinkingLevel.OFF,
+    val createdAt: Long = System.currentTimeMillis(),
+    /** 最后修改时间，云同步用于增量比对。 */
+    val updatedAt: Long = createdAt
 )
 
-/**
- * 轻量模型配置：用于低成本频繁调用的小模型。
- * 配置和测试方式与主模型一致，可在设置界面中独立配置。
- */
-data class LiteModelConfig(
+/** 列表展示名：优先使用用户设置的模型 ID，未设置时使用模型名称。 */
+val ModelConfig.displayName: String
+    get() = alias.ifBlank { modelName }
+
+/** 将模型配置展开为一次请求所需的 AISettings。 */
+fun ModelConfig.toAISettings(agentTemperature: Double = 0.2): AISettings = AISettings(
+    primaryModelId = id,
+    provider = provider,
+    baseUrl = baseUrl,
+    apiKey = apiKey,
+    modelName = modelName,
+    thinkingLevel = thinkingLevel,
+    agentTemperature = agentTemperature
+)
+
+data class AISettings(
+    /** 主模型对应的 [ModelConfig.id]，为空表示尚未选择。 */
+    val primaryModelId: String = "",
+    /** 辅助模型对应的 [ModelConfig.id]，为空表示不使用辅助模型。 */
+    val assistantModelId: String = "",
+    /** 以下 provider/baseUrl/apiKey/modelName/thinkingLevel 由 [primaryModelId] 解析得到，仅用于请求。 */
     val provider: APIProvider = APIProvider.OPENAI,
     val baseUrl: String = "",
     val apiKey: String = "",
     val modelName: String = "",
-    val enableThinking: Boolean = false
-)
-
-/** 将 LiteModelConfig 转为 AISettings，用于复用现有供应商 UI 组件。 */
-fun LiteModelConfig.toAISettings(providerApiKeys: Map<String, String> = emptyMap()): AISettings = AISettings(
-    provider = provider,
-    baseUrl = baseUrl,
-    apiKey = apiKey,
-    modelName = modelName,
-    enableThinking = enableThinking,
-    providerApiKeys = providerApiKeys
-)
-
-/** 从 AISettings 提取模型配置部分，用于 lite model 回写。 */
-fun AISettings.toLiteModelConfig(): LiteModelConfig = LiteModelConfig(
-    provider = provider,
-    baseUrl = baseUrl,
-    apiKey = apiKey,
-    modelName = modelName,
-    enableThinking = enableThinking
+    val thinkingLevel: ThinkingLevel = ThinkingLevel.OFF,
+    /** Agent 工具调用温度：越低越稳定，避免模型跳过工具调用直接编造结果。 */
+    val agentTemperature: Double = 0.2,
+    val horizontalSwipeAction: HorizontalSwipeAction = HorizontalSwipeAction.TOGGLE_PREVIEW,
+    /** 辅助模型配置，由 [assistantModelId] 解析得到；为空表示未启用。 */
+    val assistantModel: ModelConfig? = null
 )
 
 data class Fragment(

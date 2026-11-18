@@ -5,6 +5,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.lingji.app.data.remote.models.ChatMessage
 import com.lingji.app.domain.model.AISettings
+import com.lingji.app.domain.model.ThinkingLevel
 
 /**
  * Agent 循环监督者：当工具调用达到上限时，发送对话历史给 LLM 做回顾裁决。
@@ -59,7 +60,7 @@ object AgentLoopAssessor {
         )
 
         // 关闭 thinking：裁决是简单分类任务，避免 reasoning_content 干扰 content 字段
-        val assessSettings = settings.copy(enableThinking = false)
+        val assessSettings = settings.copy(thinkingLevel = ThinkingLevel.OFF)
 
         return try {
             val response = llmService.chatWithTools(reviewMessages, JsonArray(), assessSettings)

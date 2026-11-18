@@ -57,6 +57,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
@@ -112,6 +114,17 @@ fun HomeChatSheet(
 
     var inputText by remember { mutableStateOf(TextFieldValue("")) }
     var textLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
+
+    // 请求进行中会禁用输入框，而禁用会清掉焦点；请求结束后主动拿回焦点，
+    // 否则用户发送完必须重新点一下输入框才能继续输入。
+    val inputFocusRequester = remember { FocusRequester() }
+    var wasLoadingForFocus by remember { mutableStateOf(false) }
+    LaunchedEffect(isLoading) {
+        if (wasLoadingForFocus && !isLoading) {
+            runCatching { inputFocusRequester.requestFocus() }
+        }
+        wasLoadingForFocus = isLoading
+    }
     var showHistory by remember { mutableStateOf(false) }
     var pendingDeleteConversation by remember { mutableStateOf<HomeConversationEntity?>(null) }
     var pendingDeleteFragmentIndex by remember { mutableStateOf<Int?>(null) }
@@ -632,6 +645,7 @@ fun HomeChatSheet(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 14.dp, vertical = 12.dp)
+                            .focusRequester(inputFocusRequester)
                             // 方向键只移动光标，不被焦点系统当成按钮间导航。
                             .arrowKeyCursorBehavior(inputText, { inputText = it }) { textLayout }
                             .enterSendBehavior(submitInput),

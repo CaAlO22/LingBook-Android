@@ -4,17 +4,16 @@ import com.google.gson.JsonArray
 import com.lingji.app.data.remote.models.ChatMessage
 import com.lingji.app.data.remote.models.ChatRequest
 import com.lingji.app.domain.model.AISettings
+import com.lingji.app.domain.model.ThinkingLevel
 import com.lingji.app.domain.provider.ProviderRegistry
 import okhttp3.Request
 
 /**
- * 适用于 OpenAI 兼容接口的供应商，例如 OpenAI 自身、火山引擎方舟。
+ * 火山引擎方舟（Doubao Seed 2.x）请求策略。
  *
- * @param supportsThinkingField 是否需要在请求体中发送 thinking 字段。
+ * `thinking.type` 控制开关，开启时再用 `reasoning_effort`（low/medium/high）调节强度。
  */
-class OpenAICompatibleStrategy(
-    private val supportsThinkingField: Boolean
-) : RequestStrategy {
+class VolcanoRequestStrategy : RequestStrategy {
 
     override fun applyHeaders(builder: Request.Builder, apiKey: String) {
         builder.header("Authorization", "Bearer $apiKey")
@@ -24,17 +23,26 @@ class OpenAICompatibleStrategy(
         settings: AISettings,
         messages: List<ChatMessage>,
         stream: Boolean,
-        tools: JsonArray?
+        tools: JsonArray?,
+        temperature: Double?
     ): ChatRequest = ChatRequest(
         model = settings.modelName.ifBlank {
             ProviderRegistry.config(settings.provider).defaultModelId
         },
         messages = messages,
-        temperature = 0.7,
+        temperature = temperature ?: 0.7,
         stream = stream,
-        thinking = if (supportsThinkingField) {
-            mapOf("type" to if (settings.enableThinking) "enabled" else "disabled")
-        } else null,
+        thinking = mapOf(
+            "type" to if (settings.thinkingLevel == ThinkingLevel.OFF) "disabled" else "enabled"
+        ),
+        reasoningEffort = settings.thinkingLevel.toEffort(),
         tools = tools
     )
+
+    private fun ThinkingLevel.toEffort(): String? = when (this) {
+        ThinkingLevel.OFF, ThinkingLevel.ON -> null
+        ThinkingLevel.LOW -> "low"
+        ThinkingLevel.MEDIUM -> "medium"
+        ThinkingLevel.HIGH, ThinkingLevel.MAX -> "high"
+    }
 }
