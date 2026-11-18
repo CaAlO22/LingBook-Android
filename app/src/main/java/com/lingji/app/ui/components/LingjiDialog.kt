@@ -1,5 +1,8 @@
 package com.lingji.app.ui.components
 
+import android.view.View
+import android.view.Window
+import android.view.WindowManager
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,12 +23,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import com.lingji.app.R
 
 /**
@@ -51,6 +57,28 @@ fun LingjiDialog(
         onDismissRequest = onDismissRequest,
         properties = properties
     ) {
+        // 弹窗是独立 Window：Compose 在 SDK >= 31 时不设置 softInputMode，
+        // 系统对 wrap_content 浮窗默认按 ADJUST_PAN 处理（弹窗整体被平移），
+        // 会与输入框获得焦点后的自动滚动互相拉扯；小窗中系统还会在弹出输入法时压缩窗口高度，
+        // 两者叠加就会出现上下反复跳动、最终停在被平移后的位置。
+        // 这里强制改为 ADJUST_RESIZE：窗口随输入法收缩，只由正文区滚动跟随焦点。
+        val dialogWindow = LocalView.current.findDialogWindow()
+        SideEffect {
+            if (dialogWindow != null) {
+                val attrs = dialogWindow.attributes
+                val adjust = attrs.softInputMode and WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST
+                if (adjust != WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE) {
+                    dialogWindow.setSoftInputMode(
+                        (attrs.softInputMode and
+                            WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST.inv()) or
+                            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+                    )
+                    // setSoftInputMode 只更新 Window 内部记录，需要重新下发属性才会应用到窗口。
+                    dialogWindow.setAttributes(dialogWindow.attributes)
+                }
+            }
+        }
+
         Card(
             modifier = modifier
                 .fillMaxWidth(0.92f)
@@ -110,6 +138,21 @@ fun LingjiDialog(
             }
         }
     }
+}
+
+/**
+ * 从弹窗内容视图向上找到承载它的 Dialog 窗口。
+ *
+ * Compose 的弹窗内容视图就是 `DialogLayout`（实现了 [DialogWindowProvider]），
+ * 但为兼容宿主层级差异，这里沿父视图链查找。
+ */
+private fun View.findDialogWindow(): Window? {
+    var node: View? = this
+    while (node != null) {
+        if (node is DialogWindowProvider) return node.window
+        node = node.parent as? View
+    }
+    return null
 }
 
 /**
