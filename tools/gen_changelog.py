@@ -20,7 +20,6 @@
 import json
 import os
 import re
-import subprocess
 import sys
 import urllib.request
 from datetime import date as _date
@@ -133,37 +132,6 @@ def releases_to_entries(releases) -> list:
     return entries
 
 
-def git(*args) -> str:
-    return subprocess.run(
-        ["git"] + list(args), cwd=REPO_ROOT, capture_output=True, text=True, check=True
-    ).stdout.strip()
-
-
-def unreleased_fallback(version: str, latest_tag: str, today: str):
-    """没有 current.md 时的兜底：用最新 tag 之后的提交标题拼一条。"""
-    if not latest_tag:
-        return None
-    log = git("log", "%s..HEAD" % latest_tag, "--pretty=%s")
-    sections = {"新功能": [], "修复": [], "优化": []}
-    for subject in [s for s in log.splitlines() if s.strip()]:
-        m = re.match(r"^(\w+)(\([^)]*\))?!?:\s*(.+)$", subject)
-        body = m.group(3) if m else subject
-        if m and m.group(1) == "feat":
-            bucket = "新功能"
-        elif m and m.group(1) in ("fix", "perf", "refactor"):
-            bucket = "修复"
-        else:
-            bucket = "优化"
-        for part in re.split(r"[；;]", body):
-            part = clean(part)
-            if part:
-                sections[bucket].append(part)
-    result = [{"title": k, "items": v} for k, v in sections.items() if v]
-    if not result:
-        return None
-    return {"version": version, "date": today, "sections": result}
-
-
 def load_existing() -> list:
     if not os.path.exists(OUTPUT):
         return []
@@ -189,38 +157,38 @@ def main():
         print("抓取 Release 失败（%s），沿用现有 json 的 %d 个版本" % (exc.__class__.__name__, len(entries)))
 
     current = load_current_md(version, today)
-    if current:
-        if version and current["version"] != version:
-            print(
-                "！docs/changelog/current.md 的版本（%s）与 build.gradle.kts（%s）不一致，请先对齐"
-                % (current["version"], version)
-            )
-        previous_flag = next(
-            (e.get("unreleased") for e in entries if e["version"] == current["version"]), None
-        )
-        current["unreleased"] = (
-            current["version"] not in released if released is not None
-            else bool(previous_flag) if previous_flag is not None
-            else True
-        )
-        entries = [e for e in entries if e["version"] != current["version"]]
-        entries.insert(0, current)
+    if current is None:
         print(
-            "使用 docs/changelog/current.md 的 v%s（%d 条%s）"
-            % (
-                current["version"],
-                sum(len(s["items"]) for s in current["sections"]),
-                "，未发布" if current["unreleased"] else "",
-            )
+            "✗ 缺少 docs/changelog/current.md（或其中没有内容）。\n"
+            "  发版流程要求先把本版日志写进该文件：标题 `# %s`，"
+            "下面用 `## 新功能 / ## 优化 / ## 修复` 分组。" % version
         )
-    elif version and released is not None and version not in released:
-        fallback = unreleased_fallback(
-            version, "v" + entries[0]["version"] if entries else "", today
+        return 1
+    if version and current["version"] != version:
+        print(
+            "✗ docs/changelog/current.md 的标题是 v%s，build.gradle.kts 的 versionName 是 v%s。\n"
+            "  请把标题改成 `# %s`、按本版实际改动重写内容后重跑。" % (current["version"], version, version)
         )
-        if fallback:
-            fallback["unreleased"] = True
-            entries.insert(0, fallback)
-            print("！未找到 docs/changelog/current.md，暂用提交标题兜底 v%s，建议补写正式日志" % version)
+        return 1
+
+    previous_flag = next(
+        (e.get("unreleased") for e in entries if e["version"] == current["version"]), None
+    )
+    current["unreleased"] = (
+        current["version"] not in released if released is not None
+        else bool(previous_flag) if previous_flag is not None
+        else True
+    )
+    entries = [e for e in entries if e["version"] != current["version"]]
+    entries.insert(0, current)
+    print(
+        "使用 docs/changelog/current.md 的 v%s（%d 条%s）"
+        % (
+            current["version"],
+            sum(len(s["items"]) for s in current["sections"]),
+            "，未发布" if current["unreleased"] else "",
+        )
+    )
 
     os.makedirs(os.path.dirname(OUTPUT), exist_ok=True)
     with open(OUTPUT, "w", encoding="utf-8") as f:
