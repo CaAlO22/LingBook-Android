@@ -198,10 +198,13 @@ class SubjectRepository @Inject constructor(
 
     // ───────────────────────── 待办列表 ─────────────────────────
 
-    suspend fun addTodoItem(subjectId: String, content: String) {
+    /** 返回新建的待办项，供 Agent 工具把 id 回传给调用方（UI 侧忽略返回值）。 */
+    suspend fun addTodoItem(subjectId: String, content: String): TodoItem {
         // 新增条目追加到末尾，保留用户手动拖动后的相对顺序。
         val nextOrder = todoItemDao.maxSortOrder(subjectId) + 1
-        todoItemDao.insert(TodoItem(content = content, sortOrder = nextOrder).toEntity(subjectId))
+        val item = TodoItem(content = content, sortOrder = nextOrder)
+        todoItemDao.insert(item.toEntity(subjectId))
+        return item
     }
 
     suspend fun setTodoItemDone(itemId: String, isDone: Boolean) {

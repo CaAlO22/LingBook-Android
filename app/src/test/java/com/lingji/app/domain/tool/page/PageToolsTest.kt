@@ -27,9 +27,8 @@ class PageToolsTest {
         )
     )
 
-    private val fragmentSubject = Subject(
-        id = "s2", title = "Random Notes", type = SubjectType.FRAGMENT
-    )
+    private val fragmentSubject = Subject(id = "s2", title = "Random Notes", type = SubjectType.FRAGMENT)
+    private val todoSubject = Subject(id = "s3", title = "每日委托", type = SubjectType.TODO)
 
     @Test
     fun create_returnsFiveTools() {
@@ -85,7 +84,6 @@ class PageToolsTest {
     @Test
     fun delete_page_fragmentType_returnsError() = runTest {
         coEvery { repo.getSubjectByIdOnce("s2") } returns fragmentSubject
-        coEvery { repo.deletePage("s2", "p1") } returns Unit
         val params = JsonObject().apply {
             addProperty("subject_id", "s2")
             addProperty("page_id", "p1")
@@ -93,6 +91,23 @@ class PageToolsTest {
         val result = toolMap["delete_page"]!!.execute(params)
         assertTrue(result.startsWith("Error:"))
         assertTrue(result.contains("碎片笔记不支持页面操作"))
+    }
+
+    // ── TODO 类型同样不能写页面（原实现漏了这一条脏数据路径） ──
+
+    @Test
+    fun create_page_todoType_isRejectedWithStructuredError() = runTest {
+        coEvery { repo.getSubjectByIdOnce("s3") } returns todoSubject
+        val params = JsonObject().apply {
+            addProperty("subject_id", "s3")
+            addProperty("title", "New Page")
+        }
+        val result = toolMap["create_page"]!!.execute(params)
+        assertTrue(result.startsWith("Error:"))
+        assertTrue(result.contains("\"code\":\"UNSUPPORTED_FOR_SUBJECT_TYPE\""))
+        assertTrue(result.contains("\"subject_type\":\"TODO\""))
+        assertTrue(result.contains("add_todo"))
+        coVerify(exactly = 0) { repo.addPage(any(), any()) }
     }
 
     @Test
@@ -117,6 +132,38 @@ class PageToolsTest {
     }
 
     @Test
+    fun get_page_byIndex_returnsSecondPage() = runTest {
+        coEvery { repo.getSubjectByIdOnce("s1") } returns testSubject
+        val params = JsonObject().apply {
+            addProperty("subject_id", "s1")
+            addProperty("page_index", 1)
+        }
+        val result = toolMap["get_page"]!!.execute(params)
+        assertTrue(result.contains("\"id\":\"p2\""))
+        assertTrue(result.contains("\"content\":\"Content 2\""))
+    }
+
+    @Test
+    fun get_page_byTitle_returnsPage() = runTest {
+        coEvery { repo.getSubjectByIdOnce("s1") } returns testSubject
+        val params = JsonObject().apply {
+            addProperty("subject_id", "s1")
+            addProperty("page_title", "Page 1")
+        }
+        val result = toolMap["get_page"]!!.execute(params)
+        assertTrue(result.contains("\"id\":\"p1\""))
+    }
+
+    @Test
+    fun get_page_withoutLocator_returnsStructuredError() = runTest {
+        coEvery { repo.getSubjectByIdOnce("s1") } returns testSubject
+        val params = JsonObject().apply { addProperty("subject_id", "s1") }
+        val result = toolMap["get_page"]!!.execute(params)
+        assertTrue(result.contains("\"code\":\"MISSING_PARAMETER\""))
+        assertTrue(result.contains("page_id"))
+    }
+
+    @Test
     fun get_page_notFound_returnsError() = runTest {
         coEvery { repo.getSubjectByIdOnce("s1") } returns testSubject
         val params = JsonObject().apply {
@@ -125,6 +172,7 @@ class PageToolsTest {
         }
         val result = toolMap["get_page"]!!.execute(params)
         assertTrue(result.startsWith("Error:"))
+        assertTrue(result.contains("\"code\":\"OBJECT_NOT_FOUND\""))
     }
 
     @Test

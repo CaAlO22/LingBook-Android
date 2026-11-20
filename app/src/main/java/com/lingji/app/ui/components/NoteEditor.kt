@@ -441,6 +441,11 @@ fun NoteEditor(
 
         var lastScrollValue by remember { mutableStateOf(0) }
         var lastFocusTimeMs by remember { mutableStateOf(0L) }
+        // 最近一次真实输入（打字/删除）的时间，以及上次测量的最大滚动量。
+        // 删除文本会让内容变短、maxValue 变小，系统把 value 夹回去，看起来就像"用户向上滚动"；
+        // 长按删除时若把它当成用户拖动去清焦点，删除会中途停住、光标离开输入框。
+        var lastTextEditMs by remember { mutableStateOf(0L) }
+        var lastMaxScrollValue by remember { mutableStateOf(scrollState.maxValue) }
 
         // ── 收起输入法后恢复原滚动位置 ──
         // 键盘开始弹出时记录当前滚动值；键盘完全收起后，若期间用户没有主动拖拽滚动，
@@ -505,18 +510,31 @@ fun NoteEditor(
             }
         }
 
-        // 用户拖拽检测 → 清除焦点
+        // 用户拖拽检测 → 清除焦点（只有确实是用户主动拖动时才清）
         LaunchedEffect(Unit) {
-            snapshotFlow { scrollState.value }
-                .collect { current ->
+            snapshotFlow { scrollState.value to scrollState.maxValue }
+                .collect { (current, maxValue) ->
                     val delta = current - lastScrollValue
-                    if ((delta > 8 || delta < -8) && !isProgrammaticScroll) {
+                    val now = System.currentTimeMillis()
+                    // 内容高度变化（删除后变短被夹回、键盘弹起改变可视高度）不是用户拖动。
+                    val contentResized = maxValue != lastMaxScrollValue
+                    // 刚输入/删除过的 500ms 内不清理：此时布局收缩与光标跟随的滚动会和输入交织，
+                    // 一旦清焦点，长按删除就会中断、光标离开输入框。
+                    val recentlyEditing = now - lastTextEditMs < 500
+                    if ((delta > 8 || delta < -8) && !isProgrammaticScroll &&
+                        !contentResized && !recentlyEditing
+                    ) {
                         userScrolledWhileIme = true
-                        if (System.currentTimeMillis() - lastFocusTimeMs > 500) {
+                        if (now - lastFocusTimeMs > 500) {
+                            Log.d(
+                                "NoteEditorDebug",
+                                "clearFocus by drag: delta=$delta maxValue=$maxValue"
+                            )
                             focusManager.clearFocus()
                         }
                     }
                     lastScrollValue = current
+                    lastMaxScrollValue = maxValue
                 }
         }
 
@@ -553,6 +571,7 @@ fun NoteEditor(
                     value = textFieldValue,
                     onValueChange = { newTfv ->
                         if (newTfv.text != undoManager.value) {
+                            lastTextEditMs = System.currentTimeMillis()
                             undoManager.update(newTfv.text)
                             onValueChange(undoManager.value)
                         }

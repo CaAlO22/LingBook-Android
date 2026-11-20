@@ -24,6 +24,11 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.isActive
 
 /**
  * A flat outlined text field for settings screens.
@@ -32,7 +37,7 @@ import androidx.compose.ui.unit.dp
  * container so its background matches the page, avoiding the
  * "row color different from surroundings" effect in a stacked form.
  */
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, FlowPreview::class)
 @Composable
 fun SettingsOutlinedTextField(
     value: String,
@@ -72,8 +77,21 @@ fun SettingsOutlinedTextField(
                 bringIntoViewRequester.bringIntoView()
             }
         }
-        align()
-        snapshotFlow { dialogBodyHeight.value }.collect { align() }
+        // bringIntoView 会被竞争性滚动请求取消并抛 CancellationException，
+        // 不接住的话跟随协程第一次被取消后就死掉、不再恢复。
+        suspend fun alignSafely() {
+            try {
+                align()
+            } catch (e: CancellationException) {
+                if (!currentCoroutineContext().isActive) throw e
+            }
+        }
+        alignSafely()
+        // 视口稳定后才响应：忽略布局频率的扩缩脉冲，
+        // 避免每次脉冲都启动滚动动画、又在动画中途被夹断。
+        snapshotFlow { dialogBodyHeight.value }
+            .debounce(120)
+            .collect { alignSafely() }
     }
 
     OutlinedTextField(

@@ -26,9 +26,8 @@ class ToolRegistryTest {
     private val registry = ToolRegistry(repo, llmService, settingsRepo, summaryDao, indexService, conversationImageStore)
 
     @Test
-    fun getAllTools_returns23Tools() {
-        val tools = registry.getAllTools()
-        assertEquals(23, tools.size)
+    fun getAllTools_returns27Tools() {
+        assertEquals(27, registry.getAllTools().size)
     }
 
     @Test
@@ -36,6 +35,10 @@ class ToolRegistryTest {
         assertNotNull(registry.getTool("list_subjects"))
         assertNotNull(registry.getTool("create_page"))
         assertNotNull(registry.getTool("summarize_all_notes"))
+        assertNotNull(registry.getTool("list_todos"))
+        assertNotNull(registry.getTool("add_todo"))
+        assertNotNull(registry.getTool("update_todo"))
+        assertNotNull(registry.getTool("delete_todo"))
     }
 
     @Test
@@ -44,18 +47,27 @@ class ToolRegistryTest {
     }
 
     @Test
-    fun executeTool_unknownReturnsError() = runTest {
+    fun executeTool_unknownReturnsStructuredError() = runTest {
         val result = registry.executeTool("nonexistent", JsonObject())
-        assertTrue(result.startsWith("Error: Unknown tool"))
+        assertTrue(result.startsWith("Error:"))
+        assertTrue(result.contains("\"code\":\"UNKNOWN_TOOL\""))
+        assertTrue(result.contains("nonexistent"))
     }
 
     @Test
     fun toOpenAITools_returnsJsonArray() {
         val arr = registry.toOpenAITools()
-        assertEquals(23, arr.size())
+        assertEquals(27, arr.size())
         val first = arr[0].asJsonObject
         assertEquals("function", first.get("type").asString)
         assertNotNull(first.getAsJsonObject("function").get("name"))
+    }
+
+    @Test
+    fun todoToolsAreInSingleNoteScope() {
+        assertTrue(ScopedToolRegistry.SINGLE_NOTE_TOOLS.containsAll(
+            setOf("list_todos", "add_todo", "update_todo", "delete_todo")
+        ))
     }
 
     @Test

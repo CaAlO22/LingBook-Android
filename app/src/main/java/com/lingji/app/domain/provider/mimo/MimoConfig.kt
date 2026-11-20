@@ -33,8 +33,14 @@ object MimoConfig : ProviderConfig {
             supportsVision = true
         )
     )
-    /** MiMo 只支持 thinking.type 开关，没有强度档位。 */
+    /** MiMo 只支持 thinking.type 开关，没有强度档位；默认开启深度思考。 */
     override val defaultThinkingLevels = listOf(ThinkingLevel.OFF, ThinkingLevel.ON)
+    override val defaultThinkingLevel = ThinkingLevel.ON
+    /**
+     * MiMo 在多轮工具调用中依赖完整的历史 reasoning_content；
+     * 开启思考时由各 Agent 循环原样回传，关闭思考时仍剥离。
+     */
+    override val requiresReasoningHistory = true
     override val authHeaderName = "api-key"
     override val authHeaderPrefix = ""
 }

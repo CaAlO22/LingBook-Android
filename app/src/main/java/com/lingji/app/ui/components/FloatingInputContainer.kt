@@ -11,7 +11,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
@@ -36,6 +40,9 @@ import dev.chrisbanes.haze.hazeChild
  * @param bottomOffset 悬浮栏与屏幕底部（或键盘顶部）的额外间距。
  * @param horizontalMargin 悬浮栏左右边距。
  * @param barShape 悬浮栏圆角形状，需与外层玻璃容器保持一致。
+ * @param followIme 键盘弹出时悬浮栏是否跟随上浮。默认跟随；当页面里另有文本输入框
+ *   （如笔记正文、标题）获得焦点时，调用方应传 `false`：悬浮栏留在屏幕底部被键盘遮住，
+ *   而不是抬到键盘上方压住用户正在编辑的文字。
  * @param floatingBar 悬浮输入 UI。
  * @param content 出现在悬浮栏后方的可滚动页面内容。
  */
@@ -45,6 +52,7 @@ fun FloatingInputContainer(
     bottomOffset: Dp = 16.dp,
     horizontalMargin: Dp = 24.dp,
     barShape: Shape = RoundedCornerShape(28.dp),
+    followIme: Boolean = true,
     floatingBar: @Composable () -> Unit,
     content: @Composable () -> Unit
 ) {
@@ -56,7 +64,18 @@ fun FloatingInputContainer(
     // 页面已全屏绘制到系统导航栏之下（沉浸式），悬浮栏需要主动让开系统手势区/键盘：
     // 键盘弹出时 ime inset 已包含导航栏高度，直接用它；否则让出导航栏高度。
     // 两者都取系统原值，才能与键盘/导航栏动画逐帧同步。
-    val systemBottomPx = if (imeBottomPx > 0) imeBottomPx else navigationBottomPx
+    //
+    // 不跟随键盘时不复用 navigationBars 的当前值：键盘显示期间部分系统会把
+    // navigationBars inset 归零，那样悬浮栏会贴到屏幕最底边。这里记住键盘未弹出
+    // 时的导航栏高度作为底距，保证悬浮栏稳定停在原位（被键盘遮住即可，无需可见）。
+    var navigationBottomWhenNoIme by remember { mutableIntStateOf(navigationBottomPx) }
+    LaunchedEffect(navigationBottomPx) {
+        if (navigationBottomPx > 0) navigationBottomWhenNoIme = navigationBottomPx
+    }
+    val systemBottomPx = when {
+        followIme && imeBottomPx > 0 -> imeBottomPx
+        else -> navigationBottomWhenNoIme
+    }
     val systemBottomPadding = with(density) { systemBottomPx.toDp() }
 
     // HazeState 连接模糊源（页面内容）与模糊目标（悬浮栏）。

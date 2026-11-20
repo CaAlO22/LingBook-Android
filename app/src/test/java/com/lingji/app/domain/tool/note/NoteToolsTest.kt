@@ -5,6 +5,7 @@ import com.lingji.app.data.repository.SubjectRepository
 import com.lingji.app.domain.model.NotebookPage
 import com.lingji.app.domain.model.Subject
 import com.lingji.app.domain.model.SubjectType
+import com.lingji.app.domain.model.TodoItem
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -34,6 +35,14 @@ class NoteToolsTest {
         aggregatedNote = "# 碎片\n\n内容A内容A"
     )
 
+    private val todoSubject = Subject(
+        id = "s3", title = "每日委托", type = SubjectType.TODO,
+        todoItems = listOf(
+            TodoItem(id = "t1", content = "买牛奶", isDone = false),
+            TodoItem(id = "t2", content = "交作业", isDone = true)
+        )
+    )
+
     @Test
     fun create_returnsFourTools() {
         assertEquals(4, tools.size)
@@ -46,6 +55,15 @@ class NoteToolsTest {
         val result = toolMap["get_aggregated_note"]!!.execute(params)
         // NOTEBOOK 类型应返回页面拼接内容，而非 aggregatedNote 欢迎语
         assertTrue(result.contains("代数内容"))
+    }
+
+    @Test
+    fun get_aggregated_note_todo_returnsCheckboxList() = runTest {
+        coEvery { repo.getSubjectByIdOnce("s3") } returns todoSubject
+        val params = JsonObject().apply { addProperty("subject_id", "s3") }
+        val result = toolMap["get_aggregated_note"]!!.execute(params)
+        assertTrue(result.contains("- [ ] 买牛奶"))
+        assertTrue(result.contains("- [x] 交作业"))
     }
 
     @Test
@@ -91,7 +109,7 @@ class NoteToolsTest {
     }
 
     @Test
-    fun edit_replace_notebookPage_replacesSecondOccurrence() = runTest {
+    fun edit_replace_notebookPage_byIndex_replacesSecondOccurrence() = runTest {
         coEvery { repo.getSubjectByIdOnce("s1") } returns testSubject
         var capturedContent: String? = null
         coEvery { repo.updatePage("s1", any()) } answers {
@@ -100,7 +118,7 @@ class NoteToolsTest {
         }
         val params = JsonObject().apply {
             addProperty("subject_id", "s1")
-            addProperty("page_id", "p2")
+            addProperty("page_index", 1)
             addProperty("find", "abc")
             addProperty("occurrence", 2)
             addProperty("replace", "xyz")
@@ -152,5 +170,26 @@ class NoteToolsTest {
         val result = toolMap["edit_replace"]!!.execute(params)
         assertTrue(result.startsWith("Error:"))
         assertTrue(result.contains("未找到"))
+    }
+
+    /** P1-3：错误文案只能指向真实存在的工具，且带机器可判别字段。 */
+    @Test
+    fun edit_replace_todo_returnsStructuredErrorPointingToRealTodoTools() = runTest {
+        coEvery { repo.getSubjectByIdOnce("s3") } returns todoSubject
+        val params = JsonObject().apply {
+            addProperty("subject_id", "s3")
+            addProperty("find", "买牛奶")
+            addProperty("occurrence", 1)
+            addProperty("replace", "买酸奶")
+        }
+        val result = toolMap["edit_replace"]!!.execute(params)
+        assertTrue(result.startsWith("Error:"))
+        assertTrue(result.contains("\"code\":\"UNSUPPORTED_FOR_SUBJECT_TYPE\""))
+        assertTrue(result.contains("\"subject_type\":\"TODO\""))
+        assertTrue(result.contains("add_todo"))
+        assertTrue(result.contains("update_todo"))
+        assertTrue(result.contains("delete_todo"))
+        assertTrue(result.contains("list_todos"))
+        coVerify(exactly = 0) { repo.updateAggregatedNote(any(), any()) }
     }
 }

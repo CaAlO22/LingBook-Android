@@ -1,0 +1,249 @@
+package com.lingji.app.domain.tool.todo
+
+import com.google.gson.JsonObject
+import com.lingji.app.data.repository.SubjectRepository
+import com.lingji.app.domain.model.Subject
+import com.lingji.app.domain.model.SubjectType
+import com.lingji.app.domain.model.TodoItem
+import com.lingji.app.domain.tool.Tool
+import com.lingji.app.domain.tool.ToolErrorCode
+import com.lingji.app.domain.tool.buildJsonArray
+import com.lingji.app.domain.tool.buildJsonObject
+import com.lingji.app.domain.tool.missingParameter
+import com.lingji.app.domain.tool.paramBoolean
+import com.lingji.app.domain.tool.paramInt
+import com.lingji.app.domain.tool.paramString
+import com.lingji.app.domain.tool.subjectNotFound
+import com.lingji.app.domain.tool.toolError
+import com.lingji.app.domain.tool.unsupportedForSubjectType
+
+/**
+ * 待办项级工具。TODO 类型笔记的存储模型是独立的 todo_items 表，
+ * 既不是 fragments 也不是 pages —— 读写必须统一走这里。
+ *
+ * 待办项提供三种定位方式（三选一）：
+ * - todo_id：精确 id（list_todos 返回的 id）
+ * - todo_index：list_todos 返回的序号（从 0 开始），整数对 LLM 最稳定
+ * - todo_text：按正文文本匹配，重名时返回候选列表而不是猜一个
+ */
+object TodoTools {
+
+    fun create(repo: SubjectRepository): List<Tool> = listOf(
+        ListTodos(repo),
+        AddTodo(repo),
+        UpdateTodo(repo),
+        DeleteTodo(repo)
+    )
+
+    private sealed interface Lookup {
+        data class Ok(val subject: Subject) : Lookup
+        data class Fail(val error: String) : Lookup
+    }
+
+    private suspend fun requireTodoSubject(repo: SubjectRepository, params: JsonObject): Lookup {
+        val id = params.paramString("subject_id") ?: return Lookup.Fail(missingParameter("subject_id"))
+        val subject = repo.getSubjectByIdOnce(id) ?: return Lookup.Fail(subjectNotFound(id))
+        if (subject.type != SubjectType.TODO) {
+            return Lookup.Fail(
+                unsupportedForSubjectType(subject, "待办项操作（list_todos / add_todo / update_todo / delete_todo）", listOf(SubjectType.TODO))
+            )
+        }
+        return Lookup.Ok(subject)
+    }
+
+    private sealed interface TodoLookup {
+        data class Ok(val item: TodoItem, val index: Int) : TodoLookup
+        data class Fail(val error: String) : TodoLookup
+    }
+
+    /** 按 todo_id > todo_index > todo_text 的优先级定位；文本歧义时返回候选。 */
+    private fun locateTodo(subject: Subject, params: JsonObject): TodoLookup {
+        val items = subject.todoItems
+        val id = params.paramString("todo_id")
+        val index = params.paramInt("todo_index")
+        val text = params.paramString("todo_text")
+
+        if (id == null && index == null && text == null) {
+            return TodoLookup.Fail(missingParameter("todo_id", "todo_index", "todo_text"))
+        }
+        val candidates: List<TodoItem> = when {
+            id != null -> items.filter { it.id == id }
+            index != null -> {
+                if (index < 0 || index >= items.size) {
+                    return TodoLookup.Fail(
+                        toolError(
+                            ToolErrorCode.OBJECT_NOT_FOUND,
+                            "待办项序号 $index 超出范围（当前共 ${items.size} 条，序号从 0 开始）",
+                            "object_type" to "todo",
+                            "suggestion" to "调用 list_todos 重新获取序号"
+                        )
+                    )
+                }
+                listOf(items[index])
+            }
+            else -> {
+                val exact = items.filter { it.content == text }
+                if (exact.isNotEmpty()) exact
+                else items.filter { it.content.contains(text!!, ignoreCase = true) }
+            }
+        }
+        return when {
+            candidates.isEmpty() -> TodoLookup.Fail(
+                objectNotFoundWithHint(subject, id, index, text)
+            )
+            candidates.size > 1 -> TodoLookup.Fail(
+                toolError(
+                    ToolErrorCode.AMBIGUOUS_MATCH,
+                    "匹配到 ${candidates.size} 条待办项，请改用 todo_id 或 todo_index 精确指定",
+                    "candidates" to buildJsonArray {
+                        candidates.forEach { item ->
+                            +buildJsonObject {
+                                "index" to items.indexOf(item)
+                                "id" to item.id
+                                "content" to item.content
+                                "is_done" to item.isDone
+                            }
+                        }
+                    },
+                    "suggestion" to "从 candidates 中选定一条，用其 id 或 index 重新调用"
+                )
+            )
+            else -> {
+                val item = candidates.first()
+                TodoLookup.Ok(item, items.indexOf(item))
+            }
+        }
+    }
+
+    private fun objectNotFoundWithHint(subject: Subject, id: String?, index: Int?, text: String?): String = toolError(
+        ToolErrorCode.OBJECT_NOT_FOUND,
+        "待办项不存在：${id ?: text ?: "index=$index"}",
+        "object_type" to "todo",
+        "subject_id" to subject.id,
+        "candidates" to buildJsonArray {},
+        "suggestion" to "调用 list_todos 查看该待办笔记的全部条目"
+    )
+
+    private class ListTodos(private val repo: SubjectRepository) : Tool {
+        override val name = "list_todos"
+        override val description = "列出待办（TODO）笔记中的全部待办项，返回 index（从 0 开始的序号，可直接用于 update_todo / delete_todo）、id、content、is_done。仅 TODO 类型笔记可用。"
+        override val parameters = buildJsonObject {
+            "type" to "object"
+            "properties" to buildJsonObject {
+                "subject_id" to buildJsonObject { "type" to "string"; "description" to "待办笔记 ID（也可用 subject_title 按标题定位）" }
+            }
+            "required" to buildJsonArray { +"subject_id" }
+        }
+        override suspend fun execute(params: JsonObject): String = when (val lookup = requireTodoSubject(repo, params)) {
+            is Lookup.Fail -> lookup.error
+            is Lookup.Ok -> buildJsonArray {
+                lookup.subject.todoItems.forEachIndexed { index, item ->
+                    +buildJsonObject {
+                        "index" to index
+                        "id" to item.id
+                        "content" to item.content
+                        "is_done" to item.isDone
+                    }
+                }
+            }.toString()
+        }
+    }
+
+    private class AddTodo(private val repo: SubjectRepository) : Tool {
+        override val name = "add_todo"
+        override val description = "向待办（TODO）笔记末尾新增一条待办项，返回新条目的 id。仅 TODO 类型笔记可用；内容会立即出现在 get_aggregated_note 中。"
+        override val parameters = buildJsonObject {
+            "type" to "object"
+            "properties" to buildJsonObject {
+                "subject_id" to buildJsonObject { "type" to "string"; "description" to "待办笔记 ID（也可用 subject_title 按标题定位）" }
+                "content" to buildJsonObject { "type" to "string"; "description" to "待办项正文" }
+                "done" to buildJsonObject { "type" to "boolean"; "description" to "是否已完成，默认 false" }
+            }
+            "required" to buildJsonArray { +"subject_id"; +"content" }
+        }
+        override suspend fun execute(params: JsonObject): String {
+            val lookup = requireTodoSubject(repo, params)
+            if (lookup is Lookup.Fail) return lookup.error
+            val content = params.paramString("content") ?: return missingParameter("content")
+            val done = params.paramBoolean("done") ?: false
+            val item = repo.addTodoItem((lookup as Lookup.Ok).subject.id, content)
+            if (done) repo.setTodoItemDone(item.id, true)
+            return buildJsonObject {
+                "id" to item.id
+                "content" to item.content
+                "is_done" to done
+                "suggestion" to "如需修改或勾选，调用 update_todo 并传 todo_id 或 todo_index"
+            }.toString()
+        }
+    }
+
+    private class UpdateTodo(private val repo: SubjectRepository) : Tool {
+        override val name = "update_todo"
+        override val description = "修改待办笔记中某条待办项的正文和/或完成状态（勾选、取消勾选、改文字）。用 todo_id / todo_index / todo_text 三选一定位。仅 TODO 类型笔记可用。"
+        override val parameters = buildJsonObject {
+            "type" to "object"
+            "properties" to buildJsonObject {
+                "subject_id" to buildJsonObject { "type" to "string"; "description" to "待办笔记 ID（也可用 subject_title 按标题定位）" }
+                "todo_id" to buildJsonObject { "type" to "string"; "description" to "待办项 ID（三选一）" }
+                "todo_index" to buildJsonObject { "type" to "integer"; "description" to "待办项序号，从 0 开始，取自 list_todos（三选一）" }
+                "todo_text" to buildJsonObject { "type" to "string"; "description" to "按正文文本定位（三选一），精确匹配优先，其次包含匹配" }
+                "content" to buildJsonObject { "type" to "string"; "description" to "新的待办项正文；不传表示不改文字" }
+                "done" to buildJsonObject { "type" to "boolean"; "description" to "新的完成状态；不传表示不改状态" }
+            }
+            "required" to buildJsonArray { +"subject_id" }
+        }
+        override suspend fun execute(params: JsonObject): String {
+            val lookup = requireTodoSubject(repo, params)
+            if (lookup is Lookup.Fail) return lookup.error
+            val newContent = params.paramString("content")
+            val newDone = params.paramBoolean("done")
+            if (newContent == null && newDone == null) {
+                return toolError(
+                    ToolErrorCode.MISSING_PARAMETER,
+                    "update_todo 至少需要 content 或 done 之一",
+                    "suggestion" to "传入 content 改文字、done 勾选、或两者都传"
+                )
+            }
+            val located = locateTodo((lookup as Lookup.Ok).subject, params)
+            if (located is TodoLookup.Fail) return located.error
+            val item = (located as TodoLookup.Ok).item
+            if (newContent != null) repo.updateTodoItemContent(item.id, newContent)
+            if (newDone != null) repo.setTodoItemDone(item.id, newDone)
+            return buildJsonObject {
+                "success" to true
+                "id" to item.id
+                "index" to located.index
+                "content" to (newContent ?: item.content)
+                "is_done" to (newDone ?: item.isDone)
+            }.toString()
+        }
+    }
+
+    private class DeleteTodo(private val repo: SubjectRepository) : Tool {
+        override val name = "delete_todo"
+        override val description = "删除待办笔记中的一条待办项。用 todo_id / todo_index / todo_text 三选一定位。仅 TODO 类型笔记可用。"
+        override val parameters = buildJsonObject {
+            "type" to "object"
+            "properties" to buildJsonObject {
+                "subject_id" to buildJsonObject { "type" to "string"; "description" to "待办笔记 ID（也可用 subject_title 按标题定位）" }
+                "todo_id" to buildJsonObject { "type" to "string"; "description" to "待办项 ID（三选一）" }
+                "todo_index" to buildJsonObject { "type" to "integer"; "description" to "待办项序号，从 0 开始（三选一）" }
+                "todo_text" to buildJsonObject { "type" to "string"; "description" to "按正文文本定位（三选一）" }
+            }
+            "required" to buildJsonArray { +"subject_id" }
+        }
+        override suspend fun execute(params: JsonObject): String {
+            val lookup = requireTodoSubject(repo, params)
+            if (lookup is Lookup.Fail) return lookup.error
+            val located = locateTodo((lookup as Lookup.Ok).subject, params)
+            if (located is TodoLookup.Fail) return located.error
+            val ok = located as TodoLookup.Ok
+            repo.deleteTodoItem(ok.item.id)
+            return buildJsonObject {
+                "success" to true
+                "deleted_id" to ok.item.id
+                "deleted_content" to ok.item.content
+            }.toString()
+        }
+    }
+}

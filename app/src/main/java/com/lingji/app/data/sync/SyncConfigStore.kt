@@ -1,6 +1,7 @@
 package com.lingji.app.data.sync
 
 import android.content.Context
+import android.provider.Settings
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.UUID
 import javax.inject.Inject
@@ -34,7 +35,7 @@ data class SyncConfig(
  * 勾选「云同步访问令牌」后随同步下发。
  */
 @Singleton
-class SyncConfigStore @Inject constructor(@ApplicationContext context: Context) {
+class SyncConfigStore @Inject constructor(@ApplicationContext private val context: Context) {
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
@@ -66,15 +67,64 @@ class SyncConfigStore @Inject constructor(@ApplicationContext context: Context) 
         get() = prefs.getString(KEY_TOKEN, "") ?: ""
         set(value) = prefs.edit().putString(KEY_TOKEN, value.trim()).apply()
 
-    /** 本设备唯一标识，首次访问时生成并持久化。 */
-    val deviceId: String
+    /**
+     * 本机唯一标识（云同步据此区分设备）。
+     *
+     * 首次访问（含 App 启动时的 [ensureDeviceId]）若发现为空，会按设备标识派生一个并落盘；
+     * 用户可以在设置页改成其他设备的值，让多台设备共用同一份灵记数据。
+     */
+    var deviceId: String
         get() {
-            val existing = prefs.getString(KEY_DEVICE_ID, null)
-            if (!existing.isNullOrBlank()) return existing
-            val created = UUID.randomUUID().toString()
-            prefs.edit().putString(KEY_DEVICE_ID, created).apply()
-            return created
+            val existing = prefs.getString(KEY_DEVICE_ID, null)?.trim().orEmpty()
+            if (existing.isNotEmpty()) return existing
+            return persistDerivedDeviceId()
         }
+        set(value) {
+            val normalized = DeviceIdFormat.normalize(value)
+            if (!DeviceIdFormat.isValid(normalized)) return
+            prefs.edit()
+                .putString(KEY_DEVICE_ID, normalized)
+                // 标记为「用户已确认过的值」，避免下次启动被升级逻辑覆盖
+                .putBoolean(KEY_DEVICE_ID_UPGRADED, true)
+                .apply()
+        }
+
+    /**
+     * 启动时调用：确保设备 ID 已存在并持久化。
+     *
+     * 旧版本存的是随机 UUID（不以 [DeviceIdFormat.PREFIX] 开头），升级后首次启动会
+     * 按设备标识重新派生一次，让 ID 与设备绑定；此后无论用户改成什么值都不再覆盖。
+     */
+    fun ensureDeviceId(): String {
+        val existing = prefs.getString(KEY_DEVICE_ID, null)?.trim().orEmpty()
+        if (prefs.getBoolean(KEY_DEVICE_ID_UPGRADED, false) && existing.isNotEmpty()) return existing
+        return persistDerivedDeviceId()
+    }
+
+    /** 丢弃当前 ID，按本机标识重新派生一个（设置页「重新生成」用）。 */
+    fun regenerateDeviceId(): String = persistDerivedDeviceId()
+
+    private fun persistDerivedDeviceId(): String {
+        val created = DeviceIdFormat.derive(deviceSeed())
+        prefs.edit()
+            .putString(KEY_DEVICE_ID, created)
+            .putBoolean(KEY_DEVICE_ID_UPGRADED, true)
+            .apply()
+        return created
+    }
+
+    /**
+     * 派生种子：优先使用系统分配的 ANDROID_ID（同一设备重装应用后不变），
+     * 取不到时退化为随机值 —— 此时 ID 仍唯一，只是不再与设备绑定。
+     * 拼接包名，避免同一台设备上不同应用派生出相同 ID。
+     */
+    private fun deviceSeed(): String {
+        val androidId = runCatching {
+            Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+        }.getOrNull()
+        val raw = androidId?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
+        return "$raw|${context.packageName}"
+    }
 
     /** 服务端同步游标：已确认同步到的 rev。 */
     var lastRev: Long
@@ -148,6 +198,7 @@ class SyncConfigStore @Inject constructor(@ApplicationContext context: Context) 
         private const val KEY_PORT = "port"
         private const val KEY_TOKEN = "token"
         private const val KEY_DEVICE_ID = "device_id"
+        private const val KEY_DEVICE_ID_UPGRADED = "device_id_upgraded"
         private const val KEY_LAST_REV = "last_rev"
 
         private const val KEY_WATERMARK_LEGACY = "watermark"

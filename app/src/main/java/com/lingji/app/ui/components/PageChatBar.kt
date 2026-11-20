@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.res.stringResource
@@ -51,6 +52,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lingji.app.R
+import com.lingji.app.util.rememberHasHardwareKeyboard
 
 enum class ChatMode { ASK, AGENT, FRAGMENT }
 enum class ChatScope { PAGE, NOTE }
@@ -70,7 +72,9 @@ fun PageChatBar(
     enableScopeToggle: Boolean = false,
     initialScope: ChatScope = ChatScope.PAGE,
     onCollapsedTopYChange: ((Float) -> Unit)? = null,
-    onBarLayoutChange: ((Float, Float) -> Unit)? = null
+    onBarLayoutChange: ((Float, Float) -> Unit)? = null,
+    /** 输入框自身焦点变化回调：宿主据此决定悬浮栏是否跟随键盘上浮。 */
+    onInputFocusChange: ((Boolean) -> Unit)? = null
 ) {
     var question by remember { mutableStateOf(TextFieldValue("")) }
     var answerExpanded by remember { mutableStateOf(true) }
@@ -78,12 +82,14 @@ fun PageChatBar(
     var chatScope by remember { mutableStateOf(initialScope) }
     val hasHistory = conversationHistory.isNotEmpty() || currentAnswer.isNotBlank() || isLoading
 
-    // 请求进行中会禁用输入框，而禁用会清掉焦点；请求结束后主动拿回焦点，
-    // 否则用户发送完必须重新点一下输入框才能继续输入。
+    // 请求进行中会禁用输入框，而禁用会清掉焦点；请求结束后是否主动拿回焦点取决于输入设备：
+    // - 接着物理键盘：还回去，用户可以直接接着敲字，软键盘也不会被叫起来；
+    // - 纯触摸设备：不还焦点，否则软键盘会自己弹起，把刚生成的回答挡住。
+    val hasHardwareKeyboard = rememberHasHardwareKeyboard()
     val inputFocusRequester = remember { FocusRequester() }
     var wasLoading by remember { mutableStateOf(false) }
     LaunchedEffect(isLoading) {
-        if (wasLoading && !isLoading) {
+        if (wasLoading && !isLoading && hasHardwareKeyboard) {
             runCatching { inputFocusRequester.requestFocus() }
         }
         wasLoading = isLoading
@@ -345,6 +351,8 @@ fun PageChatBar(
                         .weight(1f)
                         .padding(horizontal = 12.dp, vertical = 10.dp)
                         .focusRequester(inputFocusRequester)
+                        // 把自身焦点状态报给宿主：悬浮栏据此判断是否跟随键盘上浮。
+                        .onFocusChanged { state -> onInputFocusChange?.invoke(state.isFocused) }
                         // 方向键在 Preview 阶段被接管，避免焦点跳到相邻按钮。
                         .arrowKeyCursorBehavior(question, { question = it }) { textLayout }
                         .enterSendBehavior(submitQuestion),

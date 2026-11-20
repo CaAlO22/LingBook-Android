@@ -71,7 +71,9 @@ fun ModelConfigEditorDialog(
                 ?: startConfig.defaultModelId
         )
     }
-    var thinkingLevel by remember { mutableStateOf(initial?.thinkingLevel ?: ThinkingLevel.OFF) }
+    var thinkingLevel by remember {
+        mutableStateOf(initial?.thinkingLevel ?: ProviderRegistry.defaultThinkingLevel(startProvider))
+    }
     var providerExpanded by remember { mutableStateOf(false) }
 
     val config = ProviderRegistry.config(provider)
@@ -81,7 +83,9 @@ fun ModelConfigEditorDialog(
     // 切换供应商 / 模型后，若原档位不再受支持则回落到该模型的首个可用档位
     LaunchedEffect(thinkingLevels) {
         if (thinkingLevel !in thinkingLevels) {
-            thinkingLevel = thinkingLevels.firstOrNull() ?: ThinkingLevel.OFF
+            val preferred = ProviderRegistry.defaultThinkingLevel(provider)
+            thinkingLevel = if (preferred in thinkingLevels) preferred
+            else thinkingLevels.firstOrNull() ?: ThinkingLevel.OFF
         }
     }
 
@@ -135,10 +139,8 @@ fun ModelConfigEditorDialog(
                                     if (alias.isBlank() || alias == previousName) {
                                         alias = target.defaultModelId
                                     }
-                                    if (thinkingLevel !in target.defaultThinkingLevels) {
-                                        thinkingLevel = target.defaultThinkingLevels.firstOrNull()
-                                            ?: ThinkingLevel.OFF
-                                    }
+                                    // 换供应商时重置为该供应商的默认档位（MiMo 默认开启深度思考）
+                                    thinkingLevel = ProviderRegistry.defaultThinkingLevel(entry)
                                     providerExpanded = false
                                 }
                             )

@@ -56,14 +56,16 @@ class SubjectToolsTest {
         val result = toolMap["get_subject"]!!.execute(params)
         assertTrue(result.contains("\"id\":\"s1\""))
         assertTrue(result.contains("\"title\":\"Math\""))
+        assertTrue(result.contains("\"todo_count\":0"))
     }
 
     @Test
-    fun get_subject_notFound_returnsError() = runTest {
+    fun get_subject_notFound_returnsStructuredError() = runTest {
         coEvery { repo.getSubjectByIdOnce("nope") } returns null
         val params = JsonObject().apply { addProperty("subject_id", "nope") }
         val result = toolMap["get_subject"]!!.execute(params)
         assertTrue(result.startsWith("Error:"))
+        assertTrue(result.contains("\"code\":\"SUBJECT_NOT_FOUND\""))
     }
 
     @Test
@@ -79,8 +81,34 @@ class SubjectToolsTest {
         assertTrue(result.contains("\"title\":\"New Note\""))
     }
 
+    /** Agent 之前只能建 NOTEBOOK / FRAGMENT，无法创建待办笔记。 */
+    @Test
+    fun create_subject_todo_createsTodoType() = runTest {
+        var captured: Subject? = null
+        coEvery { repo.insert(any()) } answers { captured = firstArg(); Unit }
+        val params = JsonObject().apply {
+            addProperty("title", "每日委托")
+            addProperty("type", "todo")
+        }
+        val result = toolMap["create_subject"]!!.execute(params)
+        assertTrue(result.contains("\"type\":\"TODO\""))
+        assertEquals(SubjectType.TODO, captured?.type)
+    }
+
+    @Test
+    fun create_subject_unknownType_returnsInvalidParameter() = runTest {
+        val params = JsonObject().apply {
+            addProperty("title", "x")
+            addProperty("type", "KANBAN")
+        }
+        val result = toolMap["create_subject"]!!.execute(params)
+        assertTrue(result.contains("\"code\":\"INVALID_PARAMETER\""))
+        coVerify(exactly = 0) { repo.insert(any()) }
+    }
+
     @Test
     fun delete_subject_callsRepoDelete() = runTest {
+        coEvery { repo.getSubjectByIdOnce("s1") } returns Subject(id = "s1", title = "Math", type = SubjectType.NOTEBOOK)
         coEvery { repo.delete("s1") } returns Unit
         coEvery { summaryDao.deleteBySubjectId("s1") } returns Unit
         val params = JsonObject().apply { addProperty("subject_id", "s1") }
@@ -91,7 +119,17 @@ class SubjectToolsTest {
     }
 
     @Test
+    fun delete_subject_missingId_doesNotDelete() = runTest {
+        coEvery { repo.getSubjectByIdOnce("gone") } returns null
+        val params = JsonObject().apply { addProperty("subject_id", "gone") }
+        val result = toolMap["delete_subject"]!!.execute(params)
+        assertTrue(result.contains("\"code\":\"SUBJECT_NOT_FOUND\""))
+        coVerify(exactly = 0) { repo.delete(any()) }
+    }
+
+    @Test
     fun rename_subject_callsRepoRename() = runTest {
+        coEvery { repo.getSubjectByIdOnce("s1") } returns Subject(id = "s1", title = "Math", type = SubjectType.NOTEBOOK)
         coEvery { repo.rename("s1", "New Title") } returns Unit
         val params = JsonObject().apply {
             addProperty("subject_id", "s1")

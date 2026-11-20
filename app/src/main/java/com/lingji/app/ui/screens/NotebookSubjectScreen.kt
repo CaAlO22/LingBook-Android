@@ -188,6 +188,9 @@ fun NotebookSubjectScreen(
     var showMoveDialog by remember { mutableStateOf(false) }
     var chatAnswer by remember { mutableStateOf("") }
     var isChatLoading by remember { mutableStateOf(false) }
+    // AI 输入栏自己是否持有焦点。焦点落在笔记正文/标题（或其它输入框）里时，
+    // 悬浮栏不跟随键盘上浮，免得抬起来盖住正在编辑的文字。
+    var chatBarFocused by remember { mutableStateOf(false) }
     var chatHistory by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var deleteConfirmPage by remember { mutableStateOf<NotebookPage?>(null) }
     var showClearChatConfirm by remember { mutableStateOf(false) }
@@ -488,6 +491,9 @@ fun NotebookSubjectScreen(
                 FloatingInputContainer(
                     bottomOffset = 16.dp,
                     horizontalMargin = 24.dp,
+                    // 只有 AI 输入框自己拿着焦点时才跟随键盘上浮；焦点在笔记里时留在底部，
+                    // 让出屏幕高度给正在编辑的内容。
+                    followIme = chatBarFocused,
                     floatingBar = {
                         PageChatBar(
                         targetTitle = currentPage?.title?.takeIf { it.isNotBlank() }
@@ -564,6 +570,7 @@ fun NotebookSubjectScreen(
                             showClearChatConfirm = true
                         },
                         onCollapsedTopYChange = { debugBarTopY = it },
+                        onInputFocusChange = { chatBarFocused = it },
                         onBarLayoutChange = { top, height ->
                             debugBarTopY = top
                             debugBarHeight = height

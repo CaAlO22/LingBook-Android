@@ -9,8 +9,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
@@ -22,15 +24,19 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -42,11 +48,28 @@ import com.lingji.app.R
 /**
  * 弹窗正文滚动区的当前高度（px）。
  *
- * 弹出输入法 / 小窗适配时窗口被系统压缩，正文视口高度随之连续变化；
+ * 弹出输入法 / 小窗适配时正文视口随让出的键盘高度连续收缩；
  * 输入框据此在视口变化后重新滚动，保证聚焦的输入框最终完整可见。
  * 不在弹窗内时为 null。
  */
 val LocalDialogBodyHeight = staticCompositionLocalOf<State<Int>?> { null }
+
+/**
+ * Activity 窗口观测到的 ime 高度（px）。
+ *
+ * 部分 ROM 的弹窗窗口收不到 ime insets，由 Activity 根节点调用 [ObserveImeHeight] 统一发布，
+ * 弹窗在 [LingjiDialog] 中消费它让出键盘高度。
+ */
+object ImeHeightState {
+    var bottomPx by mutableIntStateOf(0)
+}
+
+/** 置于 Activity 根节点：发布当前 ime 高度供弹窗消费。 */
+@Composable
+fun ObserveImeHeight() {
+    val bottom = WindowInsets.ime.getBottom(LocalDensity.current)
+    SideEffect { ImeHeightState.bottomPx = bottom }
+}
 
 /**
  * 灵记风格弹窗容器。
@@ -72,30 +95,33 @@ fun LingjiDialog(
         properties = properties
     ) {
         val bodyHeight = remember { mutableIntStateOf(0) }
-        // 弹窗是独立 Window：Compose 在 SDK >= 31 时不设置 softInputMode，
-        // 系统对 wrap_content 浮窗默认按 ADJUST_PAN 处理（弹窗整体被平移），
-        // 会与输入框获得焦点后的自动滚动互相拉扯；小窗中系统还会在弹出输入法时压缩窗口高度。
-        // 这里强制 ADJUST_RESIZE，让窗口随输入法 / 小窗适配正常收缩，保证输入框不被键盘遮挡；
-        // 收缩期间的滚动拉扯由 SettingsOutlinedTextField 的高度无关滚动目标解决，不在窗口策略上回避。
+        // 弹窗是独立 Window：部分 ROM 的 ADJUST_RESIZE 按“窗口与键盘是否重叠”压缩 wrap_content 浮窗——
+        // 压缩后底边离开键盘便放开压缩，回弹后又压到键盘上再被压缩，形成布局频率的扩缩极限环
+        // （小窗的任务窗口同走此路径），正文滚动被反复夹断、焦点框被推出视口。
+        // 故强制 ADJUST_NOTHING 让系统不介入弹窗窗口；键盘高度由卡片按 ime 高度让出，
+        // 窗口高度只随内容单调变化，反馈回路被切断。只在窗口创建时设置一次，避免重复下发属性引起 relayout 脉冲。
         val dialogWindow = LocalView.current.findDialogWindow()
-        SideEffect {
+        LaunchedEffect(dialogWindow) {
             if (dialogWindow != null) {
                 val attrs = dialogWindow.attributes
                 val adjust = attrs.softInputMode and WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST
-                if (adjust != WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE) {
+                if (adjust != WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING) {
                     dialogWindow.setSoftInputMode(
                         (attrs.softInputMode and
                             WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST.inv()) or
-                            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+                            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
                     )
                     // setSoftInputMode 只更新 Window 内部记录，需要重新下发属性才会应用到窗口。
                     dialogWindow.setAttributes(dialogWindow.attributes)
                 }
             }
         }
+        // 部分 ROM 的弹窗窗口收不到 ime insets，高度改由 Activity 根节点统一观测（ObserveImeHeight）。
+        val imeBottom = with(LocalDensity.current) { ImeHeightState.bottomPx.toDp() }
 
         Card(
             modifier = modifier
+                .padding(bottom = imeBottom)
                 .fillMaxWidth(0.92f)
                 .heightIn(max = 560.dp),
             shape = MaterialTheme.shapes.extraLarge,
@@ -123,7 +149,7 @@ fun LingjiDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             // fill = false：窗口（分屏 / 小窗 / 键盘弹出后）高度不足时，
-                            // 正文区收缩到剩余空间内滚动，避免弹窗超出窗口导致整窗被夹住来回跳动。
+                            // 正文区收缩到剩余空间内滚动，避免弹窗超出窗口。
                             .weight(1f, fill = false)
                             .heightIn(max = 380.dp)
                             .onSizeChanged { bodyHeight.intValue = it.height }

@@ -15,6 +15,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.lingji.app.ui.components.UpdateDialog
 import com.lingji.app.ui.navigation.LingjiNavigation
 import com.lingji.app.ui.theme.LingjiTheme
+import com.lingji.app.ui.components.ObserveImeHeight
 import com.lingji.app.ui.viewmodel.UpdateViewModel
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -35,6 +36,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
+                    ObserveImeHeight()
                     val updateViewModel: UpdateViewModel = hiltViewModel()
                     val updateInfo by updateViewModel.updateInfo.collectAsState()
                     val downloadProgress by updateViewModel.downloadProgress.collectAsState()

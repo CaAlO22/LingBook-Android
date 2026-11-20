@@ -141,6 +141,9 @@ fun FragmentSubjectScreen(
     var deadline by remember { mutableStateOf("") }
     var noteChatAnswer by remember { mutableStateOf("") }
     var isNoteChatLoading by remember { mutableStateOf(false) }
+    // AI 输入栏自己是否持有焦点。焦点在笔记正文里时，悬浮栏不跟随键盘上浮，
+    // 免得抬起来盖住正在编辑的文字。
+    var chatBarFocused by remember { mutableStateOf(false) }
     val noteChatHistory = uiState.noteChatHistories[liveSubject.id] ?: emptyList()
     var refineHint by remember { mutableStateOf("") }
     var showRefineDialog by remember { mutableStateOf(false) }
@@ -319,6 +322,10 @@ fun FragmentSubjectScreen(
                 FloatingInputContainer(
                     horizontalMargin = 24.dp,
                     bottomOffset = 16.dp,
+                    // 第 2 页（index 1）是「笔记 + AI 对话」：只有 AI 输入框自己拿着焦点才跟随键盘上浮，
+                    // 焦点在笔记正文里时留在底部让出屏幕高度。其它页（碎片输入胶囊、学习计划）
+                    // 的悬浮栏本身就是要输入的东西，保持跟随键盘的原有行为。
+                    followIme = pagerState.currentPage != 1 || chatBarFocused,
                     floatingBar = {
                         // 输入胶囊悬浮在内容之上，透明背景仅输入框可见，
                         // 从而呈现沉浸式悬浮观感而非整版底栏。
@@ -388,6 +395,7 @@ fun FragmentSubjectScreen(
                                     },
                                     modifier = Modifier.fillMaxWidth(),
                                     onCollapsedTopYChange = { debugBarTopY = it },
+                                    onInputFocusChange = { chatBarFocused = it },
                                     onBarLayoutChange = { top, height ->
                                         debugBarTopY = top
                                         debugBarHeight = height

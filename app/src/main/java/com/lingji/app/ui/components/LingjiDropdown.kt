@@ -105,12 +105,16 @@ fun DropdownMenu(
                 val gapX = with(density) { offset.x.roundToPx() }
                 val gapY = with(density) { offset.y.roundToPx() }
                 val margin = with(density) { 8.dp.roundToPx() }
-                // anchorBounds 与返回的 IntOffset 同处锚点所在窗口的坐标系（弹窗内即为弹窗窗口），
-                // 因此 x 直接取 anchorBounds.left 即可与锚点左边缘对齐；
-                // 再叠加窗口屏幕原点会在弹窗窗口（窗口原点不为 0）里把菜单整体右移一个原点宽度。
+                // 横纵坐标系并不对称（真机实测，勿按直觉"统一"）：
+                // 返回的 IntOffset.x 被系统当作屏幕坐标，而 anchorBounds 相对锚点所在窗口，
+                // 因此 x 必须叠加锚点窗口的屏幕原点；否则在对话框这类窗口原点不为 0 的场景里，
+                // 菜单会整体左偏一个窗口左边缘的距离。纵向则相反：params.y 与 anchorBounds
+                // 同处父窗口坐标系，补原点会让菜单整体下移一个窗口顶边。
+                // 实测（对话框窗口原点 x≈179px、锚点左边缘 245px）：不补原点时菜单左边缘停在 66px，
+                // 正好等于"窗口内 24dp 内边距"，即漏掉了窗口原点。
                 val windowOrigin = IntArray(2)
                 anchorView.getLocationOnScreen(windowOrigin)
-                // 屏幕坐标只用于计算纵向两侧可用空间
+                // 屏幕坐标用于计算纵向两侧可用空间
                 val anchorTopScreen = anchorBounds.top + windowOrigin[1]
                 val anchorBottomScreen = anchorBounds.bottom + windowOrigin[1]
                 val spaceBelow = (windowSize.height - margin - anchorBottomScreen - gapY).coerceAtLeast(0)
@@ -129,11 +133,12 @@ fun DropdownMenu(
                     // 与锚点等宽时，让弹窗窗口横向铺满且位置固定在 0：
                     // 窗口宽度一旦随首帧测量结果变化，系统会重新摆放窗口，
                     // 表现为菜单从左侧滑入。菜单的水平位置改由窗口内的偏移承担。
+                    // 弹窗窗口固定在屏幕原点处铺满，所以窗口内的偏移要按屏幕 x 计算（含窗口原点）。
                     val maxLeft = (windowSize.width - anchorBounds.width - margin).coerceAtLeast(margin)
-                    menuLeftPx = (anchorBounds.left + gapX).coerceIn(margin, maxLeft)
+                    menuLeftPx = (windowOrigin[0] + anchorBounds.left + gapX).coerceIn(margin, maxLeft)
                     return IntOffset(0, y)
                 }
-                val x = (anchorBounds.left + gapX).coerceIn(
+                val x = (windowOrigin[0] + anchorBounds.left + gapX).coerceIn(
                     margin,
                     (windowSize.width - popupContentSize.width - margin).coerceAtLeast(margin)
                 )

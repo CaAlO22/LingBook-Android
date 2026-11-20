@@ -8,6 +8,7 @@ import com.lingji.app.data.remote.models.ChatMessage
 import com.lingji.app.domain.model.AISettings
 import com.lingji.app.domain.model.ModelConfig
 import com.lingji.app.domain.model.toAISettings
+import com.lingji.app.domain.provider.ProviderRegistry
 import com.lingji.app.domain.tool.buildJsonArray
 import com.lingji.app.domain.tool.buildJsonObject
 
@@ -61,6 +62,8 @@ object SubagentTool {
     ): String {
         val gson = Gson()
         val settings = assistant.toAISettings(parentSettings.agentTemperature)
+        // 子代理用辅助模型，按该模型自己的供应商策略决定是否回传历史思考内容
+        val keepReasoning = ProviderRegistry.requiresReasoningHistory(settings.provider, settings.thinkingLevel)
         val messages = mutableListOf(
             ChatMessage("system", SYSTEM_PROMPT),
             ChatMessage("user", task)
@@ -81,6 +84,7 @@ object SubagentTool {
                 ChatMessage(
                     role = "assistant",
                     content = message.content,
+                    reasoning_content = if (keepReasoning) message.reasoning_content else null,
                     tool_calls = toolCalls
                 )
             )

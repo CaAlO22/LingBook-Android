@@ -411,6 +411,11 @@
     <string name="sync_port">端口</string>
     <string name="sync_token">访问令牌（可选）</string>
     <string name="sync_test_connection">测试连接</string>
+    <string name="sync_scan_lan">扫描局域网服务器</string>
+    <string name="sync_scanning_format">扫描中…剩余 %1$d 秒（点击取消）</string>
+    <string name="sync_scan_found_format">已在 %1$s:%2$d 找到服务器，已填入上方配置</string>
+    <string name="sync_scan_not_found">15 秒内未发现服务器，请确认手机与服务器连的是同一个 Wi-Fi</string>
+    <string name="sync_scan_no_network">没拿到局域网地址，请先连接 Wi-Fi 再扫描</string>
     <string name="sync_now">立即同步</string>
     <string name="sync_syncing">同步中…</string>
     <string name="sync_connect_success">连接成功</string>
@@ -418,4 +423,14 @@
     <string name="sync_config_incomplete">请先填写服务器地址与端口</string>
     <string name="sync_never">尚未同步</string>
     <string name="sync_last_format">上次同步：%1$s</string>
+    <string name="sync_device_id">本设备 ID</string>
+    <string name="sync_device_id_hint">云同步用它区分不同设备。把另一台设备的 ID 改成与这里一致，两台设备就会共用同一份灵记。</string>
+    <string name="sync_device_id_copy">复制</string>
+    <string name="sync_device_id_edit">修改</string>
+    <string name="sync_device_id_edit_title">修改设备 ID</string>
+    <string name="sync_device_id_edit_hint">粘贴另一台设备上的 ID，即可与该设备共用同一份灵记。ID 由 4–64 个字母、数字、短横线或下划线组成。</string>
+    <string name="sync_device_id_empty">ID 不能为空</string>
+    <string name="sync_device_id_invalid">格式不正确：需 4–64 个字母、数字、短横线或下划线</string>
+    <string name="sync_device_id_changed">设备 ID 已更新，正在重新拉取数据</string>
+    <string name="sync_device_id_unchanged">与当前 ID 相同，未做修改</string>
 </resources>

@@ -2,6 +2,7 @@ package com.lingji.app.data.remote.sync
 
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import okhttp3.Dispatcher
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -25,6 +26,21 @@ class SyncApi @Inject constructor() {
 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
+    /**
+     * 局域网扫描专用客户端：局域网内不存在的主机要等 connectTimeout，
+     * 因此超时必须短；同时放开并发上限，让整段 /24 能在 1~2 秒内扫完。
+     */
+    private val scanClient = OkHttpClient.Builder()
+        .connectTimeout(500, TimeUnit.MILLISECONDS)
+        .readTimeout(800, TimeUnit.MILLISECONDS)
+        .callTimeout(1500, TimeUnit.MILLISECONDS)
+        .retryOnConnectionFailure(false)
+        .dispatcher(Dispatcher().apply {
+            maxRequests = SCAN_MAX_REQUESTS
+            maxRequestsPerHost = SCAN_MAX_REQUESTS
+        })
+        .build()
+
     private fun buildRequest(url: String, token: String): Request.Builder {
         val builder = Request.Builder().url(url)
         if (token.isNotBlank()) {
@@ -46,8 +62,26 @@ class SyncApi @Inject constructor() {
         }
     }
 
-    /** 执行一轮增量同步，返回服务端响应 JSON（含 rev/changes/tombstones）。 */
-    fun sync(baseUrl: String, token: String, payload: JsonObject): JsonObject {
+    /**
+     * 局域网扫描用的探测：短超时、不重试。
+     *
+     * 只认 `serverTime` 字段，避免把局域网里其他恰好开着 HTTP 服务的设备当成灵记服务器。
+     * 服务器开了访问令牌时 ping 也需要授权，故沿用同一个 token。
+     *
+     * @return 服务器时间（毫秒）；不是灵记服务器时返回 null。
+     */
+    fun pingFast(baseUrl: String, token: String): Long? {
+        val request = buildRequest("$baseUrl/api/ping", token).get().build()
+        return runCatching {
+            scanClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use null
+                val body = response.body?.string().orEmpty()
+                JsonParser.parseString(body).asJsonObject.get("serverTime")?.asLong
+            }
+        }.getOrNull()
+    }
+
+    /** 执行一轮增量同步，返回服务端响应 JSON（含 rev/changes/tombstones）。 */    fun sync(baseUrl: String, token: String, payload: JsonObject): JsonObject {
         val request = buildRequest("$baseUrl/api/sync", token)
             .post(payload.toString().toRequestBody(jsonMediaType))
             .build()
@@ -61,6 +95,11 @@ class SyncApi @Inject constructor() {
             }
             return JsonParser.parseString(body).asJsonObject
         }
+    }
+
+    companion object {
+        /** 局域网扫描的并发上限：一整段 /24 一次性发出去，1~2 秒即可扫完。 */
+        private const val SCAN_MAX_REQUESTS = 128
     }
 }
 

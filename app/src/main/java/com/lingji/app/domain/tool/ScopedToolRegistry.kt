@@ -32,23 +32,32 @@ class ScopedToolRegistry(
     /** 执行工具，自动注入 subject_id。 */
     suspend fun executeTool(name: String, params: JsonObject): String {
         val tool = tools.find { it.name == name }
-            ?: return "Error: Unknown tool '$name'"
+            ?: return toolError(ToolErrorCode.UNKNOWN_TOOL, "Unknown tool '$name'", "tool_name" to name, "suggestion" to null)
         val scopedParams = JsonObject().apply {
-            params.entrySet().forEach { (key, value) ->
-                add(key, value)
-            }
+            params.entrySet().forEach { (key, value) -> add(key, value) }
             addProperty("subject_id", subjectId) // 注入在最后，覆盖 LLM 可能提供的值
         }
+        // 单笔记作用域已固定，标题/候选定位无意义，移除以免工具误用
+        scopedParams.remove("subject_title")
+        scopedParams.remove("subject_index")
         return runCatching { tool.execute(scopedParams) }
-            .getOrElse { "Error: ${it.message ?: "Unknown error"}" }
+            .getOrElse {
+                toolError(
+                    ToolErrorCode.EXECUTION_FAILED,
+                    it.message ?: "Unknown error",
+                    "tool_name" to name,
+                    "suggestion" to null
+                )
+            }
     }
 
     companion object {
-        /** 单笔记 Agent 可用的 18 个工具（排除 list/create/delete_subject + summarize_all_notes + insert_img + update_aggregated_note）。 */
+        /** 单笔记 Agent 可用的 22 个工具（排除 list/create/delete_subject + summarize_all_notes + insert_img + update_aggregated_note）。 */
         val SINGLE_NOTE_TOOLS = setOf(
             "get_subject", "rename_subject",
             "list_pages", "get_page", "create_page", "update_page", "delete_page", "edit_replace",
             "list_fragments", "add_fragment", "update_fragment", "delete_fragment", "search_fragments",
+            "list_todos", "add_todo", "update_todo", "delete_todo",
             "get_aggregated_note",
             "get_study_plan", "update_study_plan",
             "get_page_index", "search_pages"
@@ -57,7 +66,11 @@ class ScopedToolRegistry(
 
     private fun removeSubjectId(params: JsonObject): JsonObject {
         val copy = params.deepCopy()
-        copy.getAsJsonObject("properties")?.remove("subject_id")
+        copy.getAsJsonObject("properties")?.let { props ->
+            props.remove("subject_id")
+            props.remove("subject_title")
+            props.remove("subject_index")
+        }
         copy.getAsJsonArray("required")?.let { required ->
             val filtered = JsonArray().apply {
                 required.forEach { if (it.asString != "subject_id") add(it) }
@@ -70,10 +83,12 @@ class ScopedToolRegistry(
 
     /** 在单笔记模式下，搜索工具的 subject_id 被自动注入，需在描述中说明搜索范围已限定。 */
     private fun scopedDescription(tool: Tool): String {
-        return if (tool.name == "search_fragments" || tool.name == "search_pages") {
+        val base = if (tool.name == "search_fragments" || tool.name == "search_pages") {
             tool.description + "\n注意：当前为单笔记模式，搜索范围已限定为当前笔记。"
         } else {
             tool.description
         }
+        return if (tool.name == "search_fragments" || tool.name == "search_pages") base
+        else base + "\n注意：当前为单笔记模式，subject_id 自动注入，无需传 subject_id 或 subject_title。"
     }
 }

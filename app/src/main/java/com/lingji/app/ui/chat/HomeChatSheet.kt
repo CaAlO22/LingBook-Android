@@ -83,6 +83,7 @@ import com.lingji.app.ui.components.uriToBase64
 import com.lingji.app.ui.viewmodel.HomeChatMessage
 import com.lingji.app.ui.viewmodel.HomeFragmentData
 import com.lingji.app.util.copyPlainText
+import com.lingji.app.util.rememberHasHardwareKeyboard
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -119,12 +120,14 @@ fun HomeChatSheet(
     var inputText by remember { mutableStateOf(TextFieldValue("")) }
     var textLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
 
-    // 请求进行中会禁用输入框，而禁用会清掉焦点；请求结束后主动拿回焦点，
-    // 否则用户发送完必须重新点一下输入框才能继续输入。
+    // 请求进行中会禁用输入框，而禁用会清掉焦点；请求结束后是否主动拿回焦点取决于输入设备：
+    // - 接着物理键盘：还回去，用户可以直接接着敲字，软键盘也不会被叫起来；
+    // - 纯触摸设备：不还焦点，否则软键盘会自己弹起，把刚生成的回答挡住。
+    val hasHardwareKeyboard = rememberHasHardwareKeyboard()
     val inputFocusRequester = remember { FocusRequester() }
     var wasLoadingForFocus by remember { mutableStateOf(false) }
     LaunchedEffect(isLoading) {
-        if (wasLoadingForFocus && !isLoading) {
+        if (wasLoadingForFocus && !isLoading && hasHardwareKeyboard) {
             runCatching { inputFocusRequester.requestFocus() }
         }
         wasLoadingForFocus = isLoading
@@ -522,7 +525,6 @@ fun HomeChatSheet(
                                     MarkdownView(
                                         markdown = msg.content,
                                         textSizeSp = if (isUser) 13f else 15f,
-                                        alignEnd = isUser,
                                         modifier = Modifier.padding(14.dp)
                                     )
                                 }

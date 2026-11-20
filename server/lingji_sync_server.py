@@ -15,7 +15,8 @@
     POST /api/sync
         请求:
         {
-          "deviceId": "uuid",
+          "deviceId": "LJ-7K3M-9Q2X-P4TN",    # 设备标识，仅用于标记变更来源；
+                                               # 多台设备填同一个值即可共用同一份数据
           "lastRev": 0,                        # 客户端已同步到的服务端游标
           "changes":  {"<table>": [ {<实体完整 JSON>}, ... ], ...},
           "tombstones": [ {"tbl": "<table>", "id": "...", "deletedAt": <ms>} ]
@@ -114,6 +115,13 @@ class SyncStore:
         with self._lock:
             cur = self._conn.cursor()
             try:
+                # 本轮开始前的全局 rev：响应里只返回这个位置之前的数据，
+                # 从而排除「本轮自己刚推上去的记录」，同时不依赖 deviceId 过滤
+                # （多台设备共用同一个 deviceId 时也能互相同步）。
+                cur.execute("SELECT value FROM meta WHERE key = 'rev'")
+                row = cur.fetchone()
+                base_rev = int(row[0]) if row else 0
+
                 # ---- 1. 合并客户端推送的实体（LWW）----
                 for tbl, rows in (changes or {}).items():
                     table_conf = TABLES.get(tbl)
@@ -189,21 +197,24 @@ class SyncStore:
                     )
                     cur.execute("DELETE FROM entities WHERE tbl=? AND id=?", (tbl, rid))
 
-                # ---- 3. 取出 lastRev 之后、非本设备产生的变更 ----
+                # ---- 3. 取出 lastRev 之后、本轮推送之前的变更 ----
+                # 只按 rev 窗口筛选，不再按 device 排除本机：
+                # 客户端可以手动把多台设备设成同一个 deviceId 来共用数据，
+                # 若继续用 device 过滤，这些设备将永远拉不到对方推送的内容。
                 out_changes: dict = {}
                 cur.execute(
-                    "SELECT tbl, data FROM entities WHERE rev > ? AND device != ? "
+                    "SELECT tbl, data FROM entities WHERE rev > ? AND rev <= ? "
                     "ORDER BY rev",
-                    (last_rev, device_id),
+                    (last_rev, base_rev),
                 )
                 for tbl, data in cur.fetchall():
                     out_changes.setdefault(tbl, []).append(json.loads(data))
 
                 out_tombstones = []
                 cur.execute(
-                    "SELECT tbl, id, deleted_at FROM tombstones WHERE rev > ? AND device != ? "
-                    "ORDER BY rev",
-                    (last_rev, device_id),
+                    "SELECT tbl, id, deleted_at FROM tombstones "
+                    "WHERE rev > ? AND rev <= ? ORDER BY rev",
+                    (last_rev, base_rev),
                 )
                 for tbl, rid, deleted_at in cur.fetchall():
                     out_tombstones.append({"tbl": tbl, "id": rid, "deletedAt": int(deleted_at)})
