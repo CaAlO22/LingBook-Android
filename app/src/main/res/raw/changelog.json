@@ -41,7 +41,7 @@
     ]
    }
   ],
-  "unreleased": true
+  "unreleased": false
  },
  {
   "version": "2.0.0b",
