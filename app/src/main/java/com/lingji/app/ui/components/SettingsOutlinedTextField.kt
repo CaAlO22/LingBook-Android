@@ -17,8 +17,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 
 /**
@@ -45,17 +49,31 @@ fun SettingsOutlinedTextField(
 ) {
     val bringIntoViewRequester = remember { BringIntoViewRequester() }
     var focused by remember { mutableStateOf(false) }
+    var fieldSize by remember { mutableStateOf(IntSize.Zero) }
     val dialogBodyHeight = LocalDialogBodyHeight.current
+    val constrainedViewportPx = with(LocalDensity.current) { 280.dp.roundToPx() }
 
-    // 小窗中弹出输入法时，系统会连续压缩窗口高度（弹窗正文随之变矮）。
-    // 系统只在焦点建立的那一刻按当时的视口滚动一次，视口收缩完成后输入框就被裁掉一截，
-    // 表现为先上滚、再回落，最后停在输入框只露出半截的位置。
-    // 这里在聚焦期间跟随正文视口高度变化重新对齐，保证布局稳定后输入框完整可见；
-    // 视口高度不变时不做任何滚动，手动滚动不会被拉回。
+    // 视口被输入法 / 小窗压缩时，系统还会按焦点位置继续调整窗口，
+    // 而“最小滚动”总把焦点贴在视口底边，两者互为因果形成反馈回路，表现为上下反复跳动。
+    // 故视口受限时改为把聚焦框顶边对齐视口顶边：滚动目标只取决于内容坐标、与视口高度无关，
+    // 压缩动画期间重复调用幂等，回路断开；焦点下方留有余量，系统也不再追着焦点继续压缩。
+    // 视口充足时保持最小滚动；视口高度不变时不做任何滚动，手动滚动不会被拉回。
     LaunchedEffect(focused) {
         if (!focused || dialogBodyHeight == null) return@LaunchedEffect
-        snapshotFlow { dialogBodyHeight.value }
-            .collect { bringIntoViewRequester.bringIntoView() }
+        suspend fun align() {
+            val viewport = dialogBodyHeight.value
+            if (viewport <= 0 || fieldSize == IntSize.Zero) return
+            if (viewport < constrainedViewportPx) {
+                // 与视口等高的请求矩形：唯一能容纳它的位置即矩形顶边贴视口顶边
+                bringIntoViewRequester.bringIntoView(
+                    Rect(0f, 0f, fieldSize.width.toFloat(), viewport.toFloat())
+                )
+            } else {
+                bringIntoViewRequester.bringIntoView()
+            }
+        }
+        align()
+        snapshotFlow { dialogBodyHeight.value }.collect { align() }
     }
 
     OutlinedTextField(
@@ -72,6 +90,7 @@ fun SettingsOutlinedTextField(
         modifier = modifier
             .fillMaxWidth()
             .bringIntoViewRequester(bringIntoViewRequester)
+            .onSizeChanged { fieldSize = it }
             .onFocusChanged { focused = it.isFocused }
             // 上下键不再把焦点带离输入框。
             .arrowKeyFocusGuard(),

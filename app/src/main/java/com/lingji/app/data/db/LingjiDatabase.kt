@@ -49,7 +49,7 @@ import org.json.JSONObject
         TodoItemEntity::class,
         ModelConfigEntity::class
     ],
-    version = 20,
+    version = 21,
     exportSchema = false
 )
 abstract class LingjiDatabase : RoomDatabase() {
@@ -423,6 +423,21 @@ abstract class LingjiDatabase : RoomDatabase() {
                     db.execSQL("UPDATE settings SET primaryModelId = '' WHERE primaryModelId IN ($placeholders)", args)
                     db.execSQL("UPDATE settings SET assistantModelId = '' WHERE assistantModelId IN ($placeholders)", args)
                 }
+            }
+        }
+
+        val MIGRATION_20_21 = object : Migration(20, 21) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 待办支持拖动排序：新增 sortOrder，并按原有创建顺序补齐位次，
+                // 避免升级后所有条目位次同为 0 导致顺序不稳定。
+                db.execSQL("ALTER TABLE todo_items ADD COLUMN sortOrder INTEGER NOT NULL DEFAULT 0")
+                db.execSQL(
+                    "UPDATE todo_items SET sortOrder = (" +
+                        "SELECT COUNT(*) FROM todo_items AS t " +
+                        "WHERE t.subjectId = todo_items.subjectId " +
+                        "AND (t.createdAt < todo_items.createdAt " +
+                        "OR (t.createdAt = todo_items.createdAt AND t.id < todo_items.id)))"
+                )
             }
         }
     }

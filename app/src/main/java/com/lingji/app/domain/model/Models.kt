@@ -135,6 +135,7 @@ data class TodoItem(
     val id: String = generateId(),
     val content: String,
     val isDone: Boolean = false,
+    val sortOrder: Int = 0,
     val createdAt: Long = System.currentTimeMillis()
 )
 

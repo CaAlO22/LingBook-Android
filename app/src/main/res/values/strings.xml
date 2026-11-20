@@ -29,6 +29,7 @@
     <string name="cd_import">导入</string>
     <string name="cd_settings">设置</string>
     <string name="cd_delete">删除</string>
+    <string name="cd_drag_handle">拖动排序</string>
     <string name="cd_rename">重命名</string>
     <string name="delete_subject_confirm">确定要删除“%1$s”吗？此操作不可撤销。</string>
     <string name="move_to_top">置顶</string>
@@ -51,6 +52,7 @@
     <string name="todo_repeat_custom">自定义重复</string>
     <string name="todo_repeat_custom_summary">%1$s 重复</string>
     <string name="todo_progress">%1$d/%2$d</string>
+    <string name="todo_delete_confirm">删除后无法恢复，确定删除这条待办吗？</string>
     <string name="weekday_mon">周一</string>
     <string name="weekday_tue">周二</string>
     <string name="weekday_wed">周三</string>
@@ -324,6 +326,26 @@
     <string name="update_later">稍后再说</string>
     <string name="update_downloading">正在从%1$s下载资源… %2$d%%</string>
     <string name="update_source_label">更新源</string>
+    <string name="update_token_description">匿名请求 GitHub / Gitee 接口有严格限流，填写自己的访问令牌可提高额度、避免「检查更新失败」。令牌默认只存本机；勾选「云同步访问令牌」后会同步到你自己的服务器。</string>
+    <string name="update_github_token">GitHub Token</string>
+    <string name="update_gitee_token">Gitee Token</string>
+    <string name="update_token_hint_github">生成位置：GitHub → Settings → Developer settings → Personal access tokens，无需勾选任何权限</string>
+    <string name="update_token_hint_gitee">生成位置：Gitee → 设置 → 私人令牌，权限勾选 projects 即可</string>
+    <string name="update_token_status_none">当前匿名访问，容易被限流</string>
+    <string name="update_token_status_github">已配置 GitHub Token（限额 5000 次/小时）</string>
+    <string name="update_token_status_gitee">已配置 Gitee Token（按账号额度计算）</string>
+    <string name="update_token_status_both">已配置 GitHub 与 Gitee Token</string>
+    <string name="update_token_clear">清除令牌</string>
+    <string name="cd_toggle_token_visibility">显示/隐藏令牌</string>
+
+    <!-- 设置：历代更新日志 -->
+    <string name="changelog_button">历代更新日志</string>
+    <string name="changelog_title">历代更新日志</string>
+    <string name="changelog_current_version">当前版本 v%1$s</string>
+    <string name="changelog_subtitle">每个版本改了什么，都记在这里</string>
+    <string name="changelog_badge_current">当前</string>
+    <string name="changelog_close">关闭</string>
+    <string name="changelog_empty">暂无更新日志</string>
 
     <!-- 设置：API Key 显隐与复制 -->
     <string name="cd_toggle_api_key_visibility">显示/隐藏 API Key</string>
@@ -378,8 +400,13 @@
 
     <!-- 设置：云同步 -->
     <string name="sync_settings">云同步</string>
-    <string name="sync_description">配置自建同步服务器后，笔记、碎片、会话、模型配置等数据将在多设备间自动同步。服务器不可用时不影响本地使用；模型配置（含 API Key）会被同步，请确保服务器由你本人掌控。</string>
-    <string name="sync_enable">启用云同步</string>
+    <string name="sync_description">配置自建同步服务器后，按下方开关选择要同步的内容。服务器不可用时不影响本地使用；模型配置含 API Key、访问令牌属敏感信息，请确保服务器由你本人掌控。</string>
+    <string name="sync_enable_notes">云同步笔记</string>
+    <string name="sync_enable_notes_hint">笔记、碎片、页面、会话、摘要与待办</string>
+    <string name="sync_enable_models">云同步模型配置</string>
+    <string name="sync_enable_models_hint">模型列表、接口地址与 API Key</string>
+    <string name="sync_enable_tokens">云同步访问令牌</string>
+    <string name="sync_enable_tokens_hint">GitHub / Gitee 更新源令牌</string>
     <string name="sync_host">服务器地址</string>
     <string name="sync_port">端口</string>
     <string name="sync_token">访问令牌（可选）</string>

@@ -93,6 +93,7 @@ import com.lingji.app.ui.components.rememberNoteEditorHostState
 import com.lingji.app.ui.theme.NotoSerifCJKsc
 import com.lingji.app.ui.viewmodel.SubjectViewModel
 import com.lingji.app.util.MarkdownPdfExporter
+import com.lingji.app.util.copyPlainText
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -410,6 +411,8 @@ fun FragmentSubjectScreen(
                                     fragments = (liveSubject.fragments + liveSubject.unmergedFragments).sortedBy { it.timestamp },
                                     onEdit = { editingFragment = it },
                                     onDelete = { pendingDeleteFragment = it },
+                                    // 长按碎片气泡即可复制正文
+                                    onCopy = { context.copyPlainText(it.content) },
                                     modifier = Modifier.fillMaxSize(),
                                     // 预留底部悬浮输入胶囊的高度，使最后一条碎片可滚动到其上方。
                                     bottomContentPadding = 100.dp

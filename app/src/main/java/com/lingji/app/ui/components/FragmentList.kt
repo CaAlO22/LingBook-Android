@@ -1,5 +1,7 @@
 package com.lingji.app.ui.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,6 +54,7 @@ fun FragmentList(
     fragments: List<Fragment>,
     onEdit: (Fragment) -> Unit,
     onDelete: (Fragment) -> Unit,
+    onCopy: (Fragment) -> Unit = {},
     modifier: Modifier = Modifier,
     bottomContentPadding: Dp = 8.dp
 ) {
@@ -85,7 +88,8 @@ fun FragmentList(
                 index = index + 1,
                 fragment = fragment,
                 onEdit = { onEdit(fragment) },
-                onDelete = { onDelete(fragment) }
+                onDelete = { onDelete(fragment) },
+                onCopy = { onCopy(fragment) }
             )
         }
     }
@@ -118,12 +122,14 @@ private fun EmptyFragments(modifier: Modifier = Modifier) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FragmentBubble(
     index: Int,
     fragment: Fragment,
     onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onCopy: () -> Unit
 ) {
     val containerColor = if (fragment.isMerged) {
         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
@@ -161,6 +167,8 @@ private fun FragmentBubble(
                 modifier = Modifier.padding(end = 8.dp, bottom = 2.dp)
             )
             Card(
+                // 长按复制碎片正文
+                modifier = Modifier.combinedClickable(onClick = {}, onLongClick = onCopy),
                 shape = RoundedCornerShape(
                     topStart = 16.dp,
                     topEnd = 16.dp,

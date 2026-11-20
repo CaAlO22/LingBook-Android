@@ -44,6 +44,32 @@ class UpdateViewModel @Inject constructor(
         _updateSource.value = source
     }
 
+    /** 已保存的 GitHub 访问令牌（空串表示匿名访问）。 */
+    private val _githubToken = MutableStateFlow(updateChecker.getGithubToken())
+    val githubToken: StateFlow<String> = _githubToken.asStateFlow()
+
+    /** 已保存的 Gitee 访问令牌（空串表示匿名访问）。 */
+    private val _giteeToken = MutableStateFlow(updateChecker.getGiteeToken())
+    val giteeToken: StateFlow<String> = _giteeToken.asStateFlow()
+
+    init {
+        // 云同步拉取到更新的令牌时 UpdateChecker 会推动 tokens，这里回灌到 UI 状态
+        viewModelScope.launch {
+            updateChecker.tokens.collect { snapshot ->
+                _githubToken.value = snapshot.githubToken
+                _giteeToken.value = snapshot.giteeToken
+            }
+        }
+    }
+
+    fun setGithubToken(token: String) {
+        updateChecker.setGithubToken(token)
+    }
+
+    fun setGiteeToken(token: String) {
+        updateChecker.setGiteeToken(token)
+    }
+
     fun checkForUpdate() {
         if (_isChecking.value) return
         viewModelScope.launch {

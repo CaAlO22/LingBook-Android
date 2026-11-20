@@ -52,6 +52,8 @@ TABLES = {
     "subject_summaries": ("subjectId", "updatedAt"),
     "todo_items": ("id", "updatedAt"),
     "model_configs": ("id", "updatedAt"),
+    # 更新源访问令牌（GitHub / Gitee）：单行 app_settings#singleton，客户端不建表
+    "app_settings": ("id", "updatedAt"),
 }
 
 MAX_BODY_BYTES = 64 * 1024 * 1024  # 64 MB

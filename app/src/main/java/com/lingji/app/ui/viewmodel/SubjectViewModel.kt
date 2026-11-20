@@ -293,6 +293,12 @@ class SubjectViewModel @Inject constructor(
         viewModelScope.launch { subjectRepository.deleteTodoItem(itemId) }
     }
 
+    /** 拖动排序结束后按新顺序重排待办条目。 */
+    fun reorderTodoItems(orderedIds: List<String>) {
+        if (orderedIds.isEmpty()) return
+        viewModelScope.launch { subjectRepository.reorderTodoItems(orderedIds) }
+    }
+
     fun updateTodoRepeat(subjectId: String, repeat: TodoRepeat) {
         viewModelScope.launch { subjectRepository.updateTodoRepeat(subjectId, repeat) }
     }

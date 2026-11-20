@@ -7,9 +7,11 @@ import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -80,10 +82,12 @@ import com.lingji.app.ui.components.enterSendBehavior
 import com.lingji.app.ui.components.uriToBase64
 import com.lingji.app.ui.viewmodel.HomeChatMessage
 import com.lingji.app.ui.viewmodel.HomeFragmentData
+import com.lingji.app.util.copyPlainText
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HomeChatSheet(
     messages: List<HomeChatMessage>,
@@ -385,7 +389,14 @@ fun HomeChatSheet(
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    // 长按碎片气泡复制正文
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .combinedClickable(
+                                            onClick = {},
+                                            onLongClick = { context.copyPlainText(fragment.content) }
+                                        )
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.Top
                                 ) {
                                     Text(

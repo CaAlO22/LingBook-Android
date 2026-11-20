@@ -23,6 +23,7 @@ import com.lingji.app.data.db.entities.NotebookPageEntity
 import com.lingji.app.data.db.entities.SubjectEntity
 import com.lingji.app.data.db.entities.SubjectSummaryEntity
 import com.lingji.app.data.db.entities.TodoItemEntity
+import com.lingji.app.data.remote.UpdateChecker
 import com.lingji.app.data.remote.sync.SyncApi
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -61,7 +62,8 @@ class SyncRepository @Inject constructor(
     private val tombstoneDao: SyncTombstoneDao,
     private val todoItemDao: TodoItemDao,
     private val modelConfigDao: ModelConfigDao,
-    private val settingsDao: SettingsDao
+    private val settingsDao: SettingsDao,
+    private val updateChecker: UpdateChecker
 ) {
     private val gson = Gson()
     private val syncMutex = Mutex()
@@ -71,19 +73,36 @@ class SyncRepository @Inject constructor(
         if (!config.enabled || !config.isValid) return@withLock SyncResult.Disabled
 
         try {
-            val watermark = configStore.watermark
+            val wmNotes = configStore.watermarkNotes
+            val wmModels = configStore.watermarkModels
+            val wmTokens = configStore.watermarkTokens
+            val notesOn = config.syncNotes
 
-            // ── 1. 收集本地变更（updatedAt/deletedAt > watermark）──
-            val subjects = subjectDao.getUpdatedSince(watermark)
-            val fragments = fragmentDao.getUpdatedSince(watermark)
-            val pages = pageDao.getUpdatedSince(watermark)
-            val folders = folderDao.getUpdatedSince(watermark)
-            val conversations = homeChatDao.getConversationsUpdatedSince(watermark)
-            val messages = homeChatDao.getMessagesUpdatedSince(watermark)
-            val summaries = summaryDao.getUpdatedSince(watermark)
-            val todoItems = todoItemDao.getUpdatedSince(watermark)
-            val modelConfigs = modelConfigDao.getUpdatedSince(watermark)
-            val tombstones = tombstoneDao.getSince(watermark)
+            // ── 1. 收集本地变更（按开关过滤，各类用自己的水位线）──
+            val subjects = if (notesOn) subjectDao.getUpdatedSince(wmNotes) else emptyList()
+            val fragments = if (notesOn) fragmentDao.getUpdatedSince(wmNotes) else emptyList()
+            val pages = if (notesOn) pageDao.getUpdatedSince(wmNotes) else emptyList()
+            val folders = if (notesOn) folderDao.getUpdatedSince(wmNotes) else emptyList()
+            val conversations =
+                if (notesOn) homeChatDao.getConversationsUpdatedSince(wmNotes) else emptyList()
+            val messages =
+                if (notesOn) homeChatDao.getMessagesUpdatedSince(wmNotes) else emptyList()
+            val summaries = if (notesOn) summaryDao.getUpdatedSince(wmNotes) else emptyList()
+            val todoItems = if (notesOn) todoItemDao.getUpdatedSince(wmNotes) else emptyList()
+            val modelConfigs =
+                if (config.syncModels) modelConfigDao.getUpdatedSince(wmModels) else emptyList()
+
+            // 墓碑按类别过滤：模型配置只随「模型配置」开关走，其余都算笔记类。
+            // 取两类水位中更早的一个作为查询下界，避免刚开启的那一类漏推墓碑。
+            val tombstones = tombstoneDao.getSince(minOf(wmNotes, wmModels)).filter { ts ->
+                if (ts.tbl == TBL_MODEL_CONFIGS) config.syncModels else notesOn
+            }
+            val noteTombstones = tombstones.filter { it.tbl != TBL_MODEL_CONFIGS }
+            val modelTombstones = tombstones.filter { it.tbl == TBL_MODEL_CONFIGS }
+
+            // 更新源令牌：单行记录（id=singleton），按 updatedAt 做 LWW
+            val tokens = updateChecker.getTokenSnapshot()
+            val pushTokens = config.syncTokens && tokens.updatedAt > wmTokens
 
             val payload = JsonObject().apply {
                 addProperty("deviceId", configStore.deviceId)
@@ -98,6 +117,16 @@ class SyncRepository @Inject constructor(
                     addEntityArray(TBL_SUMMARIES, summaries)
                     addEntityArray(TBL_TODOS, todoItems)
                     addEntityArray(TBL_MODEL_CONFIGS, modelConfigs)
+                    if (pushTokens) {
+                        add(TBL_APP_SETTINGS, JsonArray().apply {
+                            add(JsonObject().apply {
+                                addProperty("id", APP_SETTINGS_ID)
+                                addProperty("githubToken", tokens.githubToken)
+                                addProperty("giteeToken", tokens.giteeToken)
+                                addProperty("updatedAt", tokens.updatedAt)
+                            })
+                        })
+                    }
                 })
                 add("tombstones", JsonArray().apply {
                     tombstones.forEach { ts ->
@@ -113,35 +142,64 @@ class SyncRepository @Inject constructor(
             // ── 2. 推送并拉取 ──
             val response = api.sync(config.baseUrl, config.token, payload)
 
-            // ── 3. 应用远端变更（按外键安全顺序）──
+            // ── 3. 应用远端变更（按外键安全顺序，且只处理已开启的类别）──
             var pulled = 0
             var deleted = 0
-            var maxSeen = watermark
-            listOf(
-                subjects.maxOfOrNull { it.updatedAt },
-                fragments.maxOfOrNull { it.updatedAt },
-                pages.maxOfOrNull { it.updatedAt },
-                folders.maxOfOrNull { it.updatedAt },
-                conversations.maxOfOrNull { it.updated_at },
-                messages.maxOfOrNull { it.updatedAt },
-                summaries.maxOfOrNull { it.updatedAt },
-                todoItems.maxOfOrNull { it.updatedAt },
-                modelConfigs.maxOfOrNull { it.updatedAt },
-                tombstones.maxOfOrNull { it.deletedAt }
-            ).filterNotNull().maxOrNull()?.let { maxSeen = maxOf(maxSeen, it) }
+            var maxNotes = wmNotes
+            var maxModels = wmModels
+            var maxTokens = wmTokens
+
+            // 本地本轮推送的记录时间戳计入各自水位线
+            if (notesOn) {
+                maxNotes = maxOf(
+                    maxNotes,
+                    maxOfEntities(
+                        subjects.maxOfOrNull { it.updatedAt },
+                        fragments.maxOfOrNull { it.updatedAt },
+                        pages.maxOfOrNull { it.updatedAt },
+                        folders.maxOfOrNull { it.updatedAt },
+                        conversations.maxOfOrNull { it.updated_at },
+                        messages.maxOfOrNull { it.updatedAt },
+                        summaries.maxOfOrNull { it.updatedAt },
+                        todoItems.maxOfOrNull { it.updatedAt },
+                        noteTombstones.maxOfOrNull { it.deletedAt }
+                    )
+                )
+            }
+            if (config.syncModels) {
+                maxModels = maxOf(
+                    maxModels,
+                    maxOfEntities(
+                        modelConfigs.maxOfOrNull { it.updatedAt },
+                        modelTombstones.maxOfOrNull { it.deletedAt }
+                    )
+                )
+            }
+            if (pushTokens) {
+                maxTokens = maxOf(maxTokens, tokens.updatedAt)
+            }
 
             val changes = response.getAsJsonObject("changes") ?: JsonObject()
             // 远端记录的时间戳也必须计入水位线，否则下一轮会把这些刚拉下来的数据再推回去（回声）
-            maxSeen = maxOf(maxSeen, maxUpdatedAt(changes))
-            pulled += applyFolders(changes)
-            pulled += applySubjects(changes)
-            pulled += applyConversations(changes)
-            pulled += applyMessages(changes)
-            pulled += applyFragments(changes)
-            pulled += applyPages(changes)
-            pulled += applySummaries(changes)
-            pulled += applyTodoItems(changes)
-            pulled += applyModelConfigs(changes)
+            if (notesOn) {
+                maxNotes = maxOf(maxNotes, maxUpdatedAtFor(changes, NOTES_TABLES))
+                pulled += applyFolders(changes)
+                pulled += applySubjects(changes)
+                pulled += applyConversations(changes)
+                pulled += applyMessages(changes)
+                pulled += applyFragments(changes)
+                pulled += applyPages(changes)
+                pulled += applySummaries(changes)
+                pulled += applyTodoItems(changes)
+            }
+            if (config.syncModels) {
+                maxModels = maxOf(maxModels, maxUpdatedAtFor(changes, MODEL_TABLES))
+                pulled += applyModelConfigs(changes)
+            }
+            if (config.syncTokens) {
+                maxTokens = maxOf(maxTokens, maxUpdatedAtFor(changes, TOKEN_TABLES))
+                pulled += applyAppSettings(changes)
+            }
 
             val remoteTombstones = response.getAsJsonArray("tombstones") ?: JsonArray()
             for (element in remoteTombstones) {
@@ -149,20 +207,28 @@ class SyncRepository @Inject constructor(
                 val tbl = ts.get("tbl")?.asString ?: continue
                 val id = ts.get("id")?.asString ?: continue
                 val deletedAt = ts.get("deletedAt")?.asLong ?: continue
+                val categoryOn = if (tbl == TBL_MODEL_CONFIGS) config.syncModels else notesOn
+                if (!categoryOn) continue
                 if (applyTombstone(tbl, id)) deleted++
-                maxSeen = maxOf(maxSeen, deletedAt)
+                if (tbl == TBL_MODEL_CONFIGS) {
+                    maxModels = maxOf(maxModels, deletedAt)
+                } else {
+                    maxNotes = maxOf(maxNotes, deletedAt)
+                }
             }
 
             // ── 4. 推进游标（仅在整轮成功后）──
             configStore.lastRev = response.get("rev")?.asLong ?: configStore.lastRev
-            configStore.watermark = maxSeen
+            configStore.watermarkNotes = maxNotes
+            configStore.watermarkModels = maxModels
+            configStore.watermarkTokens = maxTokens
             configStore.lastSyncAt = System.currentTimeMillis()
             // 清理 30 天前的墓碑（此时所有在线设备早已收到）
             tombstoneDao.deleteOlderThan(System.currentTimeMillis() - TOMBSTONE_RETENTION_MS)
 
             val pushed = subjects.size + fragments.size + pages.size + folders.size +
                 conversations.size + messages.size + summaries.size + todoItems.size +
-                modelConfigs.size + tombstones.size
+                modelConfigs.size + tombstones.size + if (pushTokens) 1 else 0
             SyncResult.Success(pushed = pushed, pulled = pulled, deleted = deleted)
         } catch (e: Exception) {
             Log.w(TAG, "sync failed: ${e.message}")
@@ -172,11 +238,11 @@ class SyncRepository @Inject constructor(
 
     // ── 远端变更应用 ──
 
-    /** 取本轮拉取数据中最大的更新时间（会话/消息用 updated_at，其余用 updatedAt）。 */
-    private fun maxUpdatedAt(changes: JsonObject): Long {
+    /** 取指定表在本轮拉取数据中的最大更新时间（会话/消息用 updated_at，其余用 updatedAt）。 */
+    private fun maxUpdatedAtFor(changes: JsonObject, tables: Set<String>): Long {
         var max = 0L
-        for ((_, value) in changes.entrySet()) {
-            val array = value.takeIf { it.isJsonArray }?.asJsonArray ?: continue
+        for (tbl in tables) {
+            val array = changes.getAsJsonArray(tbl) ?: continue
             for (element in array) {
                 val obj = element.takeIf { it.isJsonObject }?.asJsonObject ?: continue
                 val ts = obj.get("updatedAt")?.takeIf { it.isJsonPrimitive }?.asLong
@@ -187,6 +253,10 @@ class SyncRepository @Inject constructor(
         }
         return max
     }
+
+    /** 取多个时间戳中的最大值，null 视为不参与比较。 */
+    private fun maxOfEntities(vararg values: Long?): Long =
+        values.filterNotNull().maxOrNull() ?: 0L
 
     private fun entityRows(changes: JsonObject, tbl: String): List<JsonObject> =
         changes.getAsJsonArray(tbl)?.mapNotNull { it.takeIf { e -> e.isJsonObject }?.asJsonObject }
@@ -314,6 +384,23 @@ class SyncRepository @Inject constructor(
         return count
     }
 
+    /**
+     * 应用远端「更新源令牌」（单行 app_settings#singleton）。
+     * LWW 判定在 [UpdateChecker.applyRemoteTokens] 内完成，本机更新的修改不会被覆盖。
+     */
+    private fun applyAppSettings(changes: JsonObject): Int {
+        for (obj in entityRows(changes, TBL_APP_SETTINGS)) {
+            val id = obj.get("id")?.takeIf { it.isJsonPrimitive }?.asString
+            if (id != APP_SETTINGS_ID) continue
+            val updatedAt = obj.get("updatedAt")?.takeIf { it.isJsonPrimitive }?.asLong
+                ?: continue
+            val github = obj.get("githubToken")?.takeIf { it.isJsonPrimitive }?.asString.orEmpty()
+            val gitee = obj.get("giteeToken")?.takeIf { it.isJsonPrimitive }?.asString.orEmpty()
+            if (updateChecker.applyRemoteTokens(github, gitee, updatedAt)) return 1
+        }
+        return 0
+    }
+
     private suspend fun applyTombstone(tbl: String, id: String): Boolean = runCatching {
         when (tbl) {
             TBL_SUBJECTS -> subjectDao.deleteById(id)
@@ -351,5 +438,17 @@ class SyncRepository @Inject constructor(
         const val TBL_SUMMARIES = "subject_summaries"
         const val TBL_TODOS = "todo_items"
         const val TBL_MODEL_CONFIGS = "model_configs"
+
+        /** 更新源令牌：不落在 Room 里，只作为同步载荷中的一条单行记录。 */
+        const val TBL_APP_SETTINGS = "app_settings"
+        const val APP_SETTINGS_ID = "singleton"
+
+        /** 笔记类表集合：用于按类别汇总水位线与最大时间戳。 */
+        private val NOTES_TABLES = setOf(
+            TBL_SUBJECTS, TBL_FRAGMENTS, TBL_PAGES, TBL_FOLDERS,
+            TBL_CONVERSATIONS, TBL_MESSAGES, TBL_SUMMARIES, TBL_TODOS
+        )
+        private val MODEL_TABLES = setOf(TBL_MODEL_CONFIGS)
+        private val TOKEN_TABLES = setOf(TBL_APP_SETTINGS)
     }
 }

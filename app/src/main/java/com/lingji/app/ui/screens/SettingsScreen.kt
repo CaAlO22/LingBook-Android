@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -29,6 +30,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,6 +38,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -59,13 +62,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lingji.app.R
 import com.lingji.app.data.remote.UpdateSource
+import com.lingji.app.data.repository.ChangelogRepository
 import com.lingji.app.domain.model.AISettings
 import com.lingji.app.domain.model.ModelConfig
 import com.lingji.app.ui.components.DeleteConfirmDialog
+import com.lingji.app.ui.screens.changelog.ChangelogDialog
 import com.lingji.app.ui.settings.ModelConfigEditorDialog
 import com.lingji.app.ui.settings.components.ModelConfigPicker
 import com.lingji.app.ui.settings.components.ModelConfigRow
 import com.lingji.app.ui.settings.sync.SyncSettingsContent
+import com.lingji.app.ui.settings.update.UpdateTokenSettingsContent
 import com.lingji.app.ui.theme.NotoSerifCJKsc
 import com.lingji.app.ui.viewmodel.CheckMessage
 import com.lingji.app.ui.viewmodel.SubjectViewModel
@@ -92,7 +98,10 @@ fun SettingsScreen(
     var showModelEditor by remember { mutableStateOf(false) }
     var editingModelConfig by remember { mutableStateOf<ModelConfig?>(null) }
     var deletingModelConfig by remember { mutableStateOf<ModelConfig?>(null) }
+    var showChangelog by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    // 历代更新日志随包内置（res/raw/changelog.json），进入设置页读一次即可
+    val changelogEntries = remember(context) { ChangelogRepository.load(context) }
     val scope = rememberCoroutineScope()
     val isCheckingUpdate by updateViewModel.isChecking.collectAsState()
     val updateCheckMessage by updateViewModel.checkMessage.collectAsState()
@@ -348,6 +357,152 @@ fun SettingsScreen(
                 }
             }
 
+            // 云同步
+            SettingsCard(title = stringResource(R.string.sync_settings)) {
+                SyncSettingsContent()
+            }
+
+            SettingsCard(title = stringResource(R.string.app_settings)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            importLauncher.launch(arrayOf("*/*"))
+                        },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FileUpload,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.import_ling_json),
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            modifier = Modifier.padding(start = 4.dp)
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
+                            scope.launch {
+                                val ok = if (text.isNullOrBlank()) {
+                                    false
+                                } else {
+                                    viewModel.importSubject(text)
+                                }
+                                Toast.makeText(
+                                    context,
+                                    when {
+                                        text.isNullOrBlank() -> context.getString(R.string.clipboard_empty)
+                                        ok -> context.getString(R.string.import_success)
+                                        else -> context.getString(R.string.import_failed)
+                                    },
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ContentPaste,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.import_from_clipboard),
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            modifier = Modifier.padding(start = 4.dp)
+                        )
+                    }
+                }
+                Button(
+                    onClick = { updateViewModel.checkForUpdate() },
+                    enabled = !isCheckingUpdate,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp)
+                ) {
+                    if (isCheckingUpdate) {
+                        Text(stringResource(R.string.checking_update))
+                    } else {
+                        Icon(Icons.Default.SystemUpdate, contentDescription = null)
+                        Text(stringResource(R.string.check_update), modifier = Modifier.padding(start = 8.dp))
+                    }
+                }
+                // 历代更新日志：每个版本改了什么，全部内置在安装包里，离线可查
+                OutlinedButton(
+                    onClick = { showChangelog = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.History,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.changelog_button),
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
+                // 更新检查源切换
+                val updateSource by updateViewModel.updateSource.collectAsState()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.update_source_label),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    FilterChip(
+                        selected = updateSource == UpdateSource.GITEE,
+                        onClick = { updateViewModel.setUpdateSource(UpdateSource.GITEE) },
+                        label = { Text("Gitee", style = MaterialTheme.typography.labelSmall) }
+                    )
+                    FilterChip(
+                        selected = updateSource == UpdateSource.GITHUB,
+                        onClick = { updateViewModel.setUpdateSource(UpdateSource.GITHUB) },
+                        label = { Text("GitHub", style = MaterialTheme.typography.labelSmall) }
+                    )
+                }
+                // 访问令牌：匿名调用接口会被限流，填入自己的令牌可提高额度
+                UpdateTokenSettingsContent(viewModel = updateViewModel)
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.app_info),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(start = 6.dp)
+                    )
+                }
+            }
+
             // 信息岛：Agent 能力说明（首页 / 笔记内两处 Agent 的工具与任务）
             SettingsCard(title = stringResource(R.string.agent_guide_title)) {
                 Text(
@@ -380,107 +535,11 @@ fun SettingsScreen(
                 )
             }
 
-            // 云同步
-            SettingsCard(title = stringResource(R.string.sync_settings)) {
-                SyncSettingsContent()
-            }
-
-            SettingsCard(title = stringResource(R.string.app_settings)) {
-                Button(
-                    onClick = {
-                        importLauncher.launch(arrayOf("*/*"))
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.FileUpload, contentDescription = null)
-                    Text(stringResource(R.string.import_ling_json), modifier = Modifier.padding(start = 8.dp))
-                }
-                Button(
-                    onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
-                        scope.launch {
-                            val ok = if (text.isNullOrBlank()) {
-                                false
-                            } else {
-                                viewModel.importSubject(text)
-                            }
-                            Toast.makeText(
-                                context,
-                                when {
-                                    text.isNullOrBlank() -> context.getString(R.string.clipboard_empty)
-                                    ok -> context.getString(R.string.import_success)
-                                    else -> context.getString(R.string.import_failed)
-                                },
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp)
-                ) {
-                    Icon(Icons.Default.ContentPaste, contentDescription = null)
-                    Text(stringResource(R.string.import_from_clipboard), modifier = Modifier.padding(start = 8.dp))
-                }
-                Button(
-                    onClick = { updateViewModel.checkForUpdate() },
-                    enabled = !isCheckingUpdate,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp)
-                ) {
-                    if (isCheckingUpdate) {
-                        Text(stringResource(R.string.checking_update))
-                    } else {
-                        Icon(Icons.Default.SystemUpdate, contentDescription = null)
-                        Text(stringResource(R.string.check_update), modifier = Modifier.padding(start = 8.dp))
-                    }
-                }
-                // 更新检查源切换
-                val updateSource by updateViewModel.updateSource.collectAsState()
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = stringResource(R.string.update_source_label),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    FilterChip(
-                        selected = updateSource == UpdateSource.GITEE,
-                        onClick = { updateViewModel.setUpdateSource(UpdateSource.GITEE) },
-                        label = { Text("Gitee", style = MaterialTheme.typography.labelSmall) }
-                    )
-                    FilterChip(
-                        selected = updateSource == UpdateSource.GITHUB,
-                        onClick = { updateViewModel.setUpdateSource(UpdateSource.GITHUB) },
-                        label = { Text("GitHub", style = MaterialTheme.typography.labelSmall) }
-                    )
-                }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Info,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Text(
-                        text = stringResource(R.string.app_info),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        modifier = Modifier.padding(start = 6.dp)
-                    )
-                }
+            if (showChangelog) {
+                ChangelogDialog(
+                    entries = changelogEntries,
+                    onDismiss = { showChangelog = false }
+                )
             }
 
             if (showModelEditor) {

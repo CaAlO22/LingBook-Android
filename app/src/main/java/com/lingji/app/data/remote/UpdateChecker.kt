@@ -5,8 +5,12 @@ import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import okhttp3.Dns
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.net.Inet4Address
@@ -74,6 +78,9 @@ class UpdateChecker @Inject constructor(
     private companion object {
         const val PREFS_NAME = "update_prefs"
         const val KEY_SOURCE = "update_source"
+        const val KEY_GITHUB_TOKEN = "github_token"
+        const val KEY_GITEE_TOKEN = "gitee_token"
+        const val KEY_TOKEN_UPDATED_AT = "tokens_updated_at"
 
         // GitHub
         const val GITHUB_API = "https://api.github.com/repos/CaAlO22/LingBook-Android/releases/latest"
@@ -89,6 +96,9 @@ class UpdateChecker @Inject constructor(
             "https://gitee.com/api/v5/repos/caalo22/ling-book-android/tags"
         const val GITEE_RELEASES_PAGE =
             "https://gitee.com/caalo22/ling-book-android/releases"
+        /** 网页版 latest 会 302 到最新 tag，用于绕开 API 的匿名限流。 */
+        const val GITEE_LATEST_HTML =
+            "https://gitee.com/caalo22/ling-book-android/releases/latest"
     }
 
     fun getUpdateSource(): UpdateSource {
@@ -98,6 +108,78 @@ class UpdateChecker @Inject constructor(
 
     fun setUpdateSource(source: UpdateSource) {
         prefs.edit().putString(KEY_SOURCE, source.name).apply()
+    }
+
+    // ── 访问令牌 ───────────────────────────────────────────────────────────
+
+    /**
+     * 更新源访问令牌快照。updatedAt 记录最近一次修改时间，
+     * 云同步据此做 Last-Write-Wins 比较。
+     */
+    data class TokenSnapshot(
+        val githubToken: String = "",
+        val giteeToken: String = "",
+        val updatedAt: Long = 0L
+    )
+
+    private val _tokens = MutableStateFlow(loadTokenSnapshot())
+
+    /** 令牌流：本机修改与云同步拉取都会推动它，设置页据此实时刷新。 */
+    val tokens: StateFlow<TokenSnapshot> = _tokens.asStateFlow()
+
+    private fun loadTokenSnapshot() = TokenSnapshot(
+        githubToken = prefs.getString(KEY_GITHUB_TOKEN, "").orEmpty().trim(),
+        giteeToken = prefs.getString(KEY_GITEE_TOKEN, "").orEmpty().trim(),
+        updatedAt = prefs.getLong(KEY_TOKEN_UPDATED_AT, 0L)
+    )
+
+    fun getTokenSnapshot(): TokenSnapshot = _tokens.value
+
+    /**
+     * GitHub 个人访问令牌（可选）。匿名调用 api.github.com 只有 60 次/小时，
+     * 携带令牌后提升到 5000 次/小时，可避免「检查更新」被限流。
+     */
+    fun getGithubToken(): String = _tokens.value.githubToken
+
+    fun setGithubToken(token: String) {
+        persistTokens(
+            github = token.trim(),
+            gitee = _tokens.value.giteeToken,
+            updatedAt = System.currentTimeMillis()
+        )
+    }
+
+    /**
+     * Gitee 私人令牌（可选）。匿名调用 /api/v5 走 IP 级限流，
+     * 携带令牌后按账号额度计算。
+     */
+    fun getGiteeToken(): String = _tokens.value.giteeToken
+
+    fun setGiteeToken(token: String) {
+        persistTokens(
+            github = _tokens.value.githubToken,
+            gitee = token.trim(),
+            updatedAt = System.currentTimeMillis()
+        )
+    }
+
+    /**
+     * 云同步：把远端令牌写入本机。仅在远端版本比本机新时生效，
+     * 避免把本机刚改过的令牌冲掉。返回是否真的写入。
+     */
+    fun applyRemoteTokens(githubToken: String, giteeToken: String, updatedAt: Long): Boolean {
+        if (updatedAt <= _tokens.value.updatedAt) return false
+        persistTokens(githubToken.trim(), giteeToken.trim(), updatedAt)
+        return true
+    }
+
+    private fun persistTokens(github: String, gitee: String, updatedAt: Long) {
+        prefs.edit()
+            .putString(KEY_GITHUB_TOKEN, github)
+            .putString(KEY_GITEE_TOKEN, gitee)
+            .putLong(KEY_TOKEN_UPDATED_AT, updatedAt)
+            .apply()
+        _tokens.value = TokenSnapshot(github, gitee, updatedAt)
     }
 
     suspend fun checkForUpdate(): UpdateCheckResult = withContext(Dispatchers.IO) {
@@ -111,15 +193,24 @@ class UpdateChecker @Inject constructor(
 
     private suspend fun checkGithub(): UpdateCheckResult = withContext(Dispatchers.IO) {
         try {
-            val request = Request.Builder()
+            val githubToken = getGithubToken()
+            val builder = Request.Builder()
                 .url(GITHUB_API)
                 .header("Accept", "application/vnd.github+json")
                 .header("User-Agent", "LingBook-Android")
-                .get()
-                .build()
+            if (githubToken.isNotBlank()) {
+                // 携带 Token 后 GitHub 限额从匿名 60 次/小时提升到 5000 次/小时
+                builder.header("Authorization", "Bearer $githubToken")
+            }
+            val request = builder.get().build()
 
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
+                    if (response.code == 401) {
+                        return@withContext UpdateCheckResult.Failed(
+                            "GitHub Token 无效或已过期（HTTP 401），请到设置中检查"
+                        )
+                    }
                     // 403/429/451 通常是 GitHub API 对该出口 IP 限速或封禁；
                     // 退化到不需要认证的 github.com 重定向抓取，仍可拿到最新 tag。
                     if (response.code == 403 || response.code == 429 || response.code == 451) {
@@ -222,7 +313,7 @@ class UpdateChecker @Inject constructor(
     private suspend fun checkGitee(): UpdateCheckResult = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder()
-                .url("$GITEE_API_RELEASES?page=1&per_page=20")
+                .url(giteeApiUrl(GITEE_API_RELEASES, mapOf("page" to "1", "per_page" to "20")))
                 .header("Accept", "application/json")
                 .header("User-Agent", "LingBook-Android")
                 .get()
@@ -230,9 +321,19 @@ class UpdateChecker @Inject constructor(
 
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
+                    if (response.code == 401) {
+                        return@withContext UpdateCheckResult.Failed(
+                            "Gitee Token 无效或已过期（HTTP 401），请到设置中检查"
+                        )
+                    }
                     // 404 表示 Gitee 上还没有创建 Release，退化到 Tags API 获取最新标签
                     if (response.code == 404) {
                         return@withContext giteeFallbackViaTags()
+                    }
+                    // Gitee 对未认证的 /api/v5 请求做 IP 级限流，匿名访问基本稳定返回
+                    // 403「Rate Limit Exceeded」；退化到网页 latest 的 302 拿最新 tag。
+                    if (response.code == 403 || response.code == 429) {
+                        return@withContext giteeFallbackViaHtmlRedirect(response.code)
                     }
                     return@withContext UpdateCheckResult.Failed(
                         "HTTP ${response.code} ${response.message.ifBlank { "" }}".trim()
@@ -296,13 +397,71 @@ class UpdateChecker @Inject constructor(
     }
 
     /**
+     * 构造 Gitee API 请求地址：附加查询参数，并在已配置私人令牌时带上 access_token。
+     * Gitee API v5 主要以 access_token 查询参数认证（并非所有接口都识别 Authorization 头），
+     * 因此统一走查询参数；携带令牌后限流额度按账号计算，不再受匿名 IP 级限流影响。
+     */
+    private fun giteeApiUrl(base: String, params: Map<String, String> = emptyMap()): String {
+        val url = base.toHttpUrlOrNull() ?: return base
+        val builder = url.newBuilder()
+        params.forEach { (key, value) -> builder.addQueryParameter(key, value) }
+        val token = getGiteeToken()
+        if (token.isNotBlank()) builder.addQueryParameter("access_token", token)
+        return builder.build().toString()
+    }
+
+    /**
+     * 当 Gitee API 返回 403/429（匿名访问被限流）时的回退路径：
+     * 访问网页版 ``releases/latest``，Gitee 会 302 到 ``/releases/tag/v<x.y.z>``，
+     * 从 Location 头解析 tag 再构造下载链接。
+     */
+    private fun giteeFallbackViaHtmlRedirect(originalCode: Int): UpdateCheckResult {
+        return try {
+            val request = Request.Builder()
+                .url(GITEE_LATEST_HTML)
+                .header("User-Agent", "LingBook-Android")
+                .header("Accept", "text/html")
+                .get()
+                .build()
+            noRedirectClient.newCall(request).execute().use { response ->
+                val location = response.header("Location") ?: response.header("location")
+                if (response.code !in 300..399 || location.isNullOrBlank()) {
+                    return UpdateCheckResult.Failed(
+                        "HTTP $originalCode（Gitee API 限流），回退也失败：HTTP ${response.code}"
+                    )
+                }
+                val tagMatch = Regex("/releases/tag/(v?[^/?#]+)").find(location)
+                val rawTag = tagMatch?.groupValues?.getOrNull(1)
+                    ?: return UpdateCheckResult.Failed(
+                        "HTTP $originalCode（Gitee API 限流），回退响应无法解析 tag：$location"
+                    )
+                val tagName = rawTag.removePrefix("v")
+                val currentVersion = getCurrentVersionName()
+                val hasUpdate = isNewerVersion(tagName, currentVersion)
+                UpdateCheckResult.Success(
+                    UpdateInfo(
+                        versionName = tagName,
+                        downloadUrl = location,
+                        releaseNotes = "（Gitee API 暂不可用，已通过回退路径获取版本信息。详细更新说明请到发布页查看。）",
+                        hasUpdate = hasUpdate
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            UpdateCheckResult.Failed(
+                "HTTP $originalCode（Gitee API 限流），回退也失败：${e.message ?: e.javaClass.simpleName}"
+            )
+        }
+    }
+
+    /**
      * 当 Gitee Releases API 返回 404（尚未创建 Release）时的回退路径：
      * 通过 Tags API 获取最新标签名，推导版本号并指向 Gitee 发布页。
      */
     private fun giteeFallbackViaTags(): UpdateCheckResult {
         return try {
             val request = Request.Builder()
-                .url(GITEE_API_TAGS)
+                .url(giteeApiUrl(GITEE_API_TAGS))
                 .header("User-Agent", "LingBook-Android")
                 .header("Accept", "application/json")
                 .get()

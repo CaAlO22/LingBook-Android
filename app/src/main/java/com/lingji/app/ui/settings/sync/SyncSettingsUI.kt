@@ -1,6 +1,7 @@
 package com.lingji.app.ui.settings.sync
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -41,23 +42,29 @@ fun SyncSettingsContent(
         text = stringResource(R.string.sync_description),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-        modifier = Modifier.padding(bottom = 8.dp)
+        modifier = Modifier.padding(bottom = 4.dp)
     )
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = stringResource(R.string.sync_enable),
-            style = MaterialTheme.typography.bodyMedium
-        )
-        Switch(
-            checked = config.enabled,
-            onCheckedChange = { viewModel.setEnabled(it) }
-        )
-    }
+    SyncCategoryRow(
+        title = stringResource(R.string.sync_enable_notes),
+        hint = stringResource(R.string.sync_enable_notes_hint),
+        checked = config.syncNotes,
+        onCheckedChange = { viewModel.setSyncNotes(it) }
+    )
+
+    SyncCategoryRow(
+        title = stringResource(R.string.sync_enable_models),
+        hint = stringResource(R.string.sync_enable_models_hint),
+        checked = config.syncModels,
+        onCheckedChange = { viewModel.setSyncModels(it) }
+    )
+
+    SyncCategoryRow(
+        title = stringResource(R.string.sync_enable_tokens),
+        hint = stringResource(R.string.sync_enable_tokens_hint),
+        checked = config.syncTokens,
+        onCheckedChange = { viewModel.setSyncTokens(it) }
+    )
 
     SettingsOutlinedTextField(
         value = config.host,
@@ -128,7 +135,7 @@ fun SyncSettingsContent(
         }
         Button(
             onClick = { viewModel.syncNow() },
-            enabled = config.enabled && !status.inProgress,
+            enabled = config.anyEnabled && !status.inProgress,
             modifier = Modifier.weight(1f)
         ) {
             Text(if (status.inProgress) stringResource(R.string.sync_syncing) else stringResource(R.string.sync_now))
@@ -145,6 +152,38 @@ fun SyncSettingsContent(
             style = MaterialTheme.typography.bodyMedium,
             color = if (success) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
             modifier = Modifier.padding(top = 8.dp)
+        )
+    }
+}
+
+/** 单行同步开关：左侧标题 + 说明，右侧 Switch。 */
+@Composable
+private fun SyncCategoryRow(
+    title: String,
+    hint: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                text = hint,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+            )
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange
         )
     }
 }

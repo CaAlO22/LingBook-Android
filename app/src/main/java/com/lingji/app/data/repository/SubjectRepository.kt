@@ -199,7 +199,9 @@ class SubjectRepository @Inject constructor(
     // ───────────────────────── 待办列表 ─────────────────────────
 
     suspend fun addTodoItem(subjectId: String, content: String) {
-        todoItemDao.insert(TodoItem(content = content).toEntity(subjectId))
+        // 新增条目追加到末尾，保留用户手动拖动后的相对顺序。
+        val nextOrder = todoItemDao.maxSortOrder(subjectId) + 1
+        todoItemDao.insert(TodoItem(content = content, sortOrder = nextOrder).toEntity(subjectId))
     }
 
     suspend fun setTodoItemDone(itemId: String, isDone: Boolean) {
@@ -214,6 +216,17 @@ class SubjectRepository @Inject constructor(
     suspend fun deleteTodoItem(itemId: String) {
         todoItemDao.deleteById(itemId)
         recordTombstones("todo_items" to itemId)
+    }
+
+    /** 按拖动后的顺序重写位次，顺带刷新 updatedAt 供云同步感知。 */
+    suspend fun reorderTodoItems(orderedIds: List<String>) {
+        val now = System.currentTimeMillis()
+        android.util.Log.d(
+            "LingjiDrag",
+            "repo.reorder n=${orderedIds.size} first=${orderedIds.firstOrNull()} last=${orderedIds.lastOrNull()}"
+        )
+        orderedIds.forEachIndexed { index, id -> todoItemDao.updateSortOrder(id, index, now) }
+        android.util.Log.d("LingjiDrag", "repo.reorder done")
     }
 
     suspend fun updateTodoRepeat(subjectId: String, repeat: TodoRepeat) {
@@ -464,6 +477,7 @@ class SubjectRepository @Inject constructor(
         subjectId = subjectId,
         content = content,
         isDone = isDone,
+        sortOrder = sortOrder,
         createdAt = createdAt
     )
 
@@ -471,6 +485,7 @@ class SubjectRepository @Inject constructor(
         id = id,
         content = content,
         isDone = isDone,
+        sortOrder = sortOrder,
         createdAt = createdAt
     )
 

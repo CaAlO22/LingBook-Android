@@ -9,10 +9,10 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TodoItemDao {
-    @Query("SELECT * FROM todo_items ORDER BY createdAt ASC")
+    @Query("SELECT * FROM todo_items ORDER BY sortOrder ASC, createdAt ASC")
     fun getAllTodoItems(): Flow<List<TodoItemEntity>>
 
-    @Query("SELECT * FROM todo_items WHERE subjectId = :subjectId ORDER BY createdAt ASC")
+    @Query("SELECT * FROM todo_items WHERE subjectId = :subjectId ORDER BY sortOrder ASC, createdAt ASC")
     suspend fun getTodoItemsBySubjectOnce(subjectId: String): List<TodoItemEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -32,6 +32,13 @@ interface TodoItemDao {
 
     @Query("UPDATE todo_items SET content = :content, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateContent(id: String, content: String, updatedAt: Long)
+
+    /** 当前学科下的最大排序位次；没有条目时返回 -1。 */
+    @Query("SELECT COALESCE(MAX(sortOrder), -1) FROM todo_items WHERE subjectId = :subjectId")
+    suspend fun maxSortOrder(subjectId: String): Int
+
+    @Query("UPDATE todo_items SET sortOrder = :sortOrder, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateSortOrder(id: String, sortOrder: Int, updatedAt: Long)
 
     @Query("UPDATE todo_items SET isDone = 0, updatedAt = :updatedAt WHERE subjectId = :subjectId AND isDone = 1")
     suspend fun resetDoneBySubject(subjectId: String, updatedAt: Long)

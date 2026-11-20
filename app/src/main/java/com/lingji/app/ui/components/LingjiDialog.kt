@@ -42,7 +42,7 @@ import com.lingji.app.R
 /**
  * 弹窗正文滚动区的当前高度（px）。
  *
- * 小窗 / 分屏下弹出输入法时，弹窗窗口会被压缩，正文视口高度随之连续变化；
+ * 弹出输入法 / 小窗适配时窗口被系统压缩，正文视口高度随之连续变化；
  * 输入框据此在视口变化后重新滚动，保证聚焦的输入框最终完整可见。
  * 不在弹窗内时为 null。
  */
@@ -74,9 +74,9 @@ fun LingjiDialog(
         val bodyHeight = remember { mutableIntStateOf(0) }
         // 弹窗是独立 Window：Compose 在 SDK >= 31 时不设置 softInputMode，
         // 系统对 wrap_content 浮窗默认按 ADJUST_PAN 处理（弹窗整体被平移），
-        // 会与输入框获得焦点后的自动滚动互相拉扯；小窗中系统还会在弹出输入法时压缩窗口高度，
-        // 两者叠加就会出现上下反复跳动、最终停在被平移后的位置。
-        // 这里强制改为 ADJUST_RESIZE：窗口随输入法收缩，只由正文区滚动跟随焦点。
+        // 会与输入框获得焦点后的自动滚动互相拉扯；小窗中系统还会在弹出输入法时压缩窗口高度。
+        // 这里强制 ADJUST_RESIZE，让窗口随输入法 / 小窗适配正常收缩，保证输入框不被键盘遮挡；
+        // 收缩期间的滚动拉扯由 SettingsOutlinedTextField 的高度无关滚动目标解决，不在窗口策略上回避。
         val dialogWindow = LocalView.current.findDialogWindow()
         SideEffect {
             if (dialogWindow != null) {
