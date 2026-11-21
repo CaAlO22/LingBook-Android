@@ -33,6 +33,36 @@ interface TodoItemDao {
     @Query("UPDATE todo_items SET content = :content, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateContent(id: String, content: String, updatedAt: Long)
 
+    @Query("SELECT * FROM todo_items WHERE id = :id LIMIT 1")
+    suspend fun getByIdOnce(id: String): TodoItemEntity?
+
+    /** 信息岛：编辑待办同时更新正文与提醒设置。 */
+    @Query(
+        "UPDATE todo_items SET content = :content, reminderEnabled = :reminderEnabled, " +
+            "reminderMinutes = :reminderMinutes, reminderAt = :reminderAt, updatedAt = :updatedAt WHERE id = :id"
+    )
+    suspend fun updateContentAndReminder(
+        id: String,
+        content: String,
+        reminderEnabled: Boolean,
+        reminderMinutes: Int,
+        reminderAt: Long,
+        updatedAt: Long
+    )
+
+    /** 信息岛：仅更新待办提醒设置。 */
+    @Query(
+        "UPDATE todo_items SET reminderEnabled = :reminderEnabled, reminderMinutes = :reminderMinutes, " +
+            "reminderAt = :reminderAt, updatedAt = :updatedAt WHERE id = :id"
+    )
+    suspend fun updateReminder(
+        id: String,
+        reminderEnabled: Boolean,
+        reminderMinutes: Int,
+        reminderAt: Long,
+        updatedAt: Long
+    )
+
     /** 当前学科下的最大排序位次；没有条目时返回 -1。 */
     @Query("SELECT COALESCE(MAX(sortOrder), -1) FROM todo_items WHERE subjectId = :subjectId")
     suspend fun maxSortOrder(subjectId: String): Int

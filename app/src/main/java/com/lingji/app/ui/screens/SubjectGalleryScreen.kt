@@ -99,6 +99,7 @@ import com.lingji.app.domain.model.HomeItem
 import com.lingji.app.domain.model.HomePageMode
 import com.lingji.app.domain.model.Subject
 import com.lingji.app.domain.model.SubjectType
+import com.lingji.app.domain.model.TodoRepeat
 import com.lingji.app.domain.provider.ProviderRegistry
 import com.lingji.app.ui.chat.HomeChatBar
 import com.lingji.app.ui.chat.HomeChatSheet
@@ -115,6 +116,7 @@ import com.lingji.app.ui.components.LingjiDialogDismissButton
 import com.lingji.app.ui.components.SubjectCard
 import com.lingji.app.ui.components.SubjectCardMinHeight
 import com.lingji.app.ui.components.TimeDisplay
+import com.lingji.app.ui.components.TodoRepeatDialog
 import com.lingji.app.ui.components.arrowKeyFocusGuard
 import com.lingji.app.ui.theme.NotoSerifCJKsc
 import com.lingji.app.ui.viewmodel.SubjectViewModel
@@ -138,6 +140,8 @@ fun SubjectGalleryScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
+    // 信息岛：待创建的待办标题，确定重复规则后才真正写入
+    var pendingTodoCreate by remember { mutableStateOf<String?>(null) }
     var renameSubjectId by remember { mutableStateOf<String?>(null) }
     var renameDefault by remember { mutableStateOf("") }
     var showImportDialog by remember { mutableStateOf(false) }
@@ -334,7 +338,12 @@ fun SubjectGalleryScreen(
                             item(key = "__add__") {
                                 AddSubjectCard(
                                     onAdd = { title, type, _ ->
-                                        viewModel.addSubject(title, type)
+                                        // 信息岛：待办必须先在创建流程中确定重复规则，确定后才真正创建
+                                        if (type == SubjectType.TODO) {
+                                            pendingTodoCreate = title
+                                        } else {
+                                            viewModel.addSubject(title, type)
+                                        }
                                     },
                                     onCreateFolder = { name -> viewModel.createFolder(name) }
                                 )
@@ -537,10 +546,26 @@ fun SubjectGalleryScreen(
         AddSubjectDialog(
             onDismiss = { showAddDialog = false },
             onConfirm = { title, type ->
-                viewModel.addSubject(title, type)
                 showAddDialog = false
+                if (type == SubjectType.TODO) {
+                    pendingTodoCreate = title
+                } else {
+                    viewModel.addSubject(title, type)
+                }
             },
             onCreateFolder = { name -> viewModel.createFolder(name) }
+        )
+    }
+
+    // 信息岛：待办创建第二步——重复规则；取消则放弃创建
+    pendingTodoCreate?.let { title ->
+        TodoRepeatDialog(
+            initial = TodoRepeat(),
+            onDismiss = { pendingTodoCreate = null },
+            onConfirm = { repeat ->
+                viewModel.addSubject(title, SubjectType.TODO, todoRepeat = repeat)
+                pendingTodoCreate = null
+            }
         )
     }
 

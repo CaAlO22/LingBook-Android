@@ -49,7 +49,7 @@ import org.json.JSONObject
         TodoItemEntity::class,
         ModelConfigEntity::class
     ],
-    version = 22,
+    version = 23,
     exportSchema = false
 )
 abstract class LingjiDatabase : RoomDatabase() {
@@ -445,6 +445,18 @@ abstract class LingjiDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // 首页默认落地页可配置：卡片列表 / 聚合页
                 db.execSQL("ALTER TABLE settings ADD COLUMN homePageMode TEXT NOT NULL DEFAULT 'CARD_LIST'")
+            }
+        }
+
+        val MIGRATION_22_23 = object : Migration(22, 23) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 信息岛：待办提醒——单条待办与整个待办列表各增加提醒设置。
+                db.execSQL("ALTER TABLE todo_items ADD COLUMN reminderEnabled INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE todo_items ADD COLUMN reminderMinutes INTEGER NOT NULL DEFAULT -1")
+                db.execSQL("ALTER TABLE todo_items ADD COLUMN reminderAt INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE subjects ADD COLUMN todoReminderEnabled INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE subjects ADD COLUMN todoReminderMinutes INTEGER NOT NULL DEFAULT -1")
+                db.execSQL("ALTER TABLE subjects ADD COLUMN todoReminderAt INTEGER NOT NULL DEFAULT 0")
             }
         }
     }

@@ -133,9 +133,25 @@ class SubjectViewModel @Inject constructor(
         }
     }
 
-    fun addSubject(title: String, type: SubjectType, folderId: String? = null) {
+    /**
+     * 创建笔记。
+     *
+     * @param todoRepeat 待办列表的重复类型：创建时必须确定且之后不可修改（提醒依赖该规则），
+     * 因此由创建流程的重复设置弹窗传入。
+     */
+    fun addSubject(
+        title: String,
+        type: SubjectType,
+        folderId: String? = null,
+        todoRepeat: TodoRepeat? = null
+    ) {
         viewModelScope.launch {
-            val subject = Subject.create(title, type).copy(folderId = folderId)
+            val base = Subject.create(title, type)
+            val subject = base.copy(
+                folderId = folderId,
+                todoRepeat = if (type == SubjectType.TODO && todoRepeat != null) todoRepeat else base.todoRepeat,
+                todoLastResetAt = System.currentTimeMillis()
+            )
             subjectRepository.insert(subject)
             _uiState.update { it.copy(currentSubjectId = subject.id) }
         }
@@ -274,9 +290,23 @@ class SubjectViewModel @Inject constructor(
 
     // ───────────────────────── 待办列表 ─────────────────────────
 
-    fun addTodoItem(subjectId: String, content: String) {
+    fun addTodoItem(
+        subjectId: String,
+        content: String,
+        reminderEnabled: Boolean = false,
+        reminderMinutes: Int = -1,
+        reminderAt: Long = 0
+    ) {
         if (content.isBlank()) return
-        viewModelScope.launch { subjectRepository.addTodoItem(subjectId, content.trim()) }
+        viewModelScope.launch {
+            subjectRepository.addTodoItem(
+                subjectId = subjectId,
+                content = content.trim(),
+                reminderEnabled = reminderEnabled,
+                reminderMinutes = reminderMinutes,
+                reminderAt = reminderAt
+            )
+        }
     }
 
     fun setTodoItemDone(itemId: String, isDone: Boolean) {
@@ -289,6 +319,44 @@ class SubjectViewModel @Inject constructor(
         viewModelScope.launch { subjectRepository.updateTodoItemContent(itemId, trimmed) }
     }
 
+    /** 信息岛：编辑待办正文与提醒设置。 */
+    fun updateTodoItem(
+        itemId: String,
+        content: String,
+        reminderEnabled: Boolean,
+        reminderMinutes: Int,
+        reminderAt: Long
+    ) {
+        val trimmed = content.trim()
+        if (trimmed.isEmpty()) return
+        viewModelScope.launch {
+            subjectRepository.updateTodoItem(
+                itemId = itemId,
+                content = trimmed,
+                reminderEnabled = reminderEnabled,
+                reminderMinutes = reminderMinutes,
+                reminderAt = reminderAt
+            )
+        }
+    }
+
+    /** 信息岛：设置整个待办列表的提醒。 */
+    fun updateTodoReminder(
+        subjectId: String,
+        reminderEnabled: Boolean,
+        reminderMinutes: Int,
+        reminderAt: Long
+    ) {
+        viewModelScope.launch {
+            subjectRepository.updateTodoReminder(
+                subjectId = subjectId,
+                reminderEnabled = reminderEnabled,
+                reminderMinutes = reminderMinutes,
+                reminderAt = reminderAt
+            )
+        }
+    }
+
     fun deleteTodoItem(itemId: String) {
         viewModelScope.launch { subjectRepository.deleteTodoItem(itemId) }
     }
@@ -297,10 +365,6 @@ class SubjectViewModel @Inject constructor(
     fun reorderTodoItems(orderedIds: List<String>) {
         if (orderedIds.isEmpty()) return
         viewModelScope.launch { subjectRepository.reorderTodoItems(orderedIds) }
-    }
-
-    fun updateTodoRepeat(subjectId: String, repeat: TodoRepeat) {
-        viewModelScope.launch { subjectRepository.updateTodoRepeat(subjectId, repeat) }
     }
 
     /**

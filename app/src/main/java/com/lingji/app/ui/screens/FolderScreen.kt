@@ -39,11 +39,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.lingji.app.R
 import com.lingji.app.domain.model.Subject
+import com.lingji.app.domain.model.SubjectType
+import com.lingji.app.domain.model.TodoRepeat
 import com.lingji.app.ui.components.GlassOutlinedTextField
 import com.lingji.app.ui.components.LingjiDialog
 import com.lingji.app.ui.components.LingjiDialogConfirmButton
 import com.lingji.app.ui.components.LingjiDialogDismissButton
 import com.lingji.app.ui.components.SubjectCard
+import com.lingji.app.ui.components.TodoRepeatDialog
 import com.lingji.app.ui.viewmodel.SubjectViewModel
 import kotlinx.coroutines.launch
 
@@ -68,6 +71,8 @@ fun FolderScreen(
     var renameSubjectId by remember { mutableStateOf<String?>(null) }
     var renameDefault by remember { mutableStateOf("") }
     var exportSubject by remember { mutableStateOf<Subject?>(null) }
+    // 信息岛：待创建待办——确定重复规则后才创建
+    var pendingTodoCreate by remember { mutableStateOf<String?>(null) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("*/*")
@@ -119,7 +124,11 @@ fun FolderScreen(
                     AddSubjectCard(
                         folderId = folderId,
                         onAdd = { title, type, fid ->
-                            viewModel.addSubject(title, type, fid)
+                            if (type == SubjectType.TODO) {
+                                pendingTodoCreate = title
+                            } else {
+                                viewModel.addSubject(title, type, fid)
+                            }
                         }
                     )
                 }
@@ -157,6 +166,18 @@ fun FolderScreen(
                 }
             }
         }
+    }
+
+    // 信息岛：待办创建第二步——重复规则；取消则放弃创建
+    pendingTodoCreate?.let { title ->
+        TodoRepeatDialog(
+            initial = TodoRepeat(),
+            onDismiss = { pendingTodoCreate = null },
+            onConfirm = { repeat ->
+                viewModel.addSubject(title, SubjectType.TODO, folderId, repeat)
+                pendingTodoCreate = null
+            }
+        )
     }
 
     renameSubjectId?.let { id ->

@@ -140,7 +140,13 @@ data class TodoItem(
     val content: String,
     val isDone: Boolean = false,
     val sortOrder: Int = 0,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    /** 信息岛：待办提醒总开关；关闭时不参与调度。 */
+    val reminderEnabled: Boolean = false,
+    /** 重复列表下的提醒时刻（当天 0 点起的分钟数，0..1439）；一次性待办为 -1。 */
+    val reminderMinutes: Int = -1,
+    /** 一次性待办的提醒绝对时间戳；重复列表由调度器按重复规则计算。 */
+    val reminderAt: Long = 0
 )
 
 private const val DAY_MS = 24L * 60 * 60 * 1000
@@ -197,6 +203,41 @@ fun TodoRepeat.currentPeriodStart(now: Long): Long? = when (type) {
     }
 }
 
+/**
+ * 信息岛：按重复规则计算下一次提醒时刻。
+ *
+ * 重复列表的提醒日期由规则固定（不能晚于下一次刷新），用户只选择当天时刻，
+ * 因此这里直接返回“下一个命中日的指定时刻”。一次性待办、非法时刻或规则永不命中时返回 null。
+ */
+fun TodoRepeat.nextReminderAt(minutesOfDay: Int, now: Long): Long? {
+    if (type == TodoRepeatType.ONCE || minutesOfDay !in 0..1439) return null
+    val today = startOfDay(now)
+    val todayAt = today + minutesOfDay * 60_000L
+    if (todayAt > now && isCycleDay(today)) return todayAt
+    // 间隔重复最多等待一个完整间隔，其余规则最多等待一周。
+    val lookahead = if (type == TodoRepeatType.INTERVAL) intervalDays.coerceAtLeast(1) else 7
+    var day = today + DAY_MS
+    repeat(lookahead) {
+        if (isCycleDay(day)) return day + minutesOfDay * 60_000L
+        day += DAY_MS
+    }
+    return null
+}
+
+private fun TodoRepeat.isCycleDay(dayStart: Long): Boolean = when (type) {
+    TodoRepeatType.ONCE -> false
+    TodoRepeatType.DAILY -> true
+    TodoRepeatType.WEEKDAYS -> isoWeekDayOf(dayStart) in 1..5
+    TodoRepeatType.WEEKENDS -> isoWeekDayOf(dayStart) >= 6
+    TodoRepeatType.CUSTOM -> weekDays.isNotEmpty() && isoWeekDayOf(dayStart) in weekDays
+    TodoRepeatType.INTERVAL -> {
+        val interval = intervalDays.coerceAtLeast(1)
+        val anchorDay = startOfDay(if (anchorAt > 0) anchorAt else dayStart)
+        val elapsedDays = (dayStart - anchorDay) / DAY_MS
+        elapsedDays >= 0 && elapsedDays % interval == 0L
+    }
+}
+
 data class Subject(
     val id: String = generateId(),
     val title: String,
@@ -218,7 +259,13 @@ data class Subject(
     /** 待办列表的重复设置，仅 [SubjectType.TODO] 使用。 */
     val todoRepeat: TodoRepeat = TodoRepeat(),
     /** 上一次按重复周期清除勾选的时间，仅 [SubjectType.TODO] 使用。 */
-    val todoLastResetAt: Long = 0
+    val todoLastResetAt: Long = 0,
+    /** 信息岛：待办列表整体提醒开关；开启后在刷新前提醒仍有未完成待办。 */
+    val todoReminderEnabled: Boolean = false,
+    /** 重复列表的整体提醒时刻（当天 0 点起的分钟数）；一次性列表为 -1。 */
+    val todoReminderMinutes: Int = -1,
+    /** 一次性列表的整体提醒绝对时间戳；重复列表由调度器按规则计算。 */
+    val todoReminderAt: Long = 0
 ) {
     companion object {
         fun create(title: String, type: SubjectType): Subject = Subject(

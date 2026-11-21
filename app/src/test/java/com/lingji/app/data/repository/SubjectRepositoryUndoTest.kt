@@ -9,6 +9,7 @@ import com.lingji.app.data.db.entities.NotebookPageEntity
 import com.lingji.app.data.db.entities.NoteRevisionEntity
 import com.lingji.app.data.db.entities.SubjectEntity
 import com.lingji.app.data.edit.EditBatch
+import com.lingji.app.data.reminder.TodoReminderScheduler
 import com.lingji.app.domain.model.NotebookPage
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -43,7 +44,8 @@ class SubjectRepositoryUndoTest {
     fun setup() {
         repo = SubjectRepository(
             subjectDao, fragmentDao, pageDao, folderDao, revisionDao,
-            mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true)
+            mockk(relaxed = true), mockk(relaxed = true), mockk<com.lingji.app.data.db.dao.TodoItemDao>(relaxed = true),
+            mockk<TodoReminderScheduler>(relaxed = true)
         )
     }
 

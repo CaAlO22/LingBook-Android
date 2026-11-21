@@ -17,6 +17,10 @@ interface SubjectDao {
     @Query("SELECT * FROM subjects WHERE id = :id LIMIT 1")
     suspend fun getSubjectById(id: String): SubjectEntity?
 
+    /** 开机/更新后恢复提醒时一次性读取全部学科。 */
+    @Query("SELECT * FROM subjects")
+    suspend fun getAllOnce(): List<SubjectEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(subject: SubjectEntity)
 
@@ -49,23 +53,21 @@ interface SubjectDao {
 
     // ── 待办列表 ──
 
-    @Query(
-        "UPDATE subjects SET todoRepeatType = :type, todoRepeatDays = :days, " +
-            "todoIntervalDays = :intervalDays, todoRepeatAnchorAt = :anchorAt, " +
-            "todoLastResetAt = :lastResetAt, updatedAt = :updatedAt WHERE id = :id"
-    )
-    suspend fun updateTodoRepeat(
-        id: String,
-        type: String,
-        days: String,
-        intervalDays: Int,
-        anchorAt: Long,
-        lastResetAt: Long,
-        updatedAt: Long
-    )
-
     @Query("UPDATE subjects SET todoLastResetAt = :lastResetAt, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateTodoLastResetAt(id: String, lastResetAt: Long, updatedAt: Long)
+
+    /** 信息岛：更新待办列表整体提醒设置。 */
+    @Query(
+        "UPDATE subjects SET todoReminderEnabled = :reminderEnabled, todoReminderMinutes = :reminderMinutes, " +
+            "todoReminderAt = :reminderAt, updatedAt = :updatedAt WHERE id = :id"
+    )
+    suspend fun updateTodoReminder(
+        id: String,
+        reminderEnabled: Boolean,
+        reminderMinutes: Int,
+        reminderAt: Long,
+        updatedAt: Long
+    )
 
     @Query("SELECT * FROM subjects WHERE folderId IS :folderId ORDER BY orderIndex DESC, createdAt DESC")
     suspend fun getSubjectsByFolderOnce(folderId: String?): List<SubjectEntity>

@@ -61,7 +61,7 @@ class ToolLayerVerificationTest {
         coEvery { repo.getAllSubjects() } returns flowOf(
             listOf(notebook, currentTodo, Subject(id = "other", title = "每周委托", type = SubjectType.TODO))
         )
-        coEvery { repo.addTodoItem(todoId, any()) } answers {
+        coEvery { repo.addTodoItem(todoId, any(), any(), any(), any()) } answers {
             val content = secondArg<String>()
             val item = TodoItem(id = "t-new", content = content, sortOrder = currentTodo.todoItems.size)
             currentTodo = currentTodo.copy(todoItems = currentTodo.todoItems + item)
@@ -75,7 +75,7 @@ class ToolLayerVerificationTest {
             )
             Unit
         }
-        coEvery { repo.updateTodoItemContent(any(), any()) } answers {
+        coEvery { repo.updateTodoItem(any(), any(), any(), any(), any()) } answers {
             val id = firstArg<String>()
             val text = secondArg<String>()
             currentTodo = currentTodo.copy(

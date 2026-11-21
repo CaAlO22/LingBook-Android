@@ -61,6 +61,28 @@
     <string name="weekday_sat">周六</string>
     <string name="weekday_sun">周日</string>
 
+    <!-- 待办提醒 -->
+    <string name="todo_menu_reminder">列表提醒</string>
+    <string name="todo_menu_repeat">重复规则</string>
+    <string name="todo_menu_repeat_readonly">%1$s（创建后不可修改）</string>
+    <string name="todo_reminder_title_item">待办提醒</string>
+    <string name="todo_reminder_title_list">列表提醒</string>
+    <string name="todo_reminder_enable">开启提醒</string>
+    <string name="todo_reminder_date_label">提醒日期</string>
+    <string name="todo_reminder_time_label">提醒时间</string>
+    <string name="todo_reminder_clear">清除提醒</string>
+    <string name="todo_reminder_none">未设置</string>
+    <string name="todo_reminder_once_hint">选择提醒的日期和时间；提醒触发后自动关闭。</string>
+    <string name="todo_reminder_repeat_hint">提醒日期由列表的重复规则决定，只需选择当天时刻；到期后自动排入下一周期。</string>
+    <string name="todo_reminder_item_hint">仅在这条待办未完成时提醒。</string>
+    <string name="todo_reminder_list_hint">在这之前仍有未完成的待办时提醒你。</string>
+    <string name="todo_reminder_past_error">提醒时间需晚于当前时间</string>
+    <string name="todo_reminder_channel">待办提醒</string>
+    <string name="todo_reminder_channel_desc">待办事项与待办列表的定时提醒</string>
+    <string name="todo_reminder_list_notification">还有 %1$d 项待办未完成，记得处理</string>
+    <string name="todo_reminder_menu_summary">列表提醒：%1$s</string>
+    <string name="todo_reminder_menu_summary_repeat">%1$s · %2$s</string>
+
     <!-- 文件夹 -->
     <string name="new_folder">新建文件夹</string>
     <string name="new_folder_hint">输入文件夹名称…</string>

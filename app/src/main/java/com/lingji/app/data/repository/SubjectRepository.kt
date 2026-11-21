@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 import com.lingji.app.data.edit.EditBatch
+import com.lingji.app.data.reminder.TodoReminderScheduler
 import kotlin.coroutines.coroutineContext
 import java.util.UUID
 
@@ -47,7 +48,8 @@ class SubjectRepository @Inject constructor(
     private val revisionDao: NoteRevisionDao,
     private val summaryDao: SubjectSummaryDao,
     private val tombstoneDao: SyncTombstoneDao,
-    private val todoItemDao: TodoItemDao
+    private val todoItemDao: TodoItemDao,
+    private val reminderScheduler: TodoReminderScheduler
 ) {
     private val gson = Gson()
 
@@ -95,6 +97,7 @@ class SubjectRepository @Inject constructor(
         syncFragments(subject)
         syncPages(subject)
         syncTodoItems(subject)
+        if (subject.type == SubjectType.TODO) reminderScheduler.refreshSubject(subject.id)
     }
 
     suspend fun delete(id: String) {
@@ -108,6 +111,8 @@ class SubjectRepository @Inject constructor(
         pageDao.deleteBySubject(id)
         todoItemDao.deleteBySubject(id)
         summaryDao.deleteBySubjectId(id)
+        reminderScheduler.cancelSubject(id)
+        todoItemIds.forEach { reminderScheduler.cancelItem(it) }
         recordTombstones(
             *arrayOf("subjects" to id, "subject_summaries" to id) +
                 fragmentIds.map { "fragments" to it } +
@@ -199,16 +204,30 @@ class SubjectRepository @Inject constructor(
     // ───────────────────────── 待办列表 ─────────────────────────
 
     /** 返回新建的待办项，供 Agent 工具把 id 回传给调用方（UI 侧忽略返回值）。 */
-    suspend fun addTodoItem(subjectId: String, content: String): TodoItem {
+    suspend fun addTodoItem(
+        subjectId: String,
+        content: String,
+        reminderEnabled: Boolean = false,
+        reminderMinutes: Int = -1,
+        reminderAt: Long = 0
+    ): TodoItem {
         // 新增条目追加到末尾，保留用户手动拖动后的相对顺序。
         val nextOrder = todoItemDao.maxSortOrder(subjectId) + 1
-        val item = TodoItem(content = content, sortOrder = nextOrder)
+        val item = TodoItem(
+            content = content,
+            sortOrder = nextOrder,
+            reminderEnabled = reminderEnabled,
+            reminderMinutes = reminderMinutes,
+            reminderAt = reminderAt
+        )
         todoItemDao.insert(item.toEntity(subjectId))
+        if (reminderEnabled) reminderScheduler.refreshSubject(subjectId)
         return item
     }
 
     suspend fun setTodoItemDone(itemId: String, isDone: Boolean) {
         todoItemDao.updateDone(itemId, isDone, System.currentTimeMillis())
+        todoItemDao.getByIdOnce(itemId)?.let { reminderScheduler.refreshSubject(it.subjectId) }
     }
 
     /** 信息岛：待办条目编辑——仅更新正文并刷新 updatedAt，供云同步感知修改。 */
@@ -216,8 +235,47 @@ class SubjectRepository @Inject constructor(
         todoItemDao.updateContent(itemId, content, System.currentTimeMillis())
     }
 
+    /** 信息岛：编辑待办正文与提醒设置，并立即重排该列表的提醒。 */
+    suspend fun updateTodoItem(
+        itemId: String,
+        content: String,
+        reminderEnabled: Boolean,
+        reminderMinutes: Int,
+        reminderAt: Long
+    ) {
+        val item = todoItemDao.getByIdOnce(itemId) ?: return
+        todoItemDao.updateContentAndReminder(
+            id = itemId,
+            content = content,
+            reminderEnabled = reminderEnabled,
+            reminderMinutes = reminderMinutes,
+            reminderAt = reminderAt,
+            updatedAt = System.currentTimeMillis()
+        )
+        reminderScheduler.refreshSubject(item.subjectId)
+    }
+
+    /** 信息岛：仅更新单条待办提醒。 */
+    suspend fun updateTodoItemReminder(
+        itemId: String,
+        reminderEnabled: Boolean,
+        reminderMinutes: Int,
+        reminderAt: Long
+    ) {
+        val item = todoItemDao.getByIdOnce(itemId) ?: return
+        todoItemDao.updateReminder(
+            id = itemId,
+            reminderEnabled = reminderEnabled,
+            reminderMinutes = reminderMinutes,
+            reminderAt = reminderAt,
+            updatedAt = System.currentTimeMillis()
+        )
+        reminderScheduler.refreshSubject(item.subjectId)
+    }
+
     suspend fun deleteTodoItem(itemId: String) {
         todoItemDao.deleteById(itemId)
+        reminderScheduler.cancelItem(itemId)
         recordTombstones("todo_items" to itemId)
     }
 
@@ -232,18 +290,21 @@ class SubjectRepository @Inject constructor(
         android.util.Log.d("LingjiDrag", "repo.reorder done")
     }
 
-    suspend fun updateTodoRepeat(subjectId: String, repeat: TodoRepeat) {
-        val now = System.currentTimeMillis()
-        // 修改重复设置即开启新周期，避免刚改完就被判定为需要清除勾选
-        subjectDao.updateTodoRepeat(
+    /** 信息岛：更新整个待办列表的提醒设置，并立即重排闹钟。 */
+    suspend fun updateTodoReminder(
+        subjectId: String,
+        reminderEnabled: Boolean,
+        reminderMinutes: Int,
+        reminderAt: Long
+    ) {
+        subjectDao.updateTodoReminder(
             id = subjectId,
-            type = repeat.type.name,
-            days = repeat.weekDays.sorted().joinToString(","),
-            intervalDays = repeat.intervalDays.coerceAtLeast(1),
-            anchorAt = repeat.anchorAt,
-            lastResetAt = now,
-            updatedAt = now
+            reminderEnabled = reminderEnabled,
+            reminderMinutes = reminderMinutes,
+            reminderAt = reminderAt,
+            updatedAt = System.currentTimeMillis()
         )
+        reminderScheduler.refreshSubject(subjectId)
     }
 
     /** 新周期开始时清除所有勾选，并记录本次重置时间。 */
@@ -251,6 +312,8 @@ class SubjectRepository @Inject constructor(
         val now = System.currentTimeMillis()
         todoItemDao.resetDoneBySubject(subjectId, now)
         subjectDao.updateTodoLastResetAt(subjectId, lastResetAt, now)
+        // 新周期开始后重新排定提醒（一次性提醒已在完成时清除，这里只需处理重复提醒）。
+        reminderScheduler.refreshSubject(subjectId)
     }
 
     suspend fun addPage(subjectId: String, page: NotebookPage) {
@@ -472,7 +535,10 @@ class SubjectRepository @Inject constructor(
         todoRepeatDays = todoRepeat.weekDays.sorted().joinToString(","),
         todoIntervalDays = todoRepeat.intervalDays.coerceAtLeast(1),
         todoRepeatAnchorAt = todoRepeat.anchorAt,
-        todoLastResetAt = todoLastResetAt
+        todoLastResetAt = todoLastResetAt,
+        todoReminderEnabled = todoReminderEnabled,
+        todoReminderMinutes = todoReminderMinutes,
+        todoReminderAt = todoReminderAt
     )
 
     private fun TodoItem.toEntity(subjectId: String) = TodoItemEntity(
@@ -481,7 +547,10 @@ class SubjectRepository @Inject constructor(
         content = content,
         isDone = isDone,
         sortOrder = sortOrder,
-        createdAt = createdAt
+        createdAt = createdAt,
+        reminderEnabled = reminderEnabled,
+        reminderMinutes = reminderMinutes,
+        reminderAt = reminderAt
     )
 
     private fun TodoItemEntity.toDomain() = TodoItem(
@@ -489,7 +558,10 @@ class SubjectRepository @Inject constructor(
         content = content,
         isDone = isDone,
         sortOrder = sortOrder,
-        createdAt = createdAt
+        createdAt = createdAt,
+        reminderEnabled = reminderEnabled,
+        reminderMinutes = reminderMinutes,
+        reminderAt = reminderAt
     )
 
     private fun Fragment.toEntity(subjectId: String, isUnmerged: Boolean) = FragmentEntity(
