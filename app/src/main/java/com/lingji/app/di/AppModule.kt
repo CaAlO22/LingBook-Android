@@ -46,7 +46,8 @@ object AppModule {
                 LingjiDatabase.MIGRATION_18_19,
                 LingjiDatabase.MIGRATION_19_20,
                 LingjiDatabase.MIGRATION_20_21,
-                LingjiDatabase.MIGRATION_21_22
+                LingjiDatabase.MIGRATION_21_22,
+                LingjiDatabase.MIGRATION_22_23
             )
             .addCallback(
                 object : RoomDatabase.Callback() {
