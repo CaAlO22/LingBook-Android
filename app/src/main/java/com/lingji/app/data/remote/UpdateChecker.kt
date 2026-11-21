@@ -313,7 +313,14 @@ class UpdateChecker @Inject constructor(
     private suspend fun checkGitee(): UpdateCheckResult = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder()
-                .url(giteeApiUrl(GITEE_API_RELEASES, mapOf("page" to "1", "per_page" to "20")))
+                // Gitee 默认按创建时间正序分页（最旧在前），Release 超过 20 个后
+                // 第一页会漏掉最新版本；显式要求倒序（最新在前）才能稳定拿到 v2.3.0+。
+                .url(
+                    giteeApiUrl(
+                        GITEE_API_RELEASES,
+                        mapOf("page" to "1", "per_page" to "20", "direction" to "desc")
+                    )
+                )
                 .header("Accept", "application/json")
                 .header("User-Agent", "LingBook-Android")
                 .get()
