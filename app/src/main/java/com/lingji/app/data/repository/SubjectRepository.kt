@@ -496,7 +496,11 @@ class SubjectRepository @Inject constructor(
                 intervalDays = entity.todoIntervalDays.coerceAtLeast(1),
                 anchorAt = entity.todoRepeatAnchorAt
             ),
-            todoLastResetAt = entity.todoLastResetAt
+            todoLastResetAt = entity.todoLastResetAt,
+            // 信息岛：列表整体提醒必须回读，否则保存后 UI 仍显示未设置，且后续 insert 会用默认值覆盖
+            todoReminderEnabled = entity.todoReminderEnabled,
+            todoReminderMinutes = entity.todoReminderMinutes,
+            todoReminderAt = entity.todoReminderAt
         )
     }
 
