@@ -63,7 +63,8 @@ class SyncRepository @Inject constructor(
     private val todoItemDao: TodoItemDao,
     private val modelConfigDao: ModelConfigDao,
     private val settingsDao: SettingsDao,
-    private val updateChecker: UpdateChecker
+    private val updateChecker: UpdateChecker,
+    private val reminderScheduler: com.lingji.app.data.reminder.TodoReminderScheduler
 ) {
     private val gson = Gson()
     private val syncMutex = Mutex()
@@ -225,6 +226,8 @@ class SyncRepository @Inject constructor(
             configStore.lastSyncAt = System.currentTimeMillis()
             // 清理 30 天前的墓碑（此时所有在线设备早已收到）
             tombstoneDao.deleteOlderThan(System.currentTimeMillis() - TOMBSTONE_RETENTION_MS)
+            // 信息岛：远端可能带来新的待办提醒，同步落库后重排本机闹钟
+            if (notesOn) reminderScheduler.refreshAll()
 
             val pushed = subjects.size + fragments.size + pages.size + folders.size +
                 conversations.size + messages.size + summaries.size + todoItems.size +
@@ -403,14 +406,24 @@ class SyncRepository @Inject constructor(
 
     private suspend fun applyTombstone(tbl: String, id: String): Boolean = runCatching {
         when (tbl) {
-            TBL_SUBJECTS -> subjectDao.deleteById(id)
+            TBL_SUBJECTS -> {
+                // 信息岛：远端删除待办笔记时一并取消本机闹钟
+                todoItemDao.getTodoItemsBySubjectOnce(id).forEach {
+                    reminderScheduler.cancelItem(it.id)
+                }
+                reminderScheduler.cancelSubject(id)
+                subjectDao.deleteById(id)
+            }
             TBL_FRAGMENTS -> fragmentDao.deleteById(id)
             TBL_PAGES -> pageDao.deleteById(id)
             TBL_FOLDERS -> folderDao.deleteById(id)
             TBL_CONVERSATIONS -> homeChatDao.deleteConversation(id) // FK 级联删消息
             TBL_MESSAGES -> homeChatDao.deleteMessageById(id)
             TBL_SUMMARIES -> summaryDao.deleteBySubjectId(id)
-            TBL_TODOS -> todoItemDao.deleteById(id)
+            TBL_TODOS -> {
+                todoItemDao.deleteById(id)
+                reminderScheduler.cancelItem(id)
+            }
             TBL_MODEL_CONFIGS -> {
                 modelConfigDao.deleteById(id)
                 settingsDao.clearModelReference(id)

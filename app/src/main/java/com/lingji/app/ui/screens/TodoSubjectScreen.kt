@@ -1,5 +1,10 @@
 package com.lingji.app.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -9,8 +14,6 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,26 +29,29 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -55,6 +61,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -64,6 +71,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -71,11 +79,13 @@ import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.lingji.app.R
 import com.lingji.app.domain.model.Subject
 import com.lingji.app.domain.model.TodoItem
@@ -84,10 +94,17 @@ import com.lingji.app.domain.model.TodoRepeatType
 import com.lingji.app.ui.components.DeleteConfirmDialog
 import com.lingji.app.ui.components.FloatingInputContainer
 import com.lingji.app.ui.components.GlassOutlinedTextField
-import com.lingji.app.ui.components.InputCapsule
+import com.lingji.app.ui.components.GlassSurface
 import com.lingji.app.ui.components.LingjiDialog
 import com.lingji.app.ui.components.LingjiDialogConfirmButton
 import com.lingji.app.ui.components.LingjiDialogDismissButton
+import com.lingji.app.ui.components.TodoReminderDialog
+import com.lingji.app.ui.components.arrowKeyCursorBehavior
+import com.lingji.app.ui.components.enterSendBehavior
+import com.lingji.app.ui.components.reminderDateTimeText
+import com.lingji.app.ui.components.reminderShortText
+import com.lingji.app.ui.components.reminderTimeText
+import com.lingji.app.ui.components.todoRepeatSummary
 import com.lingji.app.ui.theme.NotoSerifCJKsc
 import com.lingji.app.ui.viewmodel.SubjectViewModel
 import com.lingji.app.util.copyPlainText
@@ -108,10 +125,24 @@ fun TodoSubjectScreen(
     val liveSubject = remember(uiState.subjects, subject.id) {
         uiState.subjects.find { it.id == subject.id } ?: subject
     }
-    var showRepeatDialog by remember { mutableStateOf(false) }
+    var menuExpanded by remember { mutableStateOf(false) }
+    var showListReminderDialog by remember { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<TodoItem?>(null) } // 信息岛：待办条目编辑
     var pendingDeleteItem by remember { mutableStateOf<TodoItem?>(null) } // 删除二次确认
     val context = LocalContext.current
+
+    // 信息岛：Android 13+ 首次设置提醒时申请通知权限，拒绝也不阻断保存。
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) {}
+    val ensureNotificationPermission: () -> Unit = {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
 
     // 进入页面时检查是否已跨入新的重复周期，若是则清除上一周期的勾选。
     LaunchedEffect(liveSubject.id, liveSubject.todoRepeat, liveSubject.todoLastResetAt) {
@@ -138,6 +169,81 @@ fun TodoSubjectScreen(
                         )
                     }
                 },
+                actions = {
+                    // 信息岛：列表提醒与重复规则收进右上角菜单，不再占用列表显示空间
+                    Box {
+                        IconButton(onClick = { menuExpanded = true }) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = stringResource(R.string.cd_more)
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = menuExpanded,
+                            onDismissRequest = { menuExpanded = false }
+                        ) {
+                            val reminderValue = when {
+                                !liveSubject.todoReminderEnabled ->
+                                    stringResource(R.string.todo_reminder_none)
+                                liveSubject.todoRepeat.type == TodoRepeatType.ONCE ->
+                                    reminderDateTimeText(liveSubject.todoReminderAt)
+                                else -> stringResource(
+                                    R.string.todo_reminder_menu_summary_repeat,
+                                    todoRepeatSummary(liveSubject.todoRepeat),
+                                    reminderTimeText(liveSubject.todoReminderMinutes)
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(
+                                            text = stringResource(R.string.todo_menu_reminder),
+                                            style = MaterialTheme.typography.bodyLarge
+                                        )
+                                        Text(
+                                            text = stringResource(
+                                                R.string.todo_reminder_menu_summary,
+                                                reminderValue
+                                            ),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    menuExpanded = false
+                                    showListReminderDialog = true
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.NotificationsNone, contentDescription = null)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(
+                                            text = stringResource(R.string.todo_menu_repeat),
+                                            style = MaterialTheme.typography.bodyLarge
+                                        )
+                                        Text(
+                                            text = stringResource(
+                                                R.string.todo_menu_repeat_readonly,
+                                                todoRepeatSummary(liveSubject.todoRepeat)
+                                            ),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                },
+                                onClick = {},
+                                enabled = false,
+                                leadingIcon = {
+                                    Icon(Icons.Default.Repeat, contentDescription = null)
+                                }
+                            )
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
                 )
@@ -150,19 +256,19 @@ fun TodoSubjectScreen(
             modifier = Modifier.padding(padding),
             horizontalMargin = 24.dp,
             bottomOffset = 16.dp,
+            barShape = RoundedCornerShape(24.dp),
             floatingBar = {
-                InputCapsule(
+                TodoInputBar(
                     hint = stringResource(R.string.todo_item_hint),
-                    onSend = { viewModel.addTodoItem(liveSubject.id, it) },
-                    modifier = Modifier.fillMaxWidth()
+                    repeat = liveSubject.todoRepeat,
+                    onEnsureNotificationPermission = ensureNotificationPermission,
+                    onSend = { content, enabled, minutes, at ->
+                        viewModel.addTodoItem(liveSubject.id, content, enabled, minutes, at)
+                    }
                 )
             },
             content = {
                 Column(modifier = Modifier.fillMaxSize()) {
-                    RepeatSummaryCard(
-                        repeat = liveSubject.todoRepeat,
-                        onClick = { showRepeatDialog = true }
-                    )
                     if (liveSubject.todoItems.isEmpty()) {
                         Box(
                             modifier = Modifier
@@ -191,6 +297,7 @@ fun TodoSubjectScreen(
                     } else {
                         TodoList(
                             items = liveSubject.todoItems,
+                            repeat = liveSubject.todoRepeat,
                             modifier = Modifier.weight(1f),
                             onToggle = { item, done -> viewModel.setTodoItemDone(item.id, done) },
                             onEdit = { editingItem = it },
@@ -204,24 +311,38 @@ fun TodoSubjectScreen(
         )
     }
 
-    if (showRepeatDialog) {
-        TodoRepeatDialog(
-            initial = liveSubject.todoRepeat,
-            onDismiss = { showRepeatDialog = false },
-            onConfirm = { repeat ->
-                viewModel.updateTodoRepeat(liveSubject.id, repeat)
-                showRepeatDialog = false
+    if (showListReminderDialog) {
+        TodoReminderDialog(
+            title = stringResource(R.string.todo_reminder_title_list),
+            repeat = liveSubject.todoRepeat,
+            initialEnabled = liveSubject.todoReminderEnabled,
+            initialMinutes = liveSubject.todoReminderMinutes,
+            initialAt = liveSubject.todoReminderAt,
+            hint = stringResource(
+                if (liveSubject.todoRepeat.type == TodoRepeatType.ONCE) {
+                    R.string.todo_reminder_once_hint
+                } else {
+                    R.string.todo_reminder_repeat_hint
+                }
+            ) + " " + stringResource(R.string.todo_reminder_list_hint),
+            onDismiss = { showListReminderDialog = false },
+            onConfirm = { enabled, minutes, at ->
+                showListReminderDialog = false
+                if (enabled) ensureNotificationPermission()
+                viewModel.updateTodoReminder(liveSubject.id, enabled, minutes, at)
             }
         )
     }
 
-    // 信息岛：待办条目编辑弹窗
+    // 信息岛：待办条目编辑弹窗（正文 + 提醒）
     editingItem?.let { item ->
         TodoEditDialog(
             item = item,
+            repeat = liveSubject.todoRepeat,
+            onEnsureNotificationPermission = ensureNotificationPermission,
             onDismiss = { editingItem = null },
-            onConfirm = { content ->
-                viewModel.updateTodoItemContent(item.id, content)
+            onConfirm = { content, enabled, minutes, at ->
+                viewModel.updateTodoItem(item.id, content, enabled, minutes, at)
                 editingItem = null
             }
         )
@@ -241,47 +362,150 @@ fun TodoSubjectScreen(
     }
 }
 
+/**
+ * 信息岛：待办输入框——固定四行高度并可滚动，内部右侧自带单条提醒设置入口。
+ */
 @Composable
-private fun RepeatSummaryCard(repeat: TodoRepeat, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .clickable(onClick = onClick),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+private fun TodoInputBar(
+    hint: String,
+    repeat: TodoRepeat,
+    onEnsureNotificationPermission: () -> Unit,
+    onSend: (
+        content: String,
+        reminderEnabled: Boolean,
+        reminderMinutes: Int,
+        reminderAt: Long
+    ) -> Unit
+) {
+    var text by remember { mutableStateOf(TextFieldValue("")) }
+    var textLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    var reminderEnabled by remember { mutableStateOf(false) }
+    var reminderMinutes by remember { mutableIntStateOf(-1) }
+    var reminderAt by remember { mutableLongStateOf(0L) }
+    var showReminderDialog by remember { mutableStateOf(false) }
+
+    val submit: () -> Unit = {
+        if (text.text.isNotBlank()) {
+            onSend(text.text.trim(), reminderEnabled, reminderMinutes, reminderAt)
+            text = TextFieldValue("")
+            reminderEnabled = false
+            reminderMinutes = -1
+            reminderAt = 0
+        }
+    }
+
+    GlassSurface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.Repeat,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.todo_repeat_settings),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = todoRepeatSummary(repeat),
-                    style = MaterialTheme.typography.bodyLarge,
+            BasicTextField(
+                value = text,
+                onValueChange = { text = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .arrowKeyCursorBehavior(text, { text = it }) { textLayout }
+                    .enterSendBehavior(submit),
+                minLines = 4,
+                maxLines = 4,
+                onTextLayout = { textLayout = it },
+                textStyle = MaterialTheme.typography.bodyLarge.copy(
                     color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                ),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                decorationBox = { innerTextField ->
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        if (text.text.isEmpty()) {
+                            Text(
+                                text = hint,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f)
+                            )
+                        }
+                        innerTextField()
+                    }
+                }
             )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = { showReminderDialog = true }) {
+                    Icon(
+                        imageVector = Icons.Default.NotificationsNone,
+                        contentDescription = stringResource(R.string.todo_reminder_title_item),
+                        tint = if (reminderEnabled) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
+                }
+                Text(
+                    text = if (reminderEnabled) {
+                        reminderShortText(repeat, reminderMinutes, reminderAt)
+                    } else {
+                        stringResource(R.string.todo_reminder_none)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (reminderEnabled) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                val sendEnabled = text.text.isNotBlank()
+                IconButton(onClick = submit, enabled = sendEnabled) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primary.copy(
+                            alpha = if (sendEnabled) 0.9f else 0.3f
+                        ),
+                        shadowElevation = 4.dp,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Send,
+                                contentDescription = stringResource(R.string.cd_send),
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    if (showReminderDialog) {
+        TodoReminderDialog(
+            title = stringResource(R.string.todo_reminder_title_item),
+            repeat = repeat,
+            initialEnabled = reminderEnabled,
+            initialMinutes = reminderMinutes,
+            initialAt = reminderAt,
+            hint = stringResource(
+                if (repeat.type == TodoRepeatType.ONCE) {
+                    R.string.todo_reminder_once_hint
+                } else {
+                    R.string.todo_reminder_repeat_hint
+                }
+            ) + " " + stringResource(R.string.todo_reminder_item_hint),
+            onDismiss = { showReminderDialog = false },
+            onConfirm = { enabled, minutes, at ->
+                showReminderDialog = false
+                reminderEnabled = enabled
+                reminderMinutes = minutes
+                reminderAt = at
+                if (enabled) onEnsureNotificationPermission()
+            }
+        )
     }
 }
 
@@ -292,6 +516,7 @@ private fun RepeatSummaryCard(repeat: TodoRepeat, onClick: () -> Unit) {
 @Composable
 private fun TodoList(
     items: List<TodoItem>,
+    repeat: TodoRepeat,
     onToggle: (TodoItem, Boolean) -> Unit,
     onEdit: (TodoItem) -> Unit,
     onDelete: (TodoItem) -> Unit,
@@ -448,12 +673,12 @@ private fun TodoList(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            // 底部预留悬浮输入胶囊高度，使最后一条待办可滚动到其上方。
+            // 底部预留悬浮输入框（四行 + 工具行）的高度，使最后一条待办可滚动到其上方。
             contentPadding = PaddingValues(
                 start = 16.dp,
                 end = 16.dp,
                 top = 8.dp,
-                bottom = 100.dp
+                bottom = 190.dp
             ),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -472,6 +697,7 @@ private fun TodoList(
                 }
                 TodoItemRow(
                     item = item,
+                    repeat = repeat,
                     modifier = Modifier
                         .graphicsLayer { translationY = shift }
                         .alpha(if (isDragging) 0.15f else 1f),
@@ -489,6 +715,7 @@ private fun TodoList(
         if (previewItem != null) {
             TodoDragPreview(
                 item = previewItem,
+                repeat = repeat,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
@@ -511,7 +738,11 @@ private fun TodoList(
 /** 拖动中的浮层预览：只做展示，不参与交互，保证跟手且不与列表自身的手势打架。 */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun TodoDragPreview(item: TodoItem, modifier: Modifier = Modifier) {
+private fun TodoDragPreview(
+    item: TodoItem,
+    repeat: TodoRepeat,
+    modifier: Modifier = Modifier
+) {
     Card(
         modifier = modifier,
         shape = MaterialTheme.shapes.medium,
@@ -538,14 +769,7 @@ private fun TodoDragPreview(item: TodoItem, modifier: Modifier = Modifier) {
             // 必须给一个空回调：Material3 的 Checkbox 只在 onCheckedChange 非空时
             // 才套 48dp 最小点击区，传 null 会让勾选框尺寸变小、整行内容左移错位。
             Checkbox(checked = item.isDone, onCheckedChange = {})
-            Text(
-                text = item.content,
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (item.isDone) MaterialTheme.colorScheme.onSurfaceVariant
-                else MaterialTheme.colorScheme.onSurface,
-                textDecoration = if (item.isDone) TextDecoration.LineThrough else TextDecoration.None
-            )
+            TodoItemContent(item = item, repeat = repeat, modifier = Modifier.weight(1f))
             Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = Icons.Default.Edit,
@@ -570,6 +794,7 @@ private fun TodoDragPreview(item: TodoItem, modifier: Modifier = Modifier) {
 @Composable
 private fun TodoItemRow(
     item: TodoItem,
+    repeat: TodoRepeat,
     onToggle: (Boolean) -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
@@ -606,16 +831,13 @@ private fun TodoItemRow(
                 )
             }
             Checkbox(checked = item.isDone, onCheckedChange = onToggle)
-            Text(
-                text = item.content,
-                // 长按复制正文；点击留空，避免与内部控件争夺事件。
+            TodoItemContent(
+                item = item,
+                repeat = repeat,
                 modifier = Modifier
                     .weight(1f)
-                    .combinedClickable(onClick = {}, onLongClick = onCopy),
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (item.isDone) MaterialTheme.colorScheme.onSurfaceVariant
-                else MaterialTheme.colorScheme.onSurface,
-                textDecoration = if (item.isDone) TextDecoration.LineThrough else TextDecoration.None
+                    // 长按复制正文；点击留空，避免与内部控件争夺事件。
+                    .combinedClickable(onClick = {}, onLongClick = onCopy)
             )
             IconButton(onClick = onEdit) {
                 Icon(
@@ -637,161 +859,114 @@ private fun TodoItemRow(
     }
 }
 
-/** 信息岛：待办条目编辑弹窗——预填当前内容，保存后仅更新正文。 */
+/** 待办正文 + 提醒摘要；长按复制由外层统一处理。 */
 @Composable
-private fun TodoEditDialog(item: TodoItem, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+private fun TodoItemContent(item: TodoItem, repeat: TodoRepeat, modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
+        Text(
+            text = item.content,
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (item.isDone) MaterialTheme.colorScheme.onSurfaceVariant
+            else MaterialTheme.colorScheme.onSurface,
+            textDecoration = if (item.isDone) TextDecoration.LineThrough else TextDecoration.None
+        )
+        if (item.reminderEnabled) {
+            Spacer(modifier = Modifier.height(2.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.NotificationsNone,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                    modifier = Modifier.size(12.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = reminderShortText(repeat, item.reminderMinutes, item.reminderAt),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                )
+            }
+        }
+    }
+}
+
+/** 信息岛：待办条目编辑弹窗——正文 + 提醒设置一起保存。 */
+@Composable
+private fun TodoEditDialog(
+    item: TodoItem,
+    repeat: TodoRepeat,
+    onEnsureNotificationPermission: () -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: (
+        content: String,
+        reminderEnabled: Boolean,
+        reminderMinutes: Int,
+        reminderAt: Long
+    ) -> Unit
+) {
     var text by remember(item.id) { mutableStateOf(item.content) }
+    var reminderEnabled by remember(item.id) { mutableStateOf(item.reminderEnabled) }
+    var reminderMinutes by remember(item.id) { mutableIntStateOf(item.reminderMinutes) }
+    var reminderAt by remember(item.id) { mutableLongStateOf(item.reminderAt) }
+    var showReminderDialog by remember { mutableStateOf(false) }
+
     LingjiDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.todo_edit_title)) },
         text = {
-            GlassOutlinedTextField(
-                value = text,
-                onValueChange = { text = it },
-                placeholder = { Text(stringResource(R.string.todo_item_hint)) },
-                singleLine = true
-            )
-        },
-        confirmButton = {
-            LingjiDialogConfirmButton(
-                text = stringResource(R.string.save),
-                enabled = text.isNotBlank(),
-                onClick = { onConfirm(text) }
-            )
-        },
-        dismissButton = {
-            LingjiDialogDismissButton(
-                text = stringResource(R.string.cancel),
-                onClick = onDismiss
-            )
-        }
-    )
-}
-
-@Composable
-private fun todoRepeatSummary(repeat: TodoRepeat): String = when (repeat.type) {
-    TodoRepeatType.ONCE -> stringResource(R.string.todo_repeat_once)
-    TodoRepeatType.DAILY -> stringResource(R.string.todo_repeat_daily)
-    TodoRepeatType.WEEKDAYS -> stringResource(R.string.todo_repeat_weekdays)
-    TodoRepeatType.WEEKENDS -> stringResource(R.string.todo_repeat_weekends)
-    TodoRepeatType.INTERVAL -> stringResource(R.string.todo_repeat_interval_days, repeat.intervalDays)
-    TodoRepeatType.CUSTOM -> {
-        if (repeat.weekDays.isEmpty()) {
-            stringResource(R.string.todo_repeat_custom)
-        } else {
-            val labels = mutableListOf<String>()
-            for (day in repeat.weekDays.sorted()) labels.add(weekdayLabel(day))
-            stringResource(R.string.todo_repeat_custom_summary, labels.joinToString("、"))
-        }
-    }
-}
-
-@Composable
-private fun weekdayLabel(day: Int): String = stringResource(
-    when (day) {
-        1 -> R.string.weekday_mon
-        2 -> R.string.weekday_tue
-        3 -> R.string.weekday_wed
-        4 -> R.string.weekday_thu
-        5 -> R.string.weekday_fri
-        6 -> R.string.weekday_sat
-        else -> R.string.weekday_sun
-    }
-)
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun TodoRepeatDialog(
-    initial: TodoRepeat,
-    onDismiss: () -> Unit,
-    onConfirm: (TodoRepeat) -> Unit
-) {
-    var type by remember { mutableStateOf(initial.type) }
-    var intervalText by remember { mutableStateOf(initial.intervalDays.toString()) }
-    var weekDays by remember { mutableStateOf(initial.weekDays) }
-    val intervalDays = intervalText.toIntOrNull() ?: 0
-    val canConfirm = (type != TodoRepeatType.INTERVAL || intervalDays >= 1) &&
-        (type != TodoRepeatType.CUSTOM || weekDays.isNotEmpty())
-
-    LingjiDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.todo_repeat_settings)) },
-        text = {
-            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                RepeatOptionRow(
-                    label = stringResource(R.string.todo_repeat_once),
-                    selected = type == TodoRepeatType.ONCE,
-                    onClick = { type = TodoRepeatType.ONCE }
+            Column {
+                GlassOutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    placeholder = { Text(stringResource(R.string.todo_item_hint)) },
+                    singleLine = false,
+                    minLines = 4,
+                    maxLines = 6
                 )
-                RepeatOptionRow(
-                    label = stringResource(R.string.todo_repeat_daily),
-                    selected = type == TodoRepeatType.DAILY,
-                    onClick = { type = TodoRepeatType.DAILY }
-                )
-                RepeatOptionRow(
-                    label = stringResource(R.string.todo_repeat_weekdays),
-                    selected = type == TodoRepeatType.WEEKDAYS,
-                    onClick = { type = TodoRepeatType.WEEKDAYS }
-                )
-                RepeatOptionRow(
-                    label = stringResource(R.string.todo_repeat_weekends),
-                    selected = type == TodoRepeatType.WEEKENDS,
-                    onClick = { type = TodoRepeatType.WEEKENDS }
-                )
-                RepeatOptionRow(
-                    label = stringResource(R.string.todo_repeat_interval),
-                    selected = type == TodoRepeatType.INTERVAL,
-                    onClick = { type = TodoRepeatType.INTERVAL }
-                )
-                if (type == TodoRepeatType.INTERVAL) {
-                    GlassOutlinedTextField(
-                        value = intervalText,
-                        onValueChange = { input ->
-                            intervalText = input.filter { it.isDigit() }.take(3)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showReminderDialog = true }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.NotificationsNone,
+                        contentDescription = null,
+                        tint = if (reminderEnabled) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
                         },
-                        modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
-                        label = { Text(stringResource(R.string.todo_repeat_interval_label)) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true
+                        modifier = Modifier.size(20.dp)
                     )
-                }
-                RepeatOptionRow(
-                    label = stringResource(R.string.todo_repeat_custom),
-                    selected = type == TodoRepeatType.CUSTOM,
-                    onClick = { type = TodoRepeatType.CUSTOM }
-                )
-                if (type == TodoRepeatType.CUSTOM) {
-                    FlowRow(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        for (day in 1..7) {
-                            FilterChip(
-                                selected = day in weekDays,
-                                onClick = {
-                                    weekDays = if (day in weekDays) weekDays - day else weekDays + day
-                                },
-                                label = { Text(weekdayLabel(day)) }
-                            )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.todo_reminder_title_item),
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Text(
+                        text = if (reminderEnabled) {
+                            reminderShortText(repeat, reminderMinutes, reminderAt)
+                        } else {
+                            stringResource(R.string.todo_reminder_none)
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (reminderEnabled) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
                         }
-                    }
+                    )
                 }
             }
         },
         confirmButton = {
             LingjiDialogConfirmButton(
                 text = stringResource(R.string.save),
-                enabled = canConfirm,
-                onClick = {
-                    onConfirm(
-                        TodoRepeat(
-                            type = type,
-                            weekDays = if (type == TodoRepeatType.CUSTOM) weekDays else emptySet(),
-                            intervalDays = intervalDays.coerceAtLeast(1),
-                            anchorAt = System.currentTimeMillis()
-                        )
-                    )
-                }
+                enabled = text.isNotBlank(),
+                onClick = { onConfirm(text, reminderEnabled, reminderMinutes, reminderAt) }
             )
         },
         dismissButton = {
@@ -801,22 +976,29 @@ private fun TodoRepeatDialog(
             )
         }
     )
-}
 
-@Composable
-private fun RepeatOptionRow(label: String, selected: Boolean, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RadioButton(selected = selected, onClick = onClick)
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface
+    if (showReminderDialog) {
+        TodoReminderDialog(
+            title = stringResource(R.string.todo_reminder_title_item),
+            repeat = repeat,
+            initialEnabled = reminderEnabled,
+            initialMinutes = reminderMinutes,
+            initialAt = reminderAt,
+            hint = stringResource(
+                if (repeat.type == TodoRepeatType.ONCE) {
+                    R.string.todo_reminder_once_hint
+                } else {
+                    R.string.todo_reminder_repeat_hint
+                }
+            ) + " " + stringResource(R.string.todo_reminder_item_hint),
+            onDismiss = { showReminderDialog = false },
+            onConfirm = { enabled, minutes, at ->
+                showReminderDialog = false
+                reminderEnabled = enabled
+                reminderMinutes = minutes
+                reminderAt = at
+                if (enabled) onEnsureNotificationPermission()
+            }
         )
     }
 }

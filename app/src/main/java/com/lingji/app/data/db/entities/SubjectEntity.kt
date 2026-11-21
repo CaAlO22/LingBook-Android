@@ -23,5 +23,9 @@ data class SubjectEntity(
     val todoIntervalDays: Int = 2,
     val todoRepeatAnchorAt: Long = 0,
     val todoLastResetAt: Long = 0,
+    // 信息岛：待办列表整体提醒（详细语义见 Subject）
+    @ColumnInfo(defaultValue = "0") val todoReminderEnabled: Boolean = false,
+    @ColumnInfo(defaultValue = "-1") val todoReminderMinutes: Int = -1,
+    @ColumnInfo(defaultValue = "0") val todoReminderAt: Long = 0,
     @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis()
 )

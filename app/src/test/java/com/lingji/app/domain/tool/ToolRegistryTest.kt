@@ -26,8 +26,8 @@ class ToolRegistryTest {
     private val registry = ToolRegistry(repo, llmService, settingsRepo, summaryDao, indexService, conversationImageStore)
 
     @Test
-    fun getAllTools_returns27Tools() {
-        assertEquals(27, registry.getAllTools().size)
+    fun getAllTools_returns28Tools() {
+        assertEquals(28, registry.getAllTools().size)
     }
 
     @Test
@@ -39,6 +39,7 @@ class ToolRegistryTest {
         assertNotNull(registry.getTool("add_todo"))
         assertNotNull(registry.getTool("update_todo"))
         assertNotNull(registry.getTool("delete_todo"))
+        assertNotNull(registry.getTool("set_todo_list_reminder"))
     }
 
     @Test
@@ -57,7 +58,7 @@ class ToolRegistryTest {
     @Test
     fun toOpenAITools_returnsJsonArray() {
         val arr = registry.toOpenAITools()
-        assertEquals(27, arr.size())
+        assertEquals(28, arr.size())
         val first = arr[0].asJsonObject
         assertEquals("function", first.get("type").asString)
         assertNotNull(first.getAsJsonObject("function").get("name"))

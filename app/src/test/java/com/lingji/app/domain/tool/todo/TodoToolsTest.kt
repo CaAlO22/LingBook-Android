@@ -5,6 +5,8 @@ import com.lingji.app.data.repository.SubjectRepository
 import com.lingji.app.domain.model.Subject
 import com.lingji.app.domain.model.SubjectType
 import com.lingji.app.domain.model.TodoItem
+import com.lingji.app.domain.model.TodoRepeat
+import com.lingji.app.domain.model.TodoRepeatType
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -27,6 +29,9 @@ class TodoToolsTest {
             TodoItem(id = "t3", content = "买面包和牛奶", isDone = false, sortOrder = 2)
         )
     )
+    private val dailyTodoSubject = todoSubject.copy(
+        todoRepeat = TodoRepeat(type = TodoRepeatType.DAILY)
+    )
     private val fragmentSubject = Subject(id = "s2", title = "碎片", type = SubjectType.FRAGMENT)
     private val notebookSubject = Subject(id = "s3", title = "笔记本", type = SubjectType.NOTEBOOK, pages = emptyList())
 
@@ -41,12 +46,13 @@ class TodoToolsTest {
     }
 
     @Test
-    fun create_returnsFourTools() {
-        assertEquals(4, tools.size)
+    fun create_returnsFiveTools() {
+        assertEquals(5, tools.size)
         assertTrue(toolMap.containsKey("list_todos"))
         assertTrue(toolMap.containsKey("add_todo"))
         assertTrue(toolMap.containsKey("update_todo"))
         assertTrue(toolMap.containsKey("delete_todo"))
+        assertTrue(toolMap.containsKey("set_todo_list_reminder"))
     }
 
     @Test
@@ -101,14 +107,14 @@ class TodoToolsTest {
     @Test
     fun update_todo_byIndex_changesContentAndDone() = runTest {
         coEvery { repo.getSubjectByIdOnce("s1") } returns todoSubject
-        coEvery { repo.updateTodoItemContent("t1", "买酸奶") } returns Unit
+        coEvery { repo.updateTodoItem("t1", "买酸奶", false, -1, 0) } returns Unit
         coEvery { repo.setTodoItemDone("t1", true) } returns Unit
         val result = toolMap["update_todo"]!!.execute(
             params("subject_id" to "s1", "todo_index" to 0, "content" to "买酸奶", "done" to true)
         )
         assertTrue(result.contains("\"success\":true"))
         assertTrue(result.contains("\"index\":0"))
-        coVerify(exactly = 1) { repo.updateTodoItemContent("t1", "买酸奶") }
+        coVerify(exactly = 1) { repo.updateTodoItem("t1", "买酸奶", false, -1, 0) }
         coVerify(exactly = 1) { repo.setTodoItemDone("t1", true) }
     }
 
@@ -161,5 +167,38 @@ class TodoToolsTest {
         val result = toolMap["delete_todo"]!!.execute(params("subject_id" to "s1", "todo_text" to "买牛奶"))
         assertTrue(result.contains("\"success\":true"))
         coVerify(exactly = 1) { repo.deleteTodoItem("t1") }
+    }
+
+    @Test
+    fun add_todo_withReminderOnDailyList_setsMinutes() = runTest {
+        coEvery { repo.getSubjectByIdOnce("s1") } returns dailyTodoSubject
+        coEvery { repo.addTodoItem("s1", "吃药", true, 480, 0) } returns
+            TodoItem(id = "t6", content = "吃药", reminderEnabled = true, reminderMinutes = 480)
+        val result = toolMap["add_todo"]!!.execute(
+            params("subject_id" to "s1", "content" to "吃药", "reminder_time" to "08:00")
+        )
+        assertTrue(result.contains("\"reminder_time\":\"08:00\""))
+        coVerify(exactly = 1) { repo.addTodoItem("s1", "吃药", true, 480, 0) }
+    }
+
+    @Test
+    fun add_todo_oneShotWithoutDate_returnsInvalid() = runTest {
+        coEvery { repo.getSubjectByIdOnce("s1") } returns todoSubject
+        val result = toolMap["add_todo"]!!.execute(
+            params("subject_id" to "s1", "content" to "x", "reminder_time" to "08:00")
+        )
+        assertTrue(result.contains("\"code\":\"INVALID_PARAMETER\""))
+        coVerify(exactly = 0) { repo.addTodoItem(any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun set_list_reminder_onDailyList_callsRepo() = runTest {
+        coEvery { repo.getSubjectByIdOnce("s1") } returns dailyTodoSubject
+        coEvery { repo.updateTodoReminder("s1", true, 1260, 0) } returns Unit
+        val result = toolMap["set_todo_list_reminder"]!!.execute(
+            params("subject_id" to "s1", "reminder_time" to "21:00")
+        )
+        assertTrue(result.contains("\"reminder\":\"21:00\""))
+        coVerify(exactly = 1) { repo.updateTodoReminder("s1", true, 1260, 0) }
     }
 }

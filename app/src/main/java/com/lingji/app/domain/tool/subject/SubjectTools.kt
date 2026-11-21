@@ -5,11 +5,14 @@ import com.lingji.app.data.db.dao.SubjectSummaryDao
 import com.lingji.app.data.repository.SubjectRepository
 import com.lingji.app.domain.model.Subject
 import com.lingji.app.domain.model.SubjectType
+import com.lingji.app.domain.model.TodoRepeat
+import com.lingji.app.domain.model.TodoRepeatType
 import com.lingji.app.domain.tool.Tool
 import com.lingji.app.domain.tool.ToolErrorCode
 import com.lingji.app.domain.tool.buildJsonArray
 import com.lingji.app.domain.tool.buildJsonObject
 import com.lingji.app.domain.tool.missingParameter
+import com.lingji.app.domain.tool.paramInt
 import com.lingji.app.domain.tool.paramString
 import com.lingji.app.domain.tool.subjectNotFound
 import com.lingji.app.domain.tool.toolError
@@ -67,6 +70,20 @@ object SubjectTools {
                 "page_count" to (s.pages?.size ?: 0)
                 "fragment_count" to (s.fragments.size + s.unmergedFragments.size)
                 "todo_count" to s.todoItems.size
+                if (s.type == SubjectType.TODO) {
+                    "repeat_type" to s.todoRepeat.type.name.lowercase()
+                    if (s.todoRepeat.type == TodoRepeatType.CUSTOM) {
+                        "repeat_days" to s.todoRepeat.weekDays.sorted().joinToString(",")
+                    }
+                    if (s.todoRepeat.type == TodoRepeatType.INTERVAL) {
+                        "repeat_interval_days" to s.todoRepeat.intervalDays
+                    }
+                    "list_reminder" to when {
+                        !s.todoReminderEnabled -> "none"
+                        s.todoRepeat.type == TodoRepeatType.ONCE -> formatAt(s.todoReminderAt)
+                        else -> formatMinutes(s.todoReminderMinutes)
+                    }
+                }
             }.toString()
         }
     }
@@ -74,7 +91,7 @@ object SubjectTools {
     private class CreateSubject(private val repo: SubjectRepository) : Tool {
         override val name = "create_subject"
         override val description = "创建一个新笔记。type 可选 NOTEBOOK（笔记本）、FRAGMENT（碎片）、TODO（待办列表），默认 NOTEBOOK。" +
-            "TODO 类型请用 list_todos / add_todo 等工具管理内容。"
+            "TODO 类型必须在创建时确定重复规则（repeat_type，创建后不可修改）；TODO 内容用 list_todos / add_todo 等工具管理。"
         override val parameters = buildJsonObject {
             "type" to "object"
             "properties" to buildJsonObject {
@@ -84,6 +101,13 @@ object SubjectTools {
                     "description" to "笔记类型：NOTEBOOK / FRAGMENT / TODO"
                     "enum" to buildJsonArray { +"NOTEBOOK"; +"FRAGMENT"; +"TODO" }
                 }
+                "repeat_type" to buildJsonObject {
+                    "type" to "string"
+                    "description" to "TODO 的重复规则：ONCE / DAILY / WEEKDAYS / WEEKENDS / INTERVAL / CUSTOM，默认 ONCE"
+                    "enum" to buildJsonArray { +"ONCE"; +"DAILY"; +"WEEKDAYS"; +"WEEKENDS"; +"INTERVAL"; +"CUSTOM" }
+                }
+                "repeat_days" to buildJsonObject { "type" to "string"; "description" to "CUSTOM 时生效：周几，1=周一…7=周日，逗号分隔，如 1,3,5" }
+                "repeat_interval_days" to buildJsonObject { "type" to "integer"; "description" to "INTERVAL 时生效：每隔多少天刷新一次，默认 1" }
             }
             "required" to buildJsonArray { +"title" }
         }
@@ -99,12 +123,28 @@ object SubjectTools {
                         "suggestion" to "type 只能是 NOTEBOOK / FRAGMENT / TODO"
                     )
                 }
-            val subject = Subject.create(title, type)
+            val repeat = if (type == SubjectType.TODO) {
+                parseTodoRepeat(params) ?: return toolError(
+                    ToolErrorCode.INVALID_PARAMETER,
+                    "TODO 的重复规则无效",
+                    "parameter" to "repeat_type",
+                    "suggestion" to "repeat_type 用 ONCE / DAILY / WEEKDAYS / WEEKENDS / INTERVAL / CUSTOM；CUSTOM 需 repeat_days，INTERVAL 需 repeat_interval_days"
+                )
+            } else {
+                TodoRepeat()
+            }
+            var subject = Subject.create(title, type)
+            if (type == SubjectType.TODO) {
+                subject = subject.copy(todoRepeat = repeat, todoLastResetAt = System.currentTimeMillis())
+            }
             repo.insert(subject)
             return buildJsonObject {
                 "id" to subject.id
                 "title" to subject.title
                 "type" to subject.type.name
+                if (type == SubjectType.TODO) {
+                    "repeat_type" to subject.todoRepeat.type.name.lowercase()
+                }
             }.toString()
         }
     }
@@ -150,4 +190,33 @@ object SubjectTools {
             return """{"success":true}"""
         }
     }
+
+    /** 信息岛：创建 TODO 时解析重复规则；非法规则返回 null。 */
+    private fun parseTodoRepeat(params: JsonObject): TodoRepeat? {
+        val typeText = params.paramString("repeat_type")?.uppercase() ?: "ONCE"
+        val type = runCatching { TodoRepeatType.valueOf(typeText) }.getOrNull() ?: return null
+        val interval = (params.paramInt("repeat_interval_days") ?: 1).coerceAtLeast(1)
+        val weekDays = params.paramString("repeat_days")
+            ?.split(",")
+            ?.mapNotNull { it.trim().toIntOrNull() }
+            ?.filter { it in 1..7 }
+            ?.toSet()
+            .orEmpty()
+        if (type == TodoRepeatType.CUSTOM && weekDays.isEmpty()) return null
+        return TodoRepeat(
+            type = type,
+            weekDays = if (type == TodoRepeatType.CUSTOM) weekDays else emptySet(),
+            intervalDays = interval,
+            anchorAt = System.currentTimeMillis()
+        )
+    }
+
+    private fun formatMinutes(minutes: Int): String =
+        String.format("%02d:%02d", minutes / 60, minutes % 60)
+
+    private fun formatAt(at: Long): String =
+        java.time.LocalDateTime.ofInstant(
+            java.time.Instant.ofEpochMilli(at),
+            java.time.ZoneId.systemDefault()
+        ).format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
 }
