@@ -257,3 +257,103 @@ RETURN Error: {"code":"SUBJECT_INDEX_OUT_OF_RANGE","message":"subject_index=9 �
 `ToolRegistryTitleTest` 新增 9 条用例覆盖：候选 index、`index=0/1` 选中目标、越界不执行写操作、
 缺 `subject_title`、非整数、`subject_id` 优先、schema 暴露可选 integer、单笔记作用域忽略 index。
 最终 `compileDebugKotlin` + `testDebugUnitTest` **BUILD SUCCESSFUL，150 tests / 0 failures / 0 errors / 1 skipped**。
+
+---
+
+## 八、待办重复语义（读 / 写 / 改）
+
+### 先对齐一个事实：重复是**笔记级**设置
+
+产品侧六档重复（一次性待办 / 每日委托 / 仅工作日重复 / 仅休息日重复 / 间隔时间重复 / 自定义重复）
+存在 `Subject.todoRepeat`（DB 列 `todoRepeatType / todoRepeatDays / todoIntervalDays / todoRepeatAnchorAt`），
+`SubjectViewModel.applyTodoRepeatResetIfNeeded` 在新周期开始时**整篇**清空勾选。
+也就是说：**同一篇待办列表里的所有条目共享一套重复规则，没有「这一条每日、那一条一次性」的存储模型。**
+
+因此本轮修的是「Agent 能不能看见并修改整篇的档位」，而不是给每条待办加一个 `repeat` 字段 ——
+后者会制造一个产品根本做不到的承诺。`systemPrompt` 也写明了这一点：用户说「把某一条改成一次性」时，
+Agent 必须说明这会改整篇列表。
+
+### 读
+
+| 出口 | 变化 |
+| --- | --- |
+| `list_todos` | 从裸数组改为 `{"repeat":{...},"count":N,"items":[...]}`。`repeat` 只在顶层给一份，`items` 结构不变（index/id/content/is_done） |
+| `get_aggregated_note` | TODO 内容首行加一条 HTML 注释：`<!-- 待办重复：每日委托（新周期自动清空勾选）；当前周期起点 2026-11-21 00:00 -->`。Markdown 渲染不可见，但模型能读到 |
+| `get_subject` | TODO 时追加结构化 `repeat` |
+| `list_subjects` | TODO 时追加 `repeat`（枚举名）与 `repeat_label`（中文档位），首页助手可一眼分辨哪篇是每日重置 |
+
+`repeat` 的结构：
+
+```json
+{
+  "type": "DAILY",              // 六档枚举
+  "label": "每日委托",           // 中文档位，与 UI 文案一致（间隔档带天数）
+  "scope": "subject",           // 恒为 subject：整篇待办列表的设置
+  "auto_reset": true,           // 新周期是否自动清空全部勾选；ONCE 为 false
+  "current_period_start": "2026-11-21 00:00",  // 当前周期起点（本地时间）
+  "last_reset_at": "2026-11-21 00:03",          // 有记录时才出现
+  "reset_pending": false,       // 有上一周期遗留的勾选、但尚未重置
+  "week_days": [1,3,5],         // 仅 CUSTOM
+  "interval_days": 3            // 仅 INTERVAL
+}
+```
+
+**`reset_pending` 是给「是否需要勾选」用的**：重置只在用户打开待办页面时触发，Agent 读取时可能
+看到上一周期的 `is_done=true`。该字段为 true 时，不能把这些勾选当成「本周期已完成」。
+
+### 写与改
+
+- `add_todo` 新增可选 `repeat` / `week_days` / `interval_days`：新增条目的同时设置整篇档位，
+  返回新条目的 `index`（原来没有，现在可直接拿去 update_todo）与回显的 `repeat`。
+- `update_todo` 新增同样的三个参数，用于**纠正误建档位**。关键点：只传 `repeat` 时**不需要**
+  `todo_id / todo_index / todo_text`，空列表也能改；同时传 `content` / `done` 时才定位条目。
+  返回 `repeat` 与 `repeat_scope:"subject"`，明确作用范围。
+- 参数容错：`repeat` 接受枚举名（大小写不敏感）、中文档位名（`每日委托` 等）；`week_days` 接受
+  `[1,3,5]`、`["1","3"]`、`"1,3,5"`、`"周一,周三"`；`interval_days` 限 1..999。
+  `repeat=CUSTOM` 但没给 `week_days` 时返回 `INVALID_PARAMETER`，不替用户猜一个组合。
+- 只有真正带了重复参数才写库，避免「改个文字顺手把周期重置了」。写入沿用仓库
+  `updateTodoRepeat`：`anchorAt` 与 `lastResetAt` 都置为当前时间，与 UI 保存行为一致。
+
+### 验证
+
+```bash
+./gradlew :app:compileDebugKotlin :app:testDebugUnitTest
+```
+
+六档的**实际输出**（`TodoToolsTest.list_todos_reportsAllSixRepeatTiers` 逐行打印）：
+
+```
+TIER ONCE       {"repeat":{"type":"ONCE","label":"一次性待办","scope":"subject","auto_reset":false},"count":3,...}
+TIER DAILY      {"repeat":{"type":"DAILY","label":"每日委托","scope":"subject","auto_reset":true,"current_period_start":"2026-11-21 00:00","reset_pending":true},...}
+TIER WEEKDAYS   {"repeat":{"type":"WEEKDAYS","label":"仅工作日重复","scope":"subject","auto_reset":true,"current_period_start":"2026-11-20 00:00","reset_pending":true},...}
+TIER WEEKENDS   {"repeat":{"type":"WEEKENDS","label":"仅休息日重复","scope":"subject","auto_reset":true,"current_period_start":"2026-11-21 00:00","reset_pending":true},...}
+TIER INTERVAL   {"repeat":{"type":"INTERVAL","label":"每 4 天重复","scope":"subject","auto_reset":true,"interval_days":4,"current_period_start":"2026-11-21 00:00","reset_pending":true},...}
+TIER CUSTOM     {"repeat":{"type":"CUSTOM","label":"自定义重复（周一、周三）","scope":"subject","auto_reset":true,"current_period_start":"2026-11-18 00:00","reset_pending":true,"week_days":[1,3]},...}
+```
+
+（2026-11-21 是周六，所以 WEEKDAYS 的当前周期回溯到 11-20 周五、WEEKENDS 命中当天。）
+
+`get_aggregated_note` 实际返回：
+
+```
+{"content":"<!-- 待办重复：一次性待办（不自动重置勾选） -->\n- [ ] 森空岛签到"}
+```
+
+`list_subjects` 实际返回：
+
+```
+[{"id":"7b7fe4f2","title":"英语单词","type":"NOTEBOOK"},
+ {"id":"cb720714-...","title":"每日委托","type":"TODO","repeat":"ONCE","repeat_label":"一次性待办"}]
+```
+
+全量单测：**164 tests / 0 failures / 0 errors / 1 skipped**（新增 14 条：六档输出、reset_pending、
+add_todo 带档位、非法档位不落库、只改 repeat 空列表可用、CUSTOM 缺 week_days 报错、
+中文档位别名、只给 week_days 自动推断 CUSTOM、repeat+content 组合、聚合笔记重复注释、一次性不自动重置）。
+
+**顺带修掉一个真实 bug**：`buildJsonArray { forEach { +it } }` 里 `+it` 对 `Int` 会命中
+`Int.unaryPlus()`（正号）而不是数组构造器的重载，结果静默产出空数组 `week_days:[]`。
+已改为显式 `JsonArray().add(it)`，并在代码里留注释。这个坑对项目里其它 `+it`（非 String）
+的用法同样成立，后续新增数组时要留意。
+
+**设备同步**：本轮 `adb devices` 无任何连接设备，`$ANDROID_HOME/emulator/emulator.exe` 也不存在
+（机器上没有安装模拟器），按 AGENTS.md 的兜底规则跳过 `installDebug`，未对任何真机发 adb 命令。

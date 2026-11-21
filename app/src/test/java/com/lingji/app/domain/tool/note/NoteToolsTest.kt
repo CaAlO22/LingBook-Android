@@ -6,6 +6,8 @@ import com.lingji.app.domain.model.NotebookPage
 import com.lingji.app.domain.model.Subject
 import com.lingji.app.domain.model.SubjectType
 import com.lingji.app.domain.model.TodoItem
+import com.lingji.app.domain.model.TodoRepeat
+import com.lingji.app.domain.model.TodoRepeatType
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -64,6 +66,30 @@ class NoteToolsTest {
         val result = toolMap["get_aggregated_note"]!!.execute(params)
         assertTrue(result.contains("- [ ] 买牛奶"))
         assertTrue(result.contains("- [x] 交作业"))
+    }
+
+    /** 重复语义原本在平铺文本里被抹掉，现在用 HTML 注释带到模型面前。 */
+    @Test
+    fun get_aggregated_note_todo_includesRepeatSemantics() = runTest {
+        coEvery { repo.getSubjectByIdOnce("s3") } returns todoSubject.copy(
+            todoRepeat = TodoRepeat(type = TodoRepeatType.DAILY, anchorAt = System.currentTimeMillis()),
+            todoLastResetAt = 0
+        )
+        val params = JsonObject().apply { addProperty("subject_id", "s3") }
+        val result = toolMap["get_aggregated_note"]!!.execute(params)
+        assertTrue(result.contains("<!-- 待办重复：每日委托"))
+        assertTrue(result.contains("新周期自动清空勾选"))
+        assertTrue(result.contains("当前周期起点"))
+        // 有已完成项且 lastResetAt 早于今天 0 点 → 明确提示勾选会被清空
+        assertTrue(result, result.contains("上一周期遗留的勾选"))
+    }
+
+    @Test
+    fun get_aggregated_note_todo_onceMarksNoAutoReset() = runTest {
+        coEvery { repo.getSubjectByIdOnce("s3") } returns todoSubject
+        val params = JsonObject().apply { addProperty("subject_id", "s3") }
+        val result = toolMap["get_aggregated_note"]!!.execute(params)
+        assertTrue(result.contains("<!-- 待办重复：一次性待办（不自动重置勾选）"))
     }
 
     @Test

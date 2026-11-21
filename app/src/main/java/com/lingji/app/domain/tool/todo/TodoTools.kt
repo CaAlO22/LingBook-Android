@@ -25,6 +25,10 @@ import com.lingji.app.domain.tool.unsupportedForSubjectType
  * - todo_id：精确 id（list_todos 返回的 id）
  * - todo_index：list_todos 返回的序号（从 0 开始），整数对 LLM 最稳定
  * - todo_text：按正文文本匹配，重名时返回候选列表而不是猜一个
+ *
+ * 重复规则（六档）是**整篇待办列表**的设置，不是单条属性：读的时候只在
+ * list_todos 顶层给一份，写的时候 add_todo / update_todo 的 repeat 参数
+ * 都作用在整篇上并在返回值里用 repeat_scope="subject" 说清楚。
  */
 object TodoTools {
 
@@ -124,9 +128,41 @@ object TodoTools {
         "suggestion" to "调用 list_todos 查看该待办笔记的全部条目"
     )
 
+    /** 待办项的 JSON 形状，统一 index 口径（列表顺序，从 0 开始）。 */
+    private fun todoItemJson(index: Int, item: TodoItem): JsonObject = buildJsonObject {
+        "index" to index
+        "id" to item.id
+        "content" to item.content
+        "is_done" to item.isDone
+    }
+
+    private val repeatParamSchema = buildJsonObject {
+        "type" to "string"
+        "description" to "整篇待办列表的重复档位：ONCE 一次性待办 / DAILY 每日委托 / WEEKDAYS 仅工作日重复 / " +
+            "WEEKENDS 仅休息日重复 / INTERVAL 间隔时间重复 / CUSTOM 自定义重复。注意这是整篇列表的设置，不是单条待办项。"
+        "enum" to buildJsonArray { +"ONCE"; +"DAILY"; +"WEEKDAYS"; +"WEEKENDS"; +"INTERVAL"; +"CUSTOM" }
+    }
+
+    private val weekDaysParamSchema = buildJsonObject {
+        "type" to "array"
+        "description" to "自定义重复的星期，1=周一 … 7=周日，例如 [1,3,5]。只有 repeat=CUSTOM 时生效。"
+        "items" to buildJsonObject { "type" to "integer"; "minimum" to 1; "maximum" to 7 }
+    }
+
+    private val intervalDaysParamSchema = buildJsonObject {
+        "type" to "integer"
+        "minimum" to 1
+        "maximum" to 999
+        "description" to "间隔天数，只有 repeat=INTERVAL 时生效，例如 3 表示每 3 天重复。"
+    }
+
     private class ListTodos(private val repo: SubjectRepository) : Tool {
         override val name = "list_todos"
-        override val description = "列出待办（TODO）笔记中的全部待办项，返回 index（从 0 开始的序号，可直接用于 update_todo / delete_todo）、id、content、is_done。仅 TODO 类型笔记可用。"
+        override val description = "列出待办（TODO）笔记的全部待办项，返回 {repeat, count, items}。" +
+            "items 每项含 index（从 0 开始，可直接用于 update_todo / delete_todo）、id、content、is_done。" +
+            "repeat 是整篇待办列表的重复设置（不是单条）：type/label/auto_reset/current_period_start/reset_pending；" +
+            "auto_reset=true 表示新周期会自动清空全部勾选，reset_pending=true 表示还有上一周期遗留的勾选未被清空，" +
+            "此时不要把 is_done=true 当成「本周期已完成」。仅 TODO 类型笔记可用。"
         override val parameters = buildJsonObject {
             "type" to "object"
             "properties" to buildJsonObject {
@@ -136,42 +172,75 @@ object TodoTools {
         }
         override suspend fun execute(params: JsonObject): String = when (val lookup = requireTodoSubject(repo, params)) {
             is Lookup.Fail -> lookup.error
-            is Lookup.Ok -> buildJsonArray {
-                lookup.subject.todoItems.forEachIndexed { index, item ->
-                    +buildJsonObject {
-                        "index" to index
-                        "id" to item.id
-                        "content" to item.content
-                        "is_done" to item.isDone
+            is Lookup.Ok -> {
+                val subject = lookup.subject
+                val now = System.currentTimeMillis()
+                buildJsonObject {
+                    "repeat" to TodoRepeatSupport.toJson(
+                        subject.todoRepeat,
+                        now,
+                        subject.todoLastResetAt,
+                        subject.todoItems.any { it.isDone }
+                    )
+                    "count" to subject.todoItems.size
+                    "items" to buildJsonArray {
+                        subject.todoItems.forEachIndexed { index, item -> +todoItemJson(index, item) }
                     }
-                }
-            }.toString()
+                }.toString()
+            }
         }
     }
 
     private class AddTodo(private val repo: SubjectRepository) : Tool {
         override val name = "add_todo"
-        override val description = "向待办（TODO）笔记末尾新增一条待办项，返回新条目的 id。仅 TODO 类型笔记可用；内容会立即出现在 get_aggregated_note 中。"
+        override val description = "向待办（TODO）笔记末尾新增一条待办项，返回新条目的 index 与 id。" +
+            "可选 repeat / week_days / interval_days 同时设置整篇待办列表的重复档位（不是这一条单独设置）。" +
+            "内容会立即出现在 get_aggregated_note 中。仅 TODO 类型笔记可用。"
         override val parameters = buildJsonObject {
             "type" to "object"
             "properties" to buildJsonObject {
                 "subject_id" to buildJsonObject { "type" to "string"; "description" to "待办笔记 ID（也可用 subject_title 按标题定位）" }
                 "content" to buildJsonObject { "type" to "string"; "description" to "待办项正文" }
                 "done" to buildJsonObject { "type" to "boolean"; "description" to "是否已完成，默认 false" }
+                "repeat" to repeatParamSchema
+                "week_days" to weekDaysParamSchema
+                "interval_days" to intervalDaysParamSchema
             }
             "required" to buildJsonArray { +"subject_id"; +"content" }
         }
         override suspend fun execute(params: JsonObject): String {
             val lookup = requireTodoSubject(repo, params)
             if (lookup is Lookup.Fail) return lookup.error
+            val subject = (lookup as Lookup.Ok).subject
             val content = params.paramString("content") ?: return missingParameter("content")
             val done = params.paramBoolean("done") ?: false
-            val item = repo.addTodoItem((lookup as Lookup.Ok).subject.id, content)
+
+            val hasRepeat = TodoRepeatSupport.hasRepeatParams(params)
+            val repeatUpdate = if (hasRepeat) TodoRepeatSupport.resolve(params, subject.todoRepeat) else null
+            if (repeatUpdate is TodoRepeatSupport.RepeatUpdate.Invalid) return repeatUpdate.error
+
+            val item = repo.addTodoItem(subject.id, content)
             if (done) repo.setTodoItemDone(item.id, true)
+            val repeat = when (repeatUpdate) {
+                is TodoRepeatSupport.RepeatUpdate.Ok -> {
+                    repo.updateTodoRepeat(subject.id, repeatUpdate.repeat)
+                    repeatUpdate.repeat
+                }
+                else -> subject.todoRepeat
+            }
+            val now = System.currentTimeMillis()
             return buildJsonObject {
                 "id" to item.id
+                "index" to subject.todoItems.size
                 "content" to item.content
                 "is_done" to done
+                "repeat" to TodoRepeatSupport.toJson(
+                    repeat,
+                    now,
+                    if (repeatUpdate is TodoRepeatSupport.RepeatUpdate.Ok) now else subject.todoLastResetAt,
+                    subject.todoItems.any { it.isDone } || done
+                )
+                "repeat_scope" to "subject"
                 "suggestion" to "如需修改或勾选，调用 update_todo 并传 todo_id 或 todo_index"
             }.toString()
         }
@@ -179,42 +248,77 @@ object TodoTools {
 
     private class UpdateTodo(private val repo: SubjectRepository) : Tool {
         override val name = "update_todo"
-        override val description = "修改待办笔记中某条待办项的正文和/或完成状态（勾选、取消勾选、改文字）。用 todo_id / todo_index / todo_text 三选一定位。仅 TODO 类型笔记可用。"
+        override val description = "修改待办笔记中的某条待办项（正文 / 完成状态），和/或修改整篇待办列表的重复规则。" +
+            "改条目时用 todo_id / todo_index / todo_text 三选一定位；只改重复规则时无需定位条目。" +
+            "repeat / week_days / interval_days 作用于整篇列表（六档：ONCE/DAILY/WEEKDAYS/WEEKENDS/INTERVAL/CUSTOM），" +
+            "不是把某一条单独改成一次性。至少提供 content / done / repeat 之一。仅 TODO 类型笔记可用。"
         override val parameters = buildJsonObject {
             "type" to "object"
             "properties" to buildJsonObject {
                 "subject_id" to buildJsonObject { "type" to "string"; "description" to "待办笔记 ID（也可用 subject_title 按标题定位）" }
-                "todo_id" to buildJsonObject { "type" to "string"; "description" to "待办项 ID（三选一）" }
+                "todo_id" to buildJsonObject { "type" to "string"; "description" to "待办项 ID（三选一；只改重复规则时可不传）" }
                 "todo_index" to buildJsonObject { "type" to "integer"; "description" to "待办项序号，从 0 开始，取自 list_todos（三选一）" }
                 "todo_text" to buildJsonObject { "type" to "string"; "description" to "按正文文本定位（三选一），精确匹配优先，其次包含匹配" }
                 "content" to buildJsonObject { "type" to "string"; "description" to "新的待办项正文；不传表示不改文字" }
                 "done" to buildJsonObject { "type" to "boolean"; "description" to "新的完成状态；不传表示不改状态" }
+                "repeat" to repeatParamSchema
+                "week_days" to weekDaysParamSchema
+                "interval_days" to intervalDaysParamSchema
             }
             "required" to buildJsonArray { +"subject_id" }
         }
         override suspend fun execute(params: JsonObject): String {
             val lookup = requireTodoSubject(repo, params)
             if (lookup is Lookup.Fail) return lookup.error
+            val subject = (lookup as Lookup.Ok).subject
             val newContent = params.paramString("content")
             val newDone = params.paramBoolean("done")
-            if (newContent == null && newDone == null) {
+            val hasRepeat = TodoRepeatSupport.hasRepeatParams(params)
+            if (newContent == null && newDone == null && !hasRepeat) {
                 return toolError(
                     ToolErrorCode.MISSING_PARAMETER,
-                    "update_todo 至少需要 content 或 done 之一",
-                    "suggestion" to "传入 content 改文字、done 勾选、或两者都传"
+                    "update_todo 至少需要 content、done 或 repeat 之一",
+                    "suggestion" to "传入 content 改文字、done 勾选、repeat 改整篇重复档位，可组合使用"
                 )
             }
-            val located = locateTodo((lookup as Lookup.Ok).subject, params)
-            if (located is TodoLookup.Fail) return located.error
-            val item = (located as TodoLookup.Ok).item
-            if (newContent != null) repo.updateTodoItemContent(item.id, newContent)
-            if (newDone != null) repo.setTodoItemDone(item.id, newDone)
+
+            val repeatUpdate = if (hasRepeat) TodoRepeatSupport.resolve(params, subject.todoRepeat) else null
+            if (repeatUpdate is TodoRepeatSupport.RepeatUpdate.Invalid) return repeatUpdate.error
+
+            // 只有要改条目本身时才做定位；单独改重复规则不依赖任何条目，空列表也能改。
+            val located = if (newContent != null || newDone != null) {
+                when (val found = locateTodo(subject, params)) {
+                    is TodoLookup.Fail -> return found.error
+                    is TodoLookup.Ok -> found
+                }
+            } else null
+
+            if (newContent != null && located != null) repo.updateTodoItemContent(located.item.id, newContent)
+            if (newDone != null && located != null) repo.setTodoItemDone(located.item.id, newDone)
+            val repeat = when (repeatUpdate) {
+                is TodoRepeatSupport.RepeatUpdate.Ok -> {
+                    repo.updateTodoRepeat(subject.id, repeatUpdate.repeat)
+                    repeatUpdate.repeat
+                }
+                else -> subject.todoRepeat
+            }
+            val now = System.currentTimeMillis()
             return buildJsonObject {
                 "success" to true
-                "id" to item.id
-                "index" to located.index
-                "content" to (newContent ?: item.content)
-                "is_done" to (newDone ?: item.isDone)
+                if (located != null) {
+                    "id" to located.item.id
+                    "index" to located.index
+                    "content" to (newContent ?: located.item.content)
+                    "is_done" to (newDone ?: located.item.isDone)
+                }
+                "repeat" to TodoRepeatSupport.toJson(
+                    repeat,
+                    now,
+                    // 写了重复规则时仓库层会把 lastResetAt 记为当前时间，本地按同一口径回显
+                    if (repeatUpdate is TodoRepeatSupport.RepeatUpdate.Ok) now else subject.todoLastResetAt,
+                    subject.todoItems.any { it.isDone } || (newDone == true)
+                )
+                "repeat_scope" to "subject"
             }.toString()
         }
     }

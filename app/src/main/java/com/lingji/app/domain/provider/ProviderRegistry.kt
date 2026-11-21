@@ -35,12 +35,14 @@ object ProviderRegistry {
     fun supportsVision(provider: APIProvider, modelId: String): Boolean =
         configOrNull(provider)?.models?.find { it.id == modelId }?.supportsVision ?: false
 
-    /** 新建模型配置时该供应商的默认思考档位（保证落在其支持的档位里）。 */
-    fun defaultThinkingLevel(provider: APIProvider): ThinkingLevel {
+    /**
+     * 新建/切换模型时该供应商（或具体模型）的默认思考档位：默认开启，优先 HIGH、其次第二高。
+     * 传 [modelId] 时按模型自己声明的档位推导（同供应商不同模型可能不一样）。
+     */
+    fun defaultThinkingLevel(provider: APIProvider, modelId: String? = null): ThinkingLevel {
         val cfg = config(provider)
-        val preferred = cfg.defaultThinkingLevel
-        val levels = cfg.defaultThinkingLevels
-        return if (levels.isEmpty() || preferred in levels) preferred else levels.first()
+        return if (modelId.isNullOrBlank()) cfg.defaultThinkingLevel
+        else cfg.defaultThinkingLevelFor(modelId)
     }
 
     /**

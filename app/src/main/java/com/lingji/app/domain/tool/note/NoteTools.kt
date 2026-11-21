@@ -13,6 +13,7 @@ import com.lingji.app.domain.tool.locatePage
 import com.lingji.app.domain.tool.missingParameter
 import com.lingji.app.domain.tool.paramString
 import com.lingji.app.domain.tool.subjectNotFound
+import com.lingji.app.domain.tool.todo.TodoRepeatSupport
 import com.lingji.app.domain.tool.toolError
 import com.lingji.app.domain.tool.ToolErrorCode
 import com.lingji.app.domain.tool.unsupportedForSubjectType
@@ -29,6 +30,7 @@ object NoteTools {
     private class GetAggregatedNote(private val repo: SubjectRepository) : Tool {
         override val name = "get_aggregated_note"
         override val description = "读取指定笔记的完整内容：NOTEBOOK 为各页拼接，FRAGMENT 为聚合笔记或碎片原文，TODO 为待办项列表（- [ ] / - [x]）。" +
+            "TODO 的首行是一条 HTML 注释，写明整篇列表的重复档位、是否自动重置勾选、当前周期起点（用 list_todos 可拿到结构化字段）。" +
             "TODO 笔记的内容只能用 list_todos / add_todo / update_todo / delete_todo 修改，且改动会立即在这里读回。"
         override val parameters = buildJsonObject {
             "type" to "object"
@@ -40,7 +42,19 @@ object NoteTools {
         override suspend fun execute(params: JsonObject): String {
             val subjectId = params.paramString("subject_id") ?: return missingParameter("subject_id")
             val subject = repo.getSubjectByIdOnce(subjectId) ?: return subjectNotFound(subjectId)
-            return buildJsonObject { "content" to LLMService.stripDataImages(subject.fullNoteContent()) }.toString()
+            val body = subject.fullNoteContent()
+            // TODO 的重复语义原本在纯文本里完全丢失：补一行 HTML 注释（Markdown 渲染时不可见，
+            // 但模型能读到），让 Agent 知道这是每日重置还是一次性，而不是把勾选状态当成永久事实。
+            val content = if (subject.type == SubjectType.TODO) {
+                val header = TodoRepeatSupport.summaryLine(
+                    repeat = subject.todoRepeat,
+                    now = System.currentTimeMillis(),
+                    lastResetAt = subject.todoLastResetAt,
+                    hasDoneItems = subject.todoItems.any { it.isDone }
+                )
+                if (body.isEmpty()) header else "$header\n$body"
+            } else body
+            return buildJsonObject { "content" to LLMService.stripDataImages(content) }.toString()
         }
     }
 

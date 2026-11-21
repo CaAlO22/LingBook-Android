@@ -48,9 +48,10 @@ class MimoRequestStrategyTest {
     }
 
     @Test
-    fun `other providers keep OFF as default`() {
-        assertEquals(ThinkingLevel.OFF, ProviderRegistry.defaultThinkingLevel(APIProvider.OPENAI))
-        assertEquals(ThinkingLevel.OFF, ProviderRegistry.defaultThinkingLevel(APIProvider.DEEPSEEK))
+    fun `other providers default to thinking on at high`() {
+        // 全局策略：模型配置默认开启思考，有强度档位时取 HIGH（或第二高）
+        assertEquals(ThinkingLevel.HIGH, ProviderRegistry.defaultThinkingLevel(APIProvider.OPENAI))
+        assertEquals(ThinkingLevel.HIGH, ProviderRegistry.defaultThinkingLevel(APIProvider.DEEPSEEK))
     }
 
     @Test

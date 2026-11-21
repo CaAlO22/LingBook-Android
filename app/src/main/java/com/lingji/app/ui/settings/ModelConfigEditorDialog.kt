@@ -25,9 +25,9 @@ import com.lingji.app.R
 import com.lingji.app.domain.model.AISettings
 import com.lingji.app.domain.model.APIProvider
 import com.lingji.app.domain.model.ModelConfig
-import com.lingji.app.domain.model.ThinkingLevel
 import com.lingji.app.domain.model.generateId
 import com.lingji.app.domain.provider.ProviderRegistry
+import com.lingji.app.domain.provider.defaultThinkingSelection
 import com.lingji.app.domain.provider.thinkingLevelsFor
 import com.lingji.app.ui.components.DropdownMenu
 import com.lingji.app.ui.components.DropdownMenuItem
@@ -72,7 +72,10 @@ fun ModelConfigEditorDialog(
         )
     }
     var thinkingLevel by remember {
-        mutableStateOf(initial?.thinkingLevel ?: ProviderRegistry.defaultThinkingLevel(startProvider))
+        mutableStateOf(
+            initial?.thinkingLevel
+                ?: ProviderRegistry.defaultThinkingLevel(startProvider, startConfig.defaultModelId)
+        )
     }
     var providerExpanded by remember { mutableStateOf(false) }
 
@@ -80,12 +83,11 @@ fun ModelConfigEditorDialog(
     val thinkingLevels = config.thinkingLevelsFor(modelName)
     val canSave = baseUrl.isNotBlank() && modelName.isNotBlank()
 
-    // 切换供应商 / 模型后，若原档位不再受支持则回落到该模型的首个可用档位
+    // 切换供应商 / 模型后，若原档位不再受支持则回落到该模型的默认档位：
+    // 默认开启思考，优先 HIGH、其次第二高（见 defaultThinkingSelection）。
     LaunchedEffect(thinkingLevels) {
         if (thinkingLevel !in thinkingLevels) {
-            val preferred = ProviderRegistry.defaultThinkingLevel(provider)
-            thinkingLevel = if (preferred in thinkingLevels) preferred
-            else thinkingLevels.firstOrNull() ?: ThinkingLevel.OFF
+            thinkingLevel = thinkingLevels.defaultThinkingSelection()
         }
     }
 
@@ -139,8 +141,8 @@ fun ModelConfigEditorDialog(
                                     if (alias.isBlank() || alias == previousName) {
                                         alias = target.defaultModelId
                                     }
-                                    // 换供应商时重置为该供应商的默认档位（MiMo 默认开启深度思考）
-                                    thinkingLevel = ProviderRegistry.defaultThinkingLevel(entry)
+                                    // 换供应商时按新供应商默认模型的档位重置（默认开启思考，优先 HIGH）
+                                    thinkingLevel = ProviderRegistry.defaultThinkingLevel(entry, target.defaultModelId)
                                     providerExpanded = false
                                 }
                             )

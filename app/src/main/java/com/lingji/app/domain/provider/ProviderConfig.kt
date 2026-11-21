@@ -30,10 +30,13 @@ interface ProviderConfig {
     val authHeaderPrefix: String
 
     /**
-     * 新建模型配置时该供应商的默认思考档位。默认 OFF；
-     * 默认开启深度思考的供应商（如 MiMo）在各自的 Config 里覆盖，不要在这里写供应商分支。
+     * 新建模型配置时的默认思考档位：**默认开启思考**。
+     *
+     * 规则见 [defaultThinkingSelection]：支持 HIGH 就取 HIGH，否则取第二高档位；
+     * 只支持开关的供应商得到 ON；不支持思考（默认档位为空）才回落到 OFF。
+     * 供应商无需各自覆盖，除非有特殊业务理由。
      */
-    val defaultThinkingLevel: ThinkingLevel get() = ThinkingLevel.OFF
+    val defaultThinkingLevel: ThinkingLevel get() = defaultThinkingLevels.defaultThinkingSelection()
 
     /**
      * 开启思考时，多轮工具调用的历史 assistant 消息是否要完整回传 reasoning_content。
@@ -47,3 +50,29 @@ interface ProviderConfig {
 /** 解析某个模型实际可选的思考档位。 */
 fun ProviderConfig.thinkingLevelsFor(modelId: String): List<ThinkingLevel> =
     models.find { it.id == modelId }?.thinkingLevels ?: defaultThinkingLevels
+
+/**
+ * 新建/切换模型时该模型的默认思考档位。
+ *
+ * 用模型级档位而不是供应商级：同一供应商下不同模型支持的档位可能不同
+ * （例如 GLM-5.3 没有 OFF、Qwen-Long 完全不支持思考）。
+ */
+fun ProviderConfig.defaultThinkingLevelFor(modelId: String): ThinkingLevel =
+    thinkingLevelsFor(modelId).defaultThinkingSelection()
+
+/**
+ * 从可用档位中挑一个「默认开启且尽量强」的值：
+ *
+ * 1. 过滤掉 OFF 后按枚举强度排序（LOW → MEDIUM → HIGH → MAX）
+ * 2. 支持 HIGH 就用 HIGH（用户要求的首选档位，也是大多数模型 4 档里的第二高）
+ * 3. 没有 HIGH 则取第二高（如 [LOW, MEDIUM, MAX] → MEDIUM）；只有一档就用它
+ * 4. 没有任何可开启档位（空列表 / 只有 OFF）→ OFF，表示该模型不支持思考
+ */
+fun List<ThinkingLevel>.defaultThinkingSelection(): ThinkingLevel {
+    val enabled = distinct()
+        .filter { it != ThinkingLevel.OFF }
+        .sortedBy { it.ordinal }
+    if (enabled.isEmpty()) return ThinkingLevel.OFF
+    if (ThinkingLevel.HIGH in enabled) return ThinkingLevel.HIGH
+    return if (enabled.size >= 2) enabled[enabled.size - 2] else enabled.last()
+}

@@ -69,7 +69,8 @@ class HomeAgentService @Inject constructor(
 【图片插入能力】当用户在对话中发送图片时，每张图片会被自动编号（从1开始递增）。你可以使用 insert_img 工具将指定编号的图片插入到笔记本笔记的指定页面。insert_img 参数说明：subject_id（笔记本 ID）、page_id（页面 ID，可通过 list_pages 获取）、image_number（图片编号）。仅支持 notebook 类型笔记。
 
 
-【TODO 待办笔记】TODO 类型的正文是待办项，只能用 list_todos（列出，返回 index/id/content/is_done）、add_todo（新增）、update_todo（改文字/勾选/取消勾选）、delete_todo（删除）管理；get_aggregated_note 会立即读回这些改动。edit_replace、fragment 工具、page 工具都不支持 TODO 类型，调用会返回 code=UNSUPPORTED_FOR_SUBJECT_TYPE 的错误。定位待办项可用 todo_id / todo_index（整数序号，最稳）/ todo_text（正文文本）三选一。
+【TODO 待办笔记】TODO 类型的正文是待办项，只能用 list_todos（列出，返回 {repeat,count,items}，items 每项含 index/id/content/is_done）、add_todo（新增）、update_todo（改文字/勾选/改重复规则）、delete_todo（删除）管理；get_aggregated_note 会立即读回这些改动，且首行用 HTML 注释标注重复规则。edit_replace、fragment 工具、page 工具都不支持 TODO 类型，调用会返回 code=UNSUPPORTED_FOR_SUBJECT_TYPE 的错误。定位待办项可用 todo_id / todo_index（整数序号，最稳）/ todo_text（正文文本）三选一。
+【待办重复规则】六档重复（ONCE 一次性 / DAILY 每日 / WEEKDAYS 仅工作日 / WEEKENDS 仅休息日 / INTERVAL 每 N 天 / CUSTOM 指定星期）是整篇待办列表的设置，不是单条待办项的属性，周期切换时整篇一起清空勾选。因此：新增时用 add_todo 的 repeat（可配 week_days=[1..7]、interval_days）一并指定档位；已有笔记改用 update_todo 的 repeat 纠正，只传 repeat 时不必定位任何条目，空列表也能改；用户说「把某一条改成一次性」时，要说明这会改整篇列表，不要承诺单条独立重复；list_todos 的 repeat.auto_reset 表示是否自动清空勾选，reset_pending=true 表示存在上一周期遗留的勾选、下次打开笔记会被清空，不要把那些 is_done 当作本周期已完成。
 
 【ID 与定位】工具返回值里的 id 是唯一可信的 id，禁止自行编造。凡需要 subject_id 的工具都可以改用 subject_title 按笔记标题定位；标题重名会返回 code=AMBIGUOUS_TITLE 和带 index（0、1…）的 candidates，此时把原 subject_title 与候选的 index 一起传（subject_title + subject_index）重试即可选定，不需要抄写 36 位 id，也可以用候选里的 id 作为 subject_id 重试。定位页面可用 page_id / page_index / page_title 三选一。错误返回以 "Error:" 开头，其后是带 code 字段的 JSON：code=UNSUPPORTED_FOR_SUBJECT_TYPE 表示工具与笔记类型不匹配，按 suggestion 换工具，不要重试同一调用；code=AMBIGUOUS_TITLE / AMBIGUOUS_MATCH 表示需从 candidates 里选定一个再重试；code=SUBJECT_INDEX_OUT_OF_RANGE 表示候选序号越界，按返回的 candidates 重新选；code=SUBJECT_NOT_FOUND / OBJECT_NOT_FOUND 表示 id 失效，重新 list_* 获取。
 

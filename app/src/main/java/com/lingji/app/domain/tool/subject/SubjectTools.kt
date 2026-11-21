@@ -12,6 +12,7 @@ import com.lingji.app.domain.tool.buildJsonObject
 import com.lingji.app.domain.tool.missingParameter
 import com.lingji.app.domain.tool.paramString
 import com.lingji.app.domain.tool.subjectNotFound
+import com.lingji.app.domain.tool.todo.TodoRepeatSupport
 import com.lingji.app.domain.tool.toolError
 import kotlinx.coroutines.flow.first
 
@@ -27,8 +28,8 @@ object SubjectTools {
 
     private class ListSubjects(private val repo: SubjectRepository) : Tool {
         override val name = "list_subjects"
-        override val description = "列出所有笔记的 id、标题和类型（NOTEBOOK / FRAGMENT / TODO）。" +
-            "拿到标题后，其它工具可直接用 subject_title 按标题定位，不必复述长 id。"
+        override val description = "列出所有笔记的 id、标题和类型（NOTEBOOK / FRAGMENT / TODO）。TODO 笔记额外返回 repeat 与 repeat_label（整篇待办列表的重复档位），" +
+            "可据此判断哪篇是每日重置、哪篇是一次性。拿到标题后，其它工具可直接用 subject_title 按标题定位，不必复述长 id。"
         override val parameters = buildJsonObject {
             "type" to "object"
             "properties" to buildJsonObject {}
@@ -41,6 +42,10 @@ object SubjectTools {
                         "id" to s.id
                         "title" to s.title
                         "type" to s.type.name
+                        if (s.type == SubjectType.TODO) {
+                            "repeat" to s.todoRepeat.type.name
+                            "repeat_label" to TodoRepeatSupport.label(s.todoRepeat)
+                        }
                     }
                 }
             }.toString()
@@ -49,7 +54,7 @@ object SubjectTools {
 
     private class GetSubject(private val repo: SubjectRepository) : Tool {
         override val name = "get_subject"
-        override val description = "获取指定笔记的概览信息：标题、类型、页面数、碎片数、待办项数。也可用 subject_title 按标题定位。"
+        override val description = "获取指定笔记的概览信息：标题、类型、页面数、碎片数、待办项数；TODO 笔记还会返回 repeat（整篇重复规则，含是否自动重置、当前周期起点）。也可用 subject_title 按标题定位。"
         override val parameters = buildJsonObject {
             "type" to "object"
             "properties" to buildJsonObject {
@@ -67,6 +72,14 @@ object SubjectTools {
                 "page_count" to (s.pages?.size ?: 0)
                 "fragment_count" to (s.fragments.size + s.unmergedFragments.size)
                 "todo_count" to s.todoItems.size
+                if (s.type == SubjectType.TODO) {
+                    "repeat" to TodoRepeatSupport.toJson(
+                        s.todoRepeat,
+                        System.currentTimeMillis(),
+                        s.todoLastResetAt,
+                        s.todoItems.any { it.isDone }
+                    )
+                }
             }.toString()
         }
     }
