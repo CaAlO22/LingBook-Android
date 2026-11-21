@@ -8,6 +8,8 @@ import com.lingji.app.domain.model.TodoRepeatType
 import com.lingji.app.ui.viewmodel.HomeFragmentData
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.time.Instant
+import java.time.ZoneId
 
 class HomeAggregationTest {
 
@@ -26,7 +28,7 @@ class HomeAggregationTest {
     )
 
     @Test
-    fun mergesUndoneTodosAcrossLists_newestFirst() {
+    fun mergesUndoneTodosAcrossLists_inputOrderWhenNoReminders() {
         val subjects = listOf(
             todoSubject("s1", "每日委托", listOf(
                 TodoItem(id = "a", content = "旧任务", createdAt = now - 3000),
@@ -38,9 +40,84 @@ class HomeAggregationTest {
             Subject(id = "s3", title = "碎片笔记", type = SubjectType.FRAGMENT, fragments = emptyList())
         )
         val result = buildAggregationTodos(subjects, now)
-        assertEquals(listOf("c", "a"), result.map { it.item.id })
-        assertEquals("购物清单", result[0].subjectTitle)
-        assertEquals("s2", result[0].subjectId)
+        // 都没有提醒：按录入时间升序
+        assertEquals(listOf("a", "c"), result.map { it.item.id })
+        assertEquals("每日委托", result[0].subjectTitle)
+        assertEquals("s1", result[0].subjectId)
+    }
+
+    @Test
+    fun todos_sortedByReminderTime_nearestFirst_noReminderLast() {
+        val nowMinutes = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault())
+            .toLocalTime().let { it.hour * 60 + it.minute }
+        val soon = (nowMinutes + 60) % 1440
+        val later = (nowMinutes + 120) % 1440
+        val subject = todoSubject(
+            "s1", "每日委托",
+            items = listOf(
+                TodoItem(
+                    id = "later", content = "晚点", createdAt = now - 1000,
+                    reminderEnabled = true, reminderMinutes = later
+                ),
+                TodoItem(
+                    id = "none", content = "没提醒", createdAt = now - 5000
+                ),
+                TodoItem(
+                    id = "soon", content = "最近的", createdAt = now - 2000,
+                    reminderEnabled = true, reminderMinutes = soon
+                )
+            ),
+            repeat = TodoRepeat(type = TodoRepeatType.DAILY),
+            lastResetAt = now
+        )
+        val result = buildAggregationTodos(listOf(subject), now)
+        assertEquals(listOf("soon", "later", "none"), result.map { it.item.id })
+    }
+
+    @Test
+    fun todos_sameReminderTime_tieBrokenByInputTime() {
+        val nowMinutes = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault())
+            .toLocalTime().let { it.hour * 60 + it.minute }
+        val same = (nowMinutes + 60) % 1440
+        val subject = todoSubject(
+            "s1", "每日委托",
+            items = listOf(
+                TodoItem(
+                    id = "newer", content = "后录入", createdAt = now - 1000,
+                    reminderEnabled = true, reminderMinutes = same
+                ),
+                TodoItem(
+                    id = "older", content = "先录入", createdAt = now - 4000,
+                    reminderEnabled = true, reminderMinutes = same
+                )
+            ),
+            repeat = TodoRepeat(type = TodoRepeatType.DAILY),
+            lastResetAt = now
+        )
+        val result = buildAggregationTodos(listOf(subject), now)
+        assertEquals(listOf("older", "newer"), result.map { it.item.id })
+    }
+
+    @Test
+    fun onceTodos_sortedByAbsoluteReminderAt() {
+        val subject = todoSubject(
+            "s1", "一次性清单",
+            items = listOf(
+                TodoItem(
+                    id = "hour2", content = "两小时后", createdAt = now - 3000,
+                    reminderEnabled = true, reminderAt = now + 2 * 60 * 60 * 1000
+                ),
+                TodoItem(
+                    id = "hour1", content = "一小时后", createdAt = now - 2000,
+                    reminderEnabled = true, reminderAt = now + 60 * 60 * 1000
+                ),
+                TodoItem(id = "none", content = "没提醒", createdAt = now - 5000)
+            ),
+            repeat = TodoRepeat(type = TodoRepeatType.ONCE),
+            lastResetAt = 0
+        )
+        val result = buildAggregationTodos(listOf(subject), now)
+        assertEquals(listOf("hour1", "hour2", "none"), result.map { it.item.id })
     }
 
     @Test

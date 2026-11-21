@@ -32,7 +32,10 @@ import com.lingji.app.R
 import com.lingji.app.domain.model.Subject
 import com.lingji.app.domain.model.SubjectType
 import com.lingji.app.domain.model.TodoItem
+import com.lingji.app.domain.model.TodoRepeat
+import com.lingji.app.domain.model.TodoRepeatType
 import com.lingji.app.domain.model.currentPeriodStart
+import com.lingji.app.domain.model.nextReminderAt
 import com.lingji.app.ui.viewmodel.HomeFragmentData
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -42,11 +45,24 @@ import java.util.Locale
 data class AggregationTodo(
     val subjectId: String,
     val subjectTitle: String,
-    val item: TodoItem
+    val item: TodoItem,
+    /** 提醒排序键：最近一次提醒时间；未设置提醒为 null（排在最后）。 */
+    val reminderSortAt: Long? = null
 )
 
+/** 信息岛：按列表重复规则推导条目下一次提醒时间；未设提醒返回 null。 */
+private fun reminderSortAt(item: TodoItem, repeat: TodoRepeat, now: Long): Long? {
+    if (!item.reminderEnabled) return null
+    return if (repeat.type == TodoRepeatType.ONCE) {
+        item.reminderAt.takeIf { it > 0 }
+    } else {
+        repeat.nextReminderAt(item.reminderMinutes, now)
+    }
+}
+
 /**
- * 汇总所有待办列表中的未完成待办，按写入时间最新在前。
+ * 汇总所有待办列表中的未完成待办，按提醒时间升序（越近越前）；
+ * 未设置提醒的条目排在最后；提醒时间相同时按录入时间升序。
  * 重复周期已到期但尚未重置勾选的列表，其条目按新周期视为未完成，
  * 与进入待办列表时的自动重置行为保持一致。
  */
@@ -60,16 +76,28 @@ internal fun buildAggregationTodos(
         val resetPending = periodStart != null && subject.todoLastResetAt < periodStart
         subject.todoItems
             .filter { !it.isDone || resetPending }
-            .map { AggregationTodo(subject.id, subject.title, it) }
+            .map {
+                AggregationTodo(
+                    subjectId = subject.id,
+                    subjectTitle = subject.title,
+                    item = it,
+                    reminderSortAt = reminderSortAt(it, subject.todoRepeat, now)
+                )
+            }
     }
-    .sortedByDescending { it.item.createdAt }
+    .sortedWith(
+        compareBy<AggregationTodo> { it.reminderSortAt == null }
+            .thenBy { it.reminderSortAt ?: 0L }
+            .thenBy { it.item.createdAt }
+    )
 
 /** 未收录碎片按写入时间最新在前；无时间戳的历史碎片视为最早。 */
 internal fun sortFragmentsNewestFirst(fragments: List<HomeFragmentData>): List<HomeFragmentData> =
     fragments.sortedByDescending { it.timestamp ?: 0L }
 
 /**
- * 首页聚合页：未完成待办与未收录碎片两个分区，各自按写入时间最新在前。
+ * 首页聚合页：未完成待办与未收录碎片两个分区，待办按提醒时间由近到远，
+ * 碎片按写入时间最新在前。
  * 点击待办跳转所属待办列表，点击碎片打开底部碎片输入面板。
  */
 @Composable
