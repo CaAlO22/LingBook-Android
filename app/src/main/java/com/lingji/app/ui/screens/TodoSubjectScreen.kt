@@ -6,6 +6,7 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -44,14 +45,11 @@ import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -70,6 +68,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
@@ -92,6 +91,8 @@ import com.lingji.app.domain.model.TodoItem
 import com.lingji.app.domain.model.TodoRepeat
 import com.lingji.app.domain.model.TodoRepeatType
 import com.lingji.app.ui.components.DeleteConfirmDialog
+import com.lingji.app.ui.components.DropdownMenu
+import com.lingji.app.ui.components.DropdownMenuItem
 import com.lingji.app.ui.components.FloatingInputContainer
 import com.lingji.app.ui.components.GlassOutlinedTextField
 import com.lingji.app.ui.components.GlassSurface
@@ -363,7 +364,7 @@ fun TodoSubjectScreen(
 }
 
 /**
- * 信息岛：待办输入框——固定四行高度并可滚动，内部右侧自带单条提醒设置入口。
+ * 信息岛：待办输入框——单行输入，内部自带单条提醒设置入口与发送键。
  */
 @Composable
 private fun TodoInputBar(
@@ -410,8 +411,8 @@ private fun TodoInputBar(
                     .fillMaxWidth()
                     .arrowKeyCursorBehavior(text, { text = it }) { textLayout }
                     .enterSendBehavior(submit),
-                minLines = 4,
-                maxLines = 4,
+                minLines = 1,
+                maxLines = 1,
                 onTextLayout = { textLayout = it },
                 textStyle = MaterialTheme.typography.bodyLarge.copy(
                     color = MaterialTheme.colorScheme.onSurface
@@ -461,22 +462,25 @@ private fun TodoInputBar(
                 Spacer(modifier = Modifier.weight(1f))
                 val sendEnabled = text.text.isNotBlank()
                 IconButton(onClick = submit, enabled = sendEnabled) {
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primary.copy(
-                            alpha = if (sendEnabled) 0.9f else 0.3f
-                        ),
-                        shadowElevation = 4.dp,
-                        modifier = Modifier.size(40.dp)
+                    // 纯色圆形底：不再使用带阴影的 Surface——阴影在这个玻璃容器里
+                    // 会被渲染成多边形，看起来像发送键里套了个六边形。
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(
+                                MaterialTheme.colorScheme.primary.copy(
+                                    alpha = if (sendEnabled) 0.9f else 0.3f
+                                )
+                            ),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.Send,
-                                contentDescription = stringResource(R.string.cd_send),
-                                tint = MaterialTheme.colorScheme.onPrimary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Send,
+                            contentDescription = stringResource(R.string.cd_send),
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
             }
@@ -673,12 +677,12 @@ private fun TodoList(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            // 底部预留悬浮输入框（四行 + 工具行）的高度，使最后一条待办可滚动到其上方。
+            // 底部预留悬浮输入框（单行输入 + 工具行）的高度，使最后一条待办可滚动到其上方。
             contentPadding = PaddingValues(
                 start = 16.dp,
                 end = 16.dp,
                 top = 8.dp,
-                bottom = 190.dp
+                bottom = 130.dp
             ),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
