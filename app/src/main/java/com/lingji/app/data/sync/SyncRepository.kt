@@ -25,6 +25,7 @@ import com.lingji.app.data.db.entities.SubjectSummaryEntity
 import com.lingji.app.data.db.entities.TodoItemEntity
 import com.lingji.app.data.remote.UpdateChecker
 import com.lingji.app.data.remote.sync.SyncApi
+import com.lingji.app.data.remote.sync.SyncApiException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
@@ -35,7 +36,24 @@ sealed interface SyncResult {
     /** 未启用或配置不完整，本轮未执行。 */
     data object Disabled : SyncResult
 
-    data class Success(val pushed: Int, val pulled: Int, val deleted: Int) : SyncResult
+    data class Success(
+        val pushed: Int,
+        val pulled: Int,
+        val deleted: Int,
+        /** 服务端协议版本（正常同步时必然 >= 本端版本）。 */
+        val serverSchemaVersion: Int = SyncProtocol.SCHEMA_VERSION
+    ) : SyncResult
+
+    /**
+     * 服务端协议版本低于本端，本轮**未推送任何数据**。
+     *
+     * 旧服务器不认识新增的同步表 / 字段，继续同步会把新数据静默丢在服务端，
+     * 所以宁可停下并提示升级服务器。
+     */
+    data class ServerOutdated(
+        val serverVersion: Int,
+        val clientVersion: Int = SyncProtocol.SCHEMA_VERSION
+    ) : SyncResult
 
     data class Error(val message: String) : SyncResult
 }
@@ -74,6 +92,18 @@ class SyncRepository @Inject constructor(
         if (!config.enabled || !config.isValid) return@withLock SyncResult.Disabled
 
         try {
+            // ── 0. 协议版本前置检查（主闸门）──
+            // 服务端版本低于本端时直接停下：旧服务器的同步表白名单不认识本版新增的表 / 字段，
+            // 推上去会被静默丢弃（同步显示成功，换设备却没有数据）。
+            val serverInfo = api.serverInfo(config.baseUrl, config.token)
+            if (!SyncProtocol.isServerCompatible(serverInfo.schemaVersion)) {
+                Log.w(
+                    TAG,
+                    "sync refused: server schema v${serverInfo.schemaVersion} < client v${SyncProtocol.SCHEMA_VERSION}"
+                )
+                return@withLock SyncResult.ServerOutdated(serverInfo.schemaVersion)
+            }
+
             val wmNotes = configStore.watermarkNotes
             val wmModels = configStore.watermarkModels
             val wmTokens = configStore.watermarkTokens
@@ -107,6 +137,8 @@ class SyncRepository @Inject constructor(
 
             val payload = JsonObject().apply {
                 addProperty("deviceId", configStore.deviceId)
+                // 服务端据此兜底：客户端版本高于自己时返回 409，防止「检查通过后服务器被换回旧版」
+                addProperty("schemaVersion", SyncProtocol.SCHEMA_VERSION)
                 addProperty("lastRev", configStore.lastRev)
                 add("changes", JsonObject().apply {
                     addEntityArray(TBL_SUBJECTS, subjects)
@@ -232,7 +264,21 @@ class SyncRepository @Inject constructor(
             val pushed = subjects.size + fragments.size + pages.size + folders.size +
                 conversations.size + messages.size + summaries.size + todoItems.size +
                 modelConfigs.size + tombstones.size + if (pushTokens) 1 else 0
-            SyncResult.Success(pushed = pushed, pulled = pulled, deleted = deleted)
+            SyncResult.Success(
+                pushed = pushed,
+                pulled = pulled,
+                deleted = deleted,
+                serverSchemaVersion = serverInfo.schemaVersion
+            )
+        } catch (e: SyncApiException) {
+            // 服务端兜底拦截：本端版本高于服务端（理论上已被前置检查挡住，这里覆盖竞态）
+            if (e.statusCode == 409) {
+                val serverVersion = e.serverSchemaVersion ?: SyncProtocol.LEGACY_SCHEMA_VERSION
+                Log.w(TAG, "sync refused by server: server v$serverVersion < client v${SyncProtocol.SCHEMA_VERSION}")
+                return@withLock SyncResult.ServerOutdated(serverVersion)
+            }
+            Log.w(TAG, "sync failed: ${e.message}")
+            SyncResult.Error(e.message ?: e.javaClass.simpleName)
         } catch (e: Exception) {
             Log.w(TAG, "sync failed: ${e.message}")
             SyncResult.Error(e.message ?: e.javaClass.simpleName)

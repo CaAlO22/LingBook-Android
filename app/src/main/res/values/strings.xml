@@ -455,6 +455,15 @@
     <string name="sync_config_incomplete">请先填写服务器地址与端口</string>
     <string name="sync_never">尚未同步</string>
     <string name="sync_last_format">上次同步：%1$s</string>
+    <string name="sync_protocol_format">同步协议：应用 v%1$d · 服务器 v%2$d</string>
+    <string name="sync_protocol_client_only">同步协议：应用 v%1$d（尚未连通过服务器）</string>
+    <string name="sync_protocol_refused">服务器版本过旧，已停止同步以免新数据被旧服务器丢弃。请升级服务器端程序后重试。</string>
+    <string name="model_catalog_title">模型列表</string>
+    <string name="model_catalog_hint">各供应商的模型列表由同步服务器下发。新增或下线模型只需改服务器端的 model_catalog 表，无需更新 App。</string>
+    <string name="model_catalog_builtin">尚未获取云端目录，当前使用随包内置列表</string>
+    <string name="model_catalog_version_format">云端 v%1$d · %2$s</string>
+    <string name="model_catalog_refreshing">正在刷新…</string>
+    <string name="model_catalog_refresh">刷新</string>
     <string name="sync_device_id">本设备 ID</string>
     <string name="sync_device_id_hint">云同步用它区分不同设备。把另一台设备的 ID 改成与这里一致，两台设备就会共用同一份灵记。</string>
     <string name="sync_device_id_copy">复制</string>

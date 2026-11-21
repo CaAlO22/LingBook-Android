@@ -6,6 +6,7 @@ import com.lingji.app.data.remote.sync.SyncApi
 import com.lingji.app.data.sync.DeviceIdFormat
 import com.lingji.app.data.sync.LanScanResult
 import com.lingji.app.data.sync.LanServerScanner
+import com.lingji.app.data.sync.ModelCatalogStatus
 import com.lingji.app.data.sync.SyncConfigStore
 import com.lingji.app.data.sync.SyncManager
 import com.lingji.app.data.sync.SyncUiStatus
@@ -67,6 +68,9 @@ class SyncViewModel @Inject constructor(
 
     val status: StateFlow<SyncUiStatus> = syncManager.status
 
+    /** 云端模型目录的版本与刷新状态。 */
+    val catalogStatus: StateFlow<ModelCatalogStatus> = syncManager.catalogStatus
+
     /** 测试结果：first=是否成功，second=描述信息；null 表示未测试。 */
     private val _testResult = MutableStateFlow<Pair<Boolean, String>?>(null)
     val testResult: StateFlow<Pair<Boolean, String>?> = _testResult.asStateFlow()
@@ -125,6 +129,9 @@ class SyncViewModel @Inject constructor(
     }
 
     fun syncNow() = syncManager.requestSync()
+
+    /** 手动强制刷新云端模型目录（不看本地版本，整份重拉）。 */
+    fun refreshCatalog() = syncManager.requestCatalogRefresh()
 
     /**
      * 扫描局域网服务器，最多持续 [LanServerScanner.DEFAULT_DURATION_MS]。

@@ -154,6 +154,40 @@ class SyncConfigStore @Inject constructor(@ApplicationContext private val contex
         get() = prefs.getLong(KEY_LAST_SYNC_AT, 0L)
         set(value) = prefs.edit().putLong(KEY_LAST_SYNC_AT, value).apply()
 
+    /**
+     * 云端下发的模型目录缓存（服务端原样 JSON）。
+     *
+     * 存原文而不是解析后的对象：服务器将来加字段时，旧版 App 也能把整份目录写回去，
+     * 不会因为重新序列化丢字段。
+     */
+    var modelCatalogJson: String
+        get() = prefs.getString(KEY_MODEL_CATALOG_JSON, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_MODEL_CATALOG_JSON, value).apply()
+
+    /** 已缓存的目录版本，下次请求带上它，服务端未变更时只回 unchanged。 */
+    var modelCatalogVersion: Int
+        get() = prefs.getInt(KEY_MODEL_CATALOG_VERSION, 0)
+        set(value) = prefs.edit().putInt(KEY_MODEL_CATALOG_VERSION, value).apply()
+
+    /** 服务端最后一次修改目录的时间（毫秒），仅用于展示。 */
+    var modelCatalogUpdatedAt: Long
+        get() = prefs.getLong(KEY_MODEL_CATALOG_UPDATED_AT, 0L)
+        set(value) = prefs.edit().putLong(KEY_MODEL_CATALOG_UPDATED_AT, value).apply()
+
+    /** 本机最后一次成功刷新目录的时间（毫秒）。 */
+    var modelCatalogFetchedAt: Long
+        get() = prefs.getLong(KEY_MODEL_CATALOG_FETCHED_AT, 0L)
+        set(value) = prefs.edit().putLong(KEY_MODEL_CATALOG_FETCHED_AT, value).apply()
+
+    /**
+     * 缓存目录来自哪台服务器（baseUrl）。
+     *
+     * 换服务器后即使版本号碰巧相同也不能信缓存版本，否则会误判「未变更」而一直用旧目录。
+     */
+    var modelCatalogServer: String
+        get() = prefs.getString(KEY_MODEL_CATALOG_SERVER, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_MODEL_CATALOG_SERVER, value).apply()
+
     /** 最近一次同步结果描述（用于设置页展示）。 */
     var lastSyncMessage: String
         get() = prefs.getString(KEY_LAST_SYNC_MSG, "") ?: ""
@@ -208,6 +242,12 @@ class SyncConfigStore @Inject constructor(@ApplicationContext private val contex
 
         private const val KEY_LAST_SYNC_AT = "last_sync_at"
         private const val KEY_LAST_SYNC_MSG = "last_sync_msg"
+
+        private const val KEY_MODEL_CATALOG_JSON = "model_catalog_json"
+        private const val KEY_MODEL_CATALOG_VERSION = "model_catalog_version"
+        private const val KEY_MODEL_CATALOG_UPDATED_AT = "model_catalog_updated_at"
+        private const val KEY_MODEL_CATALOG_FETCHED_AT = "model_catalog_fetched_at"
+        private const val KEY_MODEL_CATALOG_SERVER = "model_catalog_server"
         const val DEFAULT_PORT = 8765
     }
 }

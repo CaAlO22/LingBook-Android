@@ -30,6 +30,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.lingji.app.R
+import com.lingji.app.data.sync.ModelCatalogStatus
+import com.lingji.app.data.sync.SyncProtocol
 import com.lingji.app.ui.components.SettingsOutlinedTextField
 import com.lingji.app.ui.viewmodel.ScanUiState
 import com.lingji.app.ui.viewmodel.SyncViewModel
@@ -48,6 +50,7 @@ fun SyncSettingsContent(
 ) {
     val config by viewModel.config.collectAsState()
     val status by viewModel.status.collectAsState()
+    val catalogStatus by viewModel.catalogStatus.collectAsState()
     val testResult by viewModel.testResult.collectAsState()
     val testing by viewModel.testing.collectAsState()
     val scanState by viewModel.scanState.collectAsState()
@@ -137,13 +140,35 @@ fun SyncSettingsContent(
     Text(
         text = statusText,
         style = MaterialTheme.typography.bodySmall,
-        color = if (status.message.startsWith("同步失败")) {
+        color = if (status.isError) {
             MaterialTheme.colorScheme.error
         } else {
             MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
         },
         modifier = Modifier.padding(top = 12.dp)
     )
+
+    // 同步协议版本：每轮同步前都会比对，服务器低于应用时直接拒绝同步
+    val serverVersion = status.serverSchemaVersion
+    Text(
+        text = if (serverVersion != null) {
+            stringResource(R.string.sync_protocol_format, SyncProtocol.SCHEMA_VERSION, serverVersion)
+        } else {
+            stringResource(R.string.sync_protocol_client_only, SyncProtocol.SCHEMA_VERSION)
+        },
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+        modifier = Modifier.padding(top = 2.dp)
+    )
+
+    if (status.serverOutdated) {
+        Text(
+            text = stringResource(R.string.sync_protocol_refused),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+    }
 
     Row(
         modifier = Modifier
@@ -184,6 +209,66 @@ fun SyncSettingsContent(
         deviceId = config.deviceId,
         onChange = { viewModel.setDeviceId(it) }
     )
+
+    ModelCatalogRow(
+        status = catalogStatus,
+        onRefresh = { viewModel.refreshCatalog() }
+    )
+}
+
+/**
+ * 云端模型目录：版本 + 更新时间 + 手动刷新。
+ *
+ * 模型列表随云同步下发，这里只是让用户能确认"到底吃到了哪一版"，并在服务端改了表之后主动拉一次。
+ */
+@Composable
+private fun ModelCatalogRow(
+    status: ModelCatalogStatus,
+    onRefresh: () -> Unit
+) {
+    Column(modifier = Modifier.padding(top = 16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = stringResource(R.string.model_catalog_title),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = onRefresh, enabled = !status.refreshing) {
+                Text(
+                    text = stringResource(R.string.model_catalog_refresh),
+                    style = MaterialTheme.typography.labelMedium
+                )
+            }
+        }
+        Text(
+            text = when {
+                status.refreshing -> stringResource(R.string.model_catalog_refreshing)
+                status.version > 0 -> {
+                    val timestamp = status.updatedAt.takeIf { it > 0 } ?: status.fetchedAt
+                    val time = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault())
+                        .format(Date(timestamp))
+                    stringResource(R.string.model_catalog_version_format, status.version, time)
+                }
+                else -> stringResource(R.string.model_catalog_builtin)
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+        )
+        if (status.message.isNotBlank() && status.message.startsWith("刷新失败")) {
+            Text(
+                text = status.message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
+        Text(
+            text = stringResource(R.string.model_catalog_hint),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            modifier = Modifier.padding(top = 4.dp)
+        )
+    }
 }
 
 /**

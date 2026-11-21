@@ -1,7 +1,9 @@
 package com.lingji.app.data.remote.sync
 
+import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.lingji.app.data.sync.SyncProtocol
 import okhttp3.Dispatcher
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -25,6 +27,7 @@ class SyncApi @Inject constructor() {
         .build()
 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
+    private val gson = Gson()
 
     /**
      * 局域网扫描专用客户端：局域网内不存在的主机要等 connectTimeout，
@@ -50,7 +53,15 @@ class SyncApi @Inject constructor() {
     }
 
     /** 健康检查，返回服务器时间（毫秒）。 */
-    fun ping(baseUrl: String, token: String): Long {
+    fun ping(baseUrl: String, token: String): Long = serverInfo(baseUrl, token).serverTime
+
+    /**
+     * 读取服务器信息：时间 + 同步协议版本。
+     *
+     * 同步前必须先比对 [SyncServerInfo.schemaVersion]，服务端版本低于本端时拒绝同步，
+     * 避免旧服务器静默丢弃它不认识的新表 / 新字段。
+     */
+    fun serverInfo(baseUrl: String, token: String): SyncServerInfo {
         val request = buildRequest("$baseUrl/api/ping", token).get().build()
         client.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()
@@ -58,7 +69,15 @@ class SyncApi @Inject constructor() {
                 throw SyncApiException(response.code, "HTTP ${response.code}")
             }
             val json = JsonParser.parseString(body).asJsonObject
-            return json.get("serverTime")?.asLong ?: 0L
+            val serverTime = json.get("serverTime")?.asLong ?: 0L
+            // 旧服务器没有 schemaVersion 字段 -> 按 1（加版本号之前的协议）处理
+            val rawVersion = json.get("schemaVersion")
+                ?.takeIf { it.isJsonPrimitive }
+                ?.let { runCatching { it.asInt }.getOrNull() }
+            return SyncServerInfo(
+                serverTime = serverTime,
+                schemaVersion = SyncProtocol.normalizeServerVersion(rawVersion)
+            )
         }
     }
 
@@ -88,12 +107,41 @@ class SyncApi @Inject constructor() {
         client.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                val detail = runCatching {
-                    JsonParser.parseString(body).asJsonObject.get("error")?.asString
-                }.getOrNull()
-                throw SyncApiException(response.code, detail ?: "HTTP ${response.code}")
+                val errorJson = runCatching { JsonParser.parseString(body).asJsonObject }.getOrNull()
+                val detail = errorJson?.get("error")?.takeIf { it.isJsonPrimitive }?.asString
+                // 409 = 服务端判定本端协议版本更高（server_outdated），带上服务端版本号供上层展示
+                val serverVersion = errorJson?.get("serverSchemaVersion")
+                    ?.takeIf { it.isJsonPrimitive }
+                    ?.let { runCatching { it.asInt }.getOrNull() }
+                throw SyncApiException(response.code, detail ?: "HTTP ${response.code}", serverVersion)
             }
             return JsonParser.parseString(body).asJsonObject
+        }
+    }
+
+    /**
+     * 拉取云端模型目录。
+     *
+     * @param knownVersion 本机已缓存的目录版本；与服务端一致时服务端只回 `unchanged`，
+     *   一轮轮询的流量只有几十字节。
+     */
+    fun fetchModelCatalog(
+        baseUrl: String,
+        token: String,
+        knownVersion: Int?
+    ): ModelCatalogResponse {
+        val url = if (knownVersion != null && knownVersion > 0) {
+            "$baseUrl/api/model_catalog?version=$knownVersion"
+        } else {
+            "$baseUrl/api/model_catalog"
+        }
+        val request = buildRequest(url, token).get().build()
+        client.newCall(request).execute().use { response ->
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw SyncApiException(response.code, "HTTP ${response.code}")
+            }
+            return gson.fromJson(body, ModelCatalogResponse::class.java) ?: ModelCatalogResponse()
         }
     }
 
@@ -103,4 +151,16 @@ class SyncApi @Inject constructor() {
     }
 }
 
-class SyncApiException(val statusCode: Int, message: String) : Exception(message)
+/** 服务器信息：`/api/ping` 的响应。 */
+data class SyncServerInfo(
+    val serverTime: Long,
+    /** 服务端同步协议版本；旧服务器没有该字段时按 [SyncProtocol.LEGACY_SCHEMA_VERSION] 处理。 */
+    val schemaVersion: Int = SyncProtocol.LEGACY_SCHEMA_VERSION
+)
+
+class SyncApiException(
+    val statusCode: Int,
+    message: String,
+    /** 服务端在 409 响应里回带的协议版本（仅 `server_outdated` 时有值）。 */
+    val serverSchemaVersion: Int? = null
+) : Exception(message)
