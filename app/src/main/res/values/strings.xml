@@ -69,6 +69,16 @@
     <string name="cd_more_actions">更多操作</string>
     <string name="delete_folder_confirm">确定要删除文件夹"%1$s"吗？文件夹内的笔记将移回首页。</string>
 
+    <!-- 首页：聚合页与首页设置 -->
+    <string name="home_settings_title">首页设置</string>
+    <string name="home_settings_description">打开应用时首页默认显示的页面，左右滑动可随时切换</string>
+    <string name="home_mode_card_list">卡片列表</string>
+    <string name="home_mode_aggregation">聚合</string>
+    <string name="aggregation_todo_section">未完成待办（%1$d）</string>
+    <string name="aggregation_fragment_section">未收录碎片（%1$d）</string>
+    <string name="aggregation_empty">暂无未完成待办和未收录碎片</string>
+    <string name="aggregation_empty_hint">新建待办或在下方输入碎片后，会汇总到这里</string>
+
     <!-- 碎片学科 -->
     <string name="fragments">碎片</string>
     <string name="note">笔记</string>

@@ -64,6 +64,7 @@ import com.lingji.app.R
 import com.lingji.app.data.remote.UpdateSource
 import com.lingji.app.data.repository.ChangelogRepository
 import com.lingji.app.domain.model.AISettings
+import com.lingji.app.domain.model.HomePageMode
 import com.lingji.app.domain.model.ModelConfig
 import com.lingji.app.ui.components.DeleteConfirmDialog
 import com.lingji.app.ui.screens.changelog.ChangelogDialog
@@ -354,6 +355,28 @@ fun SettingsScreen(
                             modifier = Modifier.padding(top = 8.dp)
                         )
                     }
+                }
+            }
+
+            // 首页设置：默认落地页（卡片列表 / 聚合）
+            SettingsCard(title = stringResource(R.string.home_settings_title)) {
+                Text(
+                    text = stringResource(R.string.home_settings_description),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = settings.homePageMode == HomePageMode.CARD_LIST,
+                        onClick = { viewModel.saveSettings(settings.copy(homePageMode = HomePageMode.CARD_LIST)) },
+                        label = { Text(stringResource(R.string.home_mode_card_list)) }
+                    )
+                    FilterChip(
+                        selected = settings.homePageMode == HomePageMode.AGGREGATION,
+                        onClick = { viewModel.saveSettings(settings.copy(homePageMode = HomePageMode.AGGREGATION)) },
+                        label = { Text(stringResource(R.string.home_mode_aggregation)) }
+                    )
                 }
             }
 

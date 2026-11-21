@@ -13,5 +13,7 @@ data class SettingsEntity(
     /** Agent 工具调用温度 */
     val agentTemperature: Double = 0.2,
     /** 笔记页左右横滑手势行为：NONE / TOGGLE_PREVIEW / CHANGE_PAGE */
-    val horizontalSwipeAction: String = "TOGGLE_PREVIEW"
+    val horizontalSwipeAction: String = "TOGGLE_PREVIEW",
+    /** 首页默认落地页：CARD_LIST / AGGREGATION */
+    val homePageMode: String = "CARD_LIST"
 )

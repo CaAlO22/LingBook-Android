@@ -49,7 +49,7 @@ import org.json.JSONObject
         TodoItemEntity::class,
         ModelConfigEntity::class
     ],
-    version = 21,
+    version = 22,
     exportSchema = false
 )
 abstract class LingjiDatabase : RoomDatabase() {
@@ -438,6 +438,13 @@ abstract class LingjiDatabase : RoomDatabase() {
                         "AND (t.createdAt < todo_items.createdAt " +
                         "OR (t.createdAt = todo_items.createdAt AND t.id < todo_items.id)))"
                 )
+            }
+        }
+
+        val MIGRATION_21_22 = object : Migration(21, 22) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 首页默认落地页可配置：卡片列表 / 聚合页
+                db.execSQL("ALTER TABLE settings ADD COLUMN homePageMode TEXT NOT NULL DEFAULT 'CARD_LIST'")
             }
         }
     }
