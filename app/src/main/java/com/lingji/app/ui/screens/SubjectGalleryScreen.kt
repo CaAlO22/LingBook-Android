@@ -31,8 +31,11 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -93,12 +96,14 @@ import androidx.compose.ui.unit.sp
 import com.lingji.app.R
 import com.lingji.app.domain.model.Folder
 import com.lingji.app.domain.model.HomeItem
+import com.lingji.app.domain.model.HomePageMode
 import com.lingji.app.domain.model.Subject
 import com.lingji.app.domain.model.SubjectType
 import com.lingji.app.domain.provider.ProviderRegistry
 import com.lingji.app.ui.chat.HomeChatBar
 import com.lingji.app.ui.chat.HomeChatSheet
 import com.lingji.app.ui.components.ClipboardTooLargeDialog
+import com.lingji.app.ui.components.ChatMode
 import com.lingji.app.ui.components.DeleteConfirmDialog
 import com.lingji.app.ui.components.DragResult
 import com.lingji.app.ui.components.DragState
@@ -295,177 +300,233 @@ fun SubjectGalleryScreen(
                 .padding(padding)
                 .onGloballyPositioned { containerCoords = it }
         ) {
-            if (uiState.subjects.isEmpty() && uiState.folders.isEmpty()) {
-                EmptySubjectState(onCreate = { showAddDialog = true })
-            } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(160.dp),
-                    state = gridState,
-                    // 底部预留悬浮对话胶囊的高度，使最后一排笔记可滚动到其上方。
-                    contentPadding = PaddingValues(
-                        start = 16.dp,
-                        end = 16.dp,
-                        top = 16.dp,
-                        bottom = 100.dp
-                    ),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    item(key = "__add__") {
-                        AddSubjectCard(
-                            onAdd = { title, type, _ ->
-                                viewModel.addSubject(title, type)
-                            }
-                        )
-                    }
-                    item(key = "__add_folder__") {
-                        AddFolderCard(onCreate = { name -> viewModel.createFolder(name) })
-                    }
-                    items(uiState.homeItems, key = { item ->
-                        when (item) {
-                            is HomeItem.FolderItem -> "folder_${item.folder.id}"
-                            is HomeItem.NoteItem -> "note_${item.subject.id}"
-                        }
-                    }) { homeItem ->
-                        when (homeItem) {
-                            is HomeItem.FolderItem -> {
-                                val isDropTarget = dragState.dropTargetFolderId == homeItem.folder.id
-                                val isDragging = dragState.draggedItem is HomeItem.FolderItem &&
-                                    (dragState.draggedItem as HomeItem.FolderItem).folder.id == homeItem.folder.id
-                                FolderCard(
-                                    folder = homeItem.folder,
-                                    noteCount = homeItem.noteCount,
-                                    onClick = { onFolderClick(homeItem.folder.id) },
-                                    onLongClick = { },
-                                    onRename = {
-                                        renameFolderId = homeItem.folder.id
-                                        renameFolderDefault = homeItem.folder.name
+            val pagerState = rememberPagerState(
+                initialPage = if (uiState.settings.homePageMode == HomePageMode.AGGREGATION) 1 else 0,
+                pageCount = { 2 }
+            )
+            // 设置里的默认落地页变化时跳转；手动左右滑动不回写设置。
+            LaunchedEffect(uiState.settings.homePageMode) {
+                val target = if (uiState.settings.homePageMode == HomePageMode.AGGREGATION) 1 else 0
+                if (pagerState.currentPage != target) pagerState.animateScrollToPage(target)
+            }
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
+                if (page == 0) {
+                    if (uiState.subjects.isEmpty() && uiState.folders.isEmpty()) {
+                        EmptySubjectState(onCreate = { showAddDialog = true })
+                    } else {
+                        LazyVerticalGrid(
+                            columns = GridCells.Adaptive(160.dp),
+                            state = gridState,
+                            // 底部预留悬浮对话胶囊的高度，使最后一排笔记可滚动到其上方。
+                            contentPadding = PaddingValues(
+                                start = 16.dp,
+                                end = 16.dp,
+                                top = 16.dp,
+                                bottom = 100.dp
+                            ),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            item(key = "__add__") {
+                                AddSubjectCard(
+                                    onAdd = { title, type, _ ->
+                                        viewModel.addSubject(title, type)
                                     },
-                                    onDelete = { deleteFolderId = homeItem.folder.id },
-                                    isDropTarget = isDropTarget,
-                                    onDragStart = { offset -> dragState.startDrag(homeItem, offset) },
-                                    onDrag = { dragAmount ->
-                                        dragState.updateDrag(dragAmount)
-                                        val containerPos = containerCoords?.positionInRoot() ?: Offset.Zero
-                                        val globalPos = dragState.dragStartPos + dragState.dragOffset - containerPos
-                                        handleDragHitTest(globalPos, gridState, uiState.homeItems, dragState)
-                                    },
-                                    onDragEnd = {
-                                        val draggedItem = dragState.draggedItem
-                                        val result = dragState.endDrag()
-                                        handleDragEnd(result, draggedItem, viewModel, uiState.homeItems)
-                                    },
-                                    onDragCancel = { dragState.cancelDrag() },
-                                    isDragging = isDragging,
-                                    isReorderTarget = dragState.reorderHoverId == homeItem.folder.id
+                                    onCreateFolder = { name -> viewModel.createFolder(name) }
                                 )
                             }
-                            is HomeItem.NoteItem -> {
-                                val subject = homeItem.subject
-                                val isDragging = dragState.draggedItem is HomeItem.NoteItem &&
-                                    (dragState.draggedItem as HomeItem.NoteItem).subject.id == subject.id
-                                SubjectCard(
-                                    subject = subject,
-                                    onClick = { onSubjectClick(subject.id) },
-                                    onDelete = { viewModel.deleteSubject(subject.id) },
-                                    onRename = {
-                                        renameSubjectId = subject.id
-                                        renameDefault = subject.title
-                                    },
-                                    onExport = {
-                                        exportSubject = subject
-                                        exportLauncher.launch(viewModel.buildExportFileName(subject.title))
-                                    },
-                                    onCopyExport = {
-                                        scope.launch {
-                                            try {
-                                                val encoded = viewModel.exportSubjectToText(subject)
-                                                if (encoded.length > CLIPBOARD_SIZE_LIMIT) {
-                                                    showClipboardTooLargeDialog = true
-                                                } else {
-                                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText(subject.title, encoded))
-                                                    Toast.makeText(context, context.getString(R.string.copy_success), Toast.LENGTH_SHORT).show()
+                            items(uiState.homeItems, key = { item ->
+                                when (item) {
+                                    is HomeItem.FolderItem -> "folder_${item.folder.id}"
+                                    is HomeItem.NoteItem -> "note_${item.subject.id}"
+                                }
+                            }) { homeItem ->
+                                when (homeItem) {
+                                    is HomeItem.FolderItem -> {
+                                        val isDropTarget = dragState.dropTargetFolderId == homeItem.folder.id
+                                        val isDragging = dragState.draggedItem is HomeItem.FolderItem &&
+                                            (dragState.draggedItem as HomeItem.FolderItem).folder.id == homeItem.folder.id
+                                        FolderCard(
+                                            folder = homeItem.folder,
+                                            noteCount = homeItem.noteCount,
+                                            onClick = { onFolderClick(homeItem.folder.id) },
+                                            onLongClick = { },
+                                            onRename = {
+                                                renameFolderId = homeItem.folder.id
+                                                renameFolderDefault = homeItem.folder.name
+                                            },
+                                            onDelete = { deleteFolderId = homeItem.folder.id },
+                                            isDropTarget = isDropTarget,
+                                            onDragStart = { offset -> dragState.startDrag(homeItem, offset) },
+                                            onDrag = { dragAmount ->
+                                                dragState.updateDrag(dragAmount)
+                                                val containerPos = containerCoords?.positionInRoot() ?: Offset.Zero
+                                                val globalPos = dragState.dragStartPos + dragState.dragOffset - containerPos
+                                                handleDragHitTest(globalPos, gridState, uiState.homeItems, dragState)
+                                            },
+                                            onDragEnd = {
+                                                val draggedItem = dragState.draggedItem
+                                                val result = dragState.endDrag()
+                                                handleDragEnd(result, draggedItem, viewModel, uiState.homeItems)
+                                            },
+                                            onDragCancel = { dragState.cancelDrag() },
+                                            isDragging = isDragging,
+                                            isReorderTarget = dragState.reorderHoverId == homeItem.folder.id
+                                        )
+                                    }
+                                    is HomeItem.NoteItem -> {
+                                        val subject = homeItem.subject
+                                        val isDragging = dragState.draggedItem is HomeItem.NoteItem &&
+                                            (dragState.draggedItem as HomeItem.NoteItem).subject.id == subject.id
+                                        SubjectCard(
+                                            subject = subject,
+                                            onClick = { onSubjectClick(subject.id) },
+                                            onDelete = { viewModel.deleteSubject(subject.id) },
+                                            onRename = {
+                                                renameSubjectId = subject.id
+                                                renameDefault = subject.title
+                                            },
+                                            onExport = {
+                                                exportSubject = subject
+                                                exportLauncher.launch(viewModel.buildExportFileName(subject.title))
+                                            },
+                                            onCopyExport = {
+                                                scope.launch {
+                                                    try {
+                                                        val encoded = viewModel.exportSubjectToText(subject)
+                                                        if (encoded.length > CLIPBOARD_SIZE_LIMIT) {
+                                                            showClipboardTooLargeDialog = true
+                                                        } else {
+                                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText(subject.title, encoded))
+                                                            Toast.makeText(context, context.getString(R.string.copy_success), Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    } catch (e: Exception) {
+                                                        e.printStackTrace()
+                                                        Toast.makeText(context, context.getString(R.string.copy_failed), Toast.LENGTH_SHORT).show()
+                                                    }
                                                 }
-                                            } catch (e: Exception) {
-                                                e.printStackTrace()
-                                                Toast.makeText(context, context.getString(R.string.copy_failed), Toast.LENGTH_SHORT).show()
-                                            }
+                                            },
+                                            onMoveToTop = { viewModel.moveSubjectToTop(subject.id) },
+                                            onMoveUp = { viewModel.moveSubjectUp(subject.id) },
+                                            onMoveDown = { viewModel.moveSubjectDown(subject.id) },
+                                            canMoveUp = true,
+                                            canMoveDown = true,
+                                            onDragStart = { offset -> dragState.startDrag(homeItem, offset) },
+                                            onDrag = { dragAmount ->
+                                                dragState.updateDrag(dragAmount)
+                                                val containerPos = containerCoords?.positionInRoot() ?: Offset.Zero
+                                                val globalPos = dragState.dragStartPos + dragState.dragOffset - containerPos
+                                                handleDragHitTest(globalPos, gridState, uiState.homeItems, dragState)
+                                            },
+                                            onDragEnd = {
+                                                val draggedItem = dragState.draggedItem
+                                                val result = dragState.endDrag()
+                                                handleDragEnd(result, draggedItem, viewModel, uiState.homeItems)
+                                            },
+                                            onDragCancel = { dragState.cancelDrag() },
+                                            isDragging = isDragging,
+                                            isReorderTarget = dragState.reorderHoverId == subject.id
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        // Drag overlay — floating card following finger + capture touches
+                        if (dragState.isDragging && dragState.draggedItem != null) {
+                            val draggedTitle = when (val item = dragState.draggedItem) {
+                                is HomeItem.NoteItem -> item.subject.title
+                                is HomeItem.FolderItem -> item.folder.name
+                                null -> ""
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .pointerInput(Unit) {
+                                        detectDragGesturesAfterLongPress(
+                                            onDragStart = { },
+                                            onDrag = { change, _ -> change.consume() },
+                                            onDragEnd = { },
+                                            onDragCancel = { }
+                                        )
+                                    }
+                            ) {
+                                Card(
+                                    modifier = Modifier
+                                        .offset {
+                                            val containerPos = containerCoords?.positionInRoot() ?: Offset.Zero
+                                            IntOffset(
+                                                (dragState.dragStartPos.x + dragState.dragOffset.x - containerPos.x).toInt(),
+                                                (dragState.dragStartPos.y + dragState.dragOffset.y - containerPos.y).toInt()
+                                            )
                                         }
-                                    },
-                                    onMoveToTop = { viewModel.moveSubjectToTop(subject.id) },
-                                    onMoveUp = { viewModel.moveSubjectUp(subject.id) },
-                                    onMoveDown = { viewModel.moveSubjectDown(subject.id) },
-                                    canMoveUp = true,
-                                    canMoveDown = true,
-                                    onDragStart = { offset -> dragState.startDrag(homeItem, offset) },
-                                    onDrag = { dragAmount ->
-                                        dragState.updateDrag(dragAmount)
-                                        val containerPos = containerCoords?.positionInRoot() ?: Offset.Zero
-                                        val globalPos = dragState.dragStartPos + dragState.dragOffset - containerPos
-                                        handleDragHitTest(globalPos, gridState, uiState.homeItems, dragState)
-                                    },
-                                    onDragEnd = {
-                                        val draggedItem = dragState.draggedItem
-                                        val result = dragState.endDrag()
-                                        handleDragEnd(result, draggedItem, viewModel, uiState.homeItems)
-                                    },
-                                    onDragCancel = { dragState.cancelDrag() },
-                                    isDragging = isDragging,
-                                    isReorderTarget = dragState.reorderHoverId == subject.id
-                                )
+                                        .width(160.dp),
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = CardDefaults.cardColors(
+                                        // 必须使用不透明容器色：带 alpha 的卡片在提升阴影下会让文字区域
+                                        // 透出一块直角白色矩形（文字底色无圆角），实色可完全避免该问题。
+                                        containerColor = MaterialTheme.colorScheme.surface
+                                    ),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                                ) {
+                                    Column(modifier = Modifier.padding(16.dp)) {
+                                        Text(
+                                            text = draggedTitle,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
+                } else {
+                    HomeAggregationPage(
+                        subjects = uiState.subjects,
+                        fragments = uiState.homeFragments,
+                        onTodoClick = onSubjectClick,
+                        onFragmentClick = {
+                            viewModel.setHomeChatMode(ChatMode.FRAGMENT)
+                            if (!uiState.homeChatExpanded) {
+                                viewModel.toggleHomeChat()
+                                if (uiState.homeConversations.isEmpty()) {
+                                    viewModel.loadHomeConversations()
+                                }
+                            }
+                        }
+                    )
                 }
-                // Drag overlay — floating card following finger + capture touches
-                if (dragState.isDragging && dragState.draggedItem != null) {
-                    val draggedTitle = when (val item = dragState.draggedItem) {
-                        is HomeItem.NoteItem -> item.subject.title
-                        is HomeItem.FolderItem -> item.folder.name
-                        null -> ""
-                    }
+            }
+            // 页面指示点：卡片列表 / 聚合，可点击切换
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                repeat(2) { index ->
+                    val selected = pagerState.currentPage == index
                     Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .pointerInput(Unit) {
-                                detectDragGesturesAfterLongPress(
-                                    onDragStart = { },
-                                    onDrag = { change, _ -> change.consume() },
-                                    onDragEnd = { },
-                                    onDragCancel = { }
-                                )
-                            }
+                            .clip(CircleShape)
+                            .clickable { scope.launch { pagerState.animateScrollToPage(index) } }
+                            .padding(4.dp)
                     ) {
-                        Card(
+                        Box(
                             modifier = Modifier
-                                .offset {
-                                    val containerPos = containerCoords?.positionInRoot() ?: Offset.Zero
-                                    IntOffset(
-                                        (dragState.dragStartPos.x + dragState.dragOffset.x - containerPos.x).toInt(),
-                                        (dragState.dragStartPos.y + dragState.dragOffset.y - containerPos.y).toInt()
-                                    )
-                                }
-                                .width(160.dp),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(
-                                // 必须使用不透明容器色：带 alpha 的卡片在提升阴影下会让文字区域
-                                // 透出一块直角白色矩形（文字底色无圆角），实色可完全避免该问题。
-                                containerColor = MaterialTheme.colorScheme.surface
-                            ),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Text(
-                                    text = draggedTitle,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
+                                .size(if (selected) 8.dp else 6.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (selected) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
                                 )
-                            }
-                        }
+                        )
                     }
                 }
             }
@@ -478,7 +539,8 @@ fun SubjectGalleryScreen(
             onConfirm = { title, type ->
                 viewModel.addSubject(title, type)
                 showAddDialog = false
-            }
+            },
+            onCreateFolder = { name -> viewModel.createFolder(name) }
         )
     }
 
@@ -697,11 +759,13 @@ private fun EmptySubjectState(onCreate: () -> Unit) {
 fun AddSubjectCard(
     onAdd: (String, SubjectType, String?) -> Unit,
     folderId: String? = null,
+    onCreateFolder: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var isCreating by remember { mutableStateOf(false) }
     var title by remember { mutableStateOf("") }
-    var type by remember { mutableStateOf(SubjectType.FRAGMENT) }
+    // null 表示创建文件夹
+    var type by remember { mutableStateOf<SubjectType?>(SubjectType.FRAGMENT) }
     val focusRequester = remember { FocusRequester() }
     val strokeColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
 
@@ -758,7 +822,9 @@ fun AddSubjectCard(
                             Box {
                                 if (title.isBlank()) {
                                     Text(
-                                        text = stringResource(R.string.new_subject_hint),
+                                        text = stringResource(
+                                            if (type == null) R.string.new_folder_hint else R.string.new_subject_hint
+                                        ),
                                         style = MaterialTheme.typography.bodyLarge,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                                         modifier = Modifier.fillMaxWidth(),
@@ -773,6 +839,8 @@ fun AddSubjectCard(
                     TypeDropdown(
                         type = type,
                         onTypeChange = { type = it },
+                        folderOption = onCreateFolder != null,
+                        onFolderClick = { type = null },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -787,7 +855,12 @@ fun AddSubjectCard(
                         TextButton(
                             onClick = {
                                 if (title.isNotBlank()) {
-                                    onAdd(title.trim(), type, folderId)
+                                    val selectedType = type
+                                    if (selectedType == null) {
+                                        onCreateFolder?.invoke(title.trim())
+                                    } else {
+                                        onAdd(title.trim(), selectedType, folderId)
+                                    }
                                     isCreating = false
                                     title = ""
                                     type = SubjectType.FRAGMENT
@@ -868,9 +941,11 @@ private fun SubjectCardSizingReference(modifier: Modifier = Modifier) {
 
 @Composable
 private fun TypeDropdown(
-    type: SubjectType,
+    type: SubjectType?,
     onTypeChange: (SubjectType) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    folderOption: Boolean = false,
+    onFolderClick: () -> Unit = {}
 ) {
     var expanded by remember { mutableStateOf(false) }
     var triggerWidth by remember { mutableStateOf(0) }
@@ -889,7 +964,7 @@ private fun TypeDropdown(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = stringResource(type.labelRes()),
+                text = stringResource(type?.labelRes() ?: R.string.new_folder),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center,
@@ -933,6 +1008,38 @@ private fun TypeDropdown(
                     }
                 )
             }
+            if (folderOption) {
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = stringResource(R.string.new_folder),
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    },
+                    onClick = {
+                        onFolderClick()
+                        expanded = false
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.CreateNewFolder,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    },
+                    trailingIcon = if (type == null) {
+                        {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    } else {
+                        null
+                    }
+                )
+            }
         }
     }
 }
@@ -963,10 +1070,12 @@ private fun Modifier.dashedBorder(color: androidx.compose.ui.graphics.Color) = d
 @Composable
 private fun AddSubjectDialog(
     onDismiss: () -> Unit,
-    onConfirm: (String, SubjectType) -> Unit
+    onConfirm: (String, SubjectType) -> Unit,
+    onCreateFolder: ((String) -> Unit)? = null
 ) {
     var title by remember { mutableStateOf("") }
-    var type by remember { mutableStateOf(SubjectType.FRAGMENT) }
+    // null 表示创建文件夹
+    var type by remember { mutableStateOf<SubjectType?>(SubjectType.FRAGMENT) }
 
     LingjiDialog(
         onDismissRequest = onDismiss,
@@ -976,13 +1085,21 @@ private fun AddSubjectDialog(
                 GlassOutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
-                    label = { Text(stringResource(R.string.hint_subject_title)) },
+                    label = {
+                        Text(
+                            stringResource(
+                                if (type == null) R.string.new_folder_hint else R.string.hint_subject_title
+                            )
+                        )
+                    },
                     singleLine = true
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 TypeDropdown(
                     type = type,
                     onTypeChange = { type = it },
+                    folderOption = onCreateFolder != null,
+                    onFolderClick = { type = null },
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -992,7 +1109,12 @@ private fun AddSubjectDialog(
                 text = stringResource(R.string.save),
                 enabled = title.isNotBlank(),
                 onClick = {
-                    onConfirm(title, type)
+                    val selectedType = type
+                    if (selectedType == null) {
+                        onCreateFolder?.invoke(title)
+                    } else {
+                        onConfirm(title, selectedType)
+                    }
                     onDismiss()
                 }
             )
@@ -1004,104 +1126,6 @@ private fun AddSubjectDialog(
             )
         }
     )
-}
-
-@Composable
-private fun AddFolderCard(onCreate: (String) -> Unit, modifier: Modifier = Modifier) {
-    var isCreating by remember { mutableStateOf(false) }
-    var name by remember { mutableStateOf("") }
-    val focusRequester = remember { FocusRequester() }
-    val strokeColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
-
-    LaunchedEffect(isCreating) { if (isCreating) focusRequester.requestFocus() }
-
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = SubjectCardMinHeight)
-            .clip(RoundedCornerShape(16.dp))
-            .clickable(enabled = !isCreating, onClick = { isCreating = true }),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
-        border = null
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .dashedBorder(strokeColor),
-            contentAlignment = Alignment.Center
-        ) {
-            SubjectCardSizingReference(modifier = Modifier.alpha(0f))
-            if (isCreating) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    BasicTextField(
-                        value = name,
-                        onValueChange = { name = it },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusRequester(focusRequester)
-                            // 上下键不再把焦点带离新建输入框。
-                            .arrowKeyFocusGuard(),
-                        singleLine = true,
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(
-                            color = MaterialTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.Center
-                        ),
-                        decorationBox = { innerTextField ->
-                            Box {
-                                if (name.isBlank()) {
-                                    Text(
-                                        text = stringResource(R.string.new_folder_hint),
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                        modifier = Modifier.fillMaxWidth(),
-                                        textAlign = TextAlign.Center
-                                    )
-                                }
-                                innerTextField()
-                            }
-                        }
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        TextButton(onClick = { isCreating = false; name = "" }) {
-                            Text(stringResource(R.string.cancel))
-                        }
-                        TextButton(
-                            onClick = {
-                                if (name.isNotBlank()) {
-                                    onCreate(name.trim())
-                                    isCreating = false
-                                    name = ""
-                                }
-                            },
-                            enabled = name.isNotBlank()
-                        ) { Text(stringResource(R.string.confirm)) }
-                    }
-                }
-            } else {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = Icons.Default.CreateNewFolder,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                        modifier = Modifier.size(32.dp)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = stringResource(R.string.new_folder),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                    )
-                }
-            }
-        }
-    }
 }
 
 private fun handleDragHitTest(

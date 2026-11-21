@@ -9,6 +9,7 @@ import com.lingji.app.data.db.entities.SyncTombstoneEntity
 import com.lingji.app.data.sync.SyncRepository
 import com.lingji.app.domain.model.AISettings
 import com.lingji.app.domain.model.APIProvider
+import com.lingji.app.domain.model.HomePageMode
 import com.lingji.app.domain.model.HorizontalSwipeAction
 import com.lingji.app.domain.model.ModelConfig
 import com.lingji.app.domain.model.ThinkingLevel
@@ -78,6 +79,8 @@ class SettingsRepository @Inject constructor(
             agentTemperature = agentTemperature,
             horizontalSwipeAction = runCatching { HorizontalSwipeAction.valueOf(horizontalSwipeAction) }
                 .getOrDefault(HorizontalSwipeAction.TOGGLE_PREVIEW),
+            homePageMode = runCatching { HomePageMode.valueOf(homePageMode) }
+                .getOrDefault(HomePageMode.CARD_LIST),
             assistantModel = assistant
         )
     }
@@ -86,7 +89,8 @@ class SettingsRepository @Inject constructor(
         primaryModelId = primaryModelId,
         assistantModelId = assistantModelId,
         agentTemperature = agentTemperature,
-        horizontalSwipeAction = horizontalSwipeAction.name
+        horizontalSwipeAction = horizontalSwipeAction.name,
+        homePageMode = homePageMode.name
     )
 
     private fun ModelConfigEntity.toDomain() = ModelConfig(

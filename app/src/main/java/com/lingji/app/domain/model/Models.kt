@@ -7,6 +7,9 @@ enum class APIProvider { OPENAI, DOUBAO, XIAOMI, BAILIAN, ZHIPU, DEEPSEEK, KIMI,
 enum class SubjectType { FRAGMENT, NOTEBOOK, TODO }
 enum class HorizontalSwipeAction { NONE, TOGGLE_PREVIEW, CHANGE_PAGE }
 
+/** 首页默认落地页：卡片列表或聚合页（未完成待办 + 未收录碎片）。 */
+enum class HomePageMode { CARD_LIST, AGGREGATION }
+
 /**
  * 思考程度。
  *
@@ -69,6 +72,7 @@ data class AISettings(
     /** Agent 工具调用温度：越低越稳定，避免模型跳过工具调用直接编造结果。 */
     val agentTemperature: Double = 0.2,
     val horizontalSwipeAction: HorizontalSwipeAction = HorizontalSwipeAction.TOGGLE_PREVIEW,
+    val homePageMode: HomePageMode = HomePageMode.CARD_LIST,
     /** 辅助模型配置，由 [assistantModelId] 解析得到；为空表示未启用。 */
     val assistantModel: ModelConfig? = null
 )
