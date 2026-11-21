@@ -245,7 +245,7 @@ abstract class LingjiDatabase : RoomDatabase() {
             if (baseUrl.isBlank()) return false
             if (baseUrl in (LEGACY_PRESET_URLS[provider] ?: emptySet())) return true
             val p = runCatching { APIProvider.valueOf(provider) }.getOrNull() ?: return false
-            return baseUrl == ProviderRegistry.config(p).defaultBaseUrl
+            return baseUrl == ProviderRegistry.builtInConfig(p).defaultBaseUrl
         }
 
         val MIGRATION_16_17 = object : Migration(16, 17) {
@@ -296,7 +296,7 @@ abstract class LingjiDatabase : RoomDatabase() {
                                 val key = keys.optString(name, "")
                                 val p = runCatching { APIProvider.valueOf(name) }.getOrNull() ?: continue
                                 if (key.isBlank()) continue
-                                val config = ProviderRegistry.config(p)
+                                val config = ProviderRegistry.builtInConfig(p)
                                 putRow("migrated-$name", name, config.defaultBaseUrl, key, config.defaultModelId, 0)
                             }
                         }
@@ -312,7 +312,7 @@ abstract class LingjiDatabase : RoomDatabase() {
                             val id = "migrated-$provider"
                             val existing = rows[id]
                             if (activeConfigured) {
-                                val config = ProviderRegistry.config(activeProvider)
+                                val config = ProviderRegistry.builtInConfig(activeProvider)
                                 putRow(
                                     id, provider,
                                     baseUrl.ifBlank { existing?.getAsString("baseUrl") ?: config.defaultBaseUrl },
@@ -333,7 +333,7 @@ abstract class LingjiDatabase : RoomDatabase() {
                         val liteConfigured = liteProviderEnum != null &&
                             (liteApiKey.isNotBlank() || (liteBaseUrl.isNotBlank() && !isPresetUrl(liteProvider, liteBaseUrl)))
                         if (liteConfigured && liteProviderEnum != null) {
-                            val config = ProviderRegistry.config(liteProviderEnum)
+                            val config = ProviderRegistry.builtInConfig(liteProviderEnum)
                             putRow(
                                 "migrated-assistant", liteProvider,
                                 liteBaseUrl.ifBlank { config.defaultBaseUrl },

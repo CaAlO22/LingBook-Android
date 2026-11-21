@@ -23,11 +23,51 @@ object ProviderRegistry {
         APIProvider.HUNYUAN to HunyuanConfig
     )
 
+    /** 上一次叠加所用的目录快照（按引用比较即可，每次下发都会生成新实例）。 */
+    private var overlaidFrom: RemoteModelCatalog.Snapshot? = null
+    private var overlaidConfigs: Map<String, ProviderConfig> = emptyMap()
+
+    /**
+     * 叠加了云端模型目录的配置代理：只替换 `models`，
+     * 并把指向已下线模型的 `defaultModelId` 换成新列表的第一个。
+     */
+    private class CatalogOverlaidConfig(
+        base: ProviderConfig,
+        override val models: List<ProviderModel>
+    ) : ProviderConfig by base {
+        override val defaultModelId: String =
+            base.defaultModelId.takeIf { id -> models.any { it.id == id } } ?: models.first().id
+    }
+
+    @Synchronized
+    private fun overlaid(base: ProviderConfig): ProviderConfig {
+        val catalog = RemoteModelCatalog.snapshot
+        if (catalog !== overlaidFrom) {
+            overlaidConfigs = buildMap {
+                for ((_, baseConfig) in configs) {
+                    val models = catalog.models[baseConfig.id] ?: continue
+                    put(baseConfig.id, CatalogOverlaidConfig(baseConfig, models))
+                }
+            }
+            overlaidFrom = catalog
+        }
+        return overlaidConfigs[base.id] ?: base
+    }
+
+    /** 供应商配置。`models` / `defaultModelId` 已按云端目录叠加，调用点无需感知目录来源。 */
     fun config(provider: APIProvider): ProviderConfig =
-        configs[provider] ?: OpenAIConfig
+        overlaid(configs[provider] ?: OpenAIConfig)
+
+    /**
+     * 内置配置（不含云端目录）。
+     *
+     * 数据库迁移等「结果必须可复现、与远端状态无关」的场景用这个；
+     * UI 与请求链路继续用 [config]。
+     */
+    fun builtInConfig(provider: APIProvider): ProviderConfig = configs[provider] ?: OpenAIConfig
 
     fun configOrNull(provider: APIProvider): ProviderConfig? =
-        configs[provider]
+        configs[provider]?.let(::overlaid)
 
     fun allConfigs(): List<ProviderConfig> = APIProvider.entries.map { config(it) }
 

@@ -441,6 +441,8 @@ fun NoteEditor(
 
         var lastScrollValue by remember { mutableStateOf(0) }
         var lastFocusTimeMs by remember { mutableStateOf(0L) }
+        // 正文输入框当前是否持焦，用于「长按选取时不弹输入法」的手势判断
+        var isFieldFocused by remember { mutableStateOf(false) }
         // 最近一次真实输入（打字/删除）的时间，以及上次测量的最大滚动量。
         // 删除文本会让内容变短、maxValue 变小，系统把 value 夹回去，看起来就像"用户向上滚动"；
         // 长按删除时若把它当成用户拖动去清焦点，删除会中途停住、光标离开输入框。
@@ -581,7 +583,10 @@ fun NoteEditor(
                         .fillMaxWidth()
                         .heightIn(min = 220.dp)
                         .padding(horizontal = 12.dp, vertical = 8.dp)
+                        // 长按选词不弹键盘（短按仍正常弹），避免键盘遮住正文、inset 变化带动页面滚动
+                        .imeSelectionBehavior(enabled = !readOnly, focused = isFieldFocused)
                         .onFocusChanged { focusState ->
+                            isFieldFocused = focusState.isFocused
                             if (focusState.isFocused) {
                                 lastFocusTimeMs = System.currentTimeMillis()
                             }

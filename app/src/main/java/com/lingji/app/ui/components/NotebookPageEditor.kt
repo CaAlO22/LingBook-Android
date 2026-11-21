@@ -499,6 +499,8 @@ fun NotebookPageEditor(
                                                     Modifier
                                                 }
                                             )
+                                            // 长按选词不弹键盘（短按仍正常弹），避免键盘遮住正文、inset 变化带动页面滚动
+                                            .imeSelectionBehavior(focused = focusedTextIndex == index)
                                             .onFocusChanged { focusState ->
                                                 Log.d("NbEditorDebug", "focusChanged: idx=$index focused=${focusState.isFocused} scrollVal=${scrollState.value}")
                                                 if (focusState.isFocused) {
@@ -585,12 +587,18 @@ private fun UnderlinedTitleField(
     onFocus: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var focused by remember { mutableStateOf(false) }
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
         modifier = modifier
             .padding(end = 8.dp)
-            .onFocusChanged { if (it.isFocused) onFocus() }
+            // 长按选标题也不弹键盘，理由同正文
+            .imeSelectionBehavior(focused = focused)
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) onFocus()
+            }
             // 上下键不再把焦点带离标题输入框。
             .arrowKeyFocusGuard(),
         singleLine = true,

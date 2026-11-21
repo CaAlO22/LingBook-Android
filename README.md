@@ -120,6 +120,22 @@ python lingji_sync_server.py --port 8765 --token 你的访问令牌   # 推荐�
 
 数据保存在同目录的 `lingji_sync.db`（SQLite）中，备份该文件即可备份全部云端数据。
 
+#### 模型列表由服务器下发
+
+各供应商的模型列表不再写死在 App 里，而是从服务器的 `model_catalog` 表下发：
+
+- **新增 / 下线模型不用发版**：改服务器表 → 客户端下一轮同步自动拉到（设置页「云同步 → 模型列表」显示当前版本，可手动刷新）。
+- 首次启动服务器时，表为空会用与当前 App 一致的内置列表填充。
+- 日常维护不用装 SQLite 客户端，导出 → 改 → 导入即可（导入使版本 +1，客户端立即感知）：
+
+```bash
+python lingji_sync_server.py --db lingji_sync.db --dump-catalog catalog.json
+# 编辑 catalog.json：providers.OPENAI[] 里增删 {id,name,description,supportsVision,thinkingLevels}
+python lingji_sync_server.py --db lingji_sync.db --import-catalog catalog.json
+```
+
+`thinkingLevels` 省略表示沿用该供应商默认档位，`[]` 表示该模型不支持思考。改完重启服务器（或直接让服务进程继续跑，下一次请求就会读到新表）。
+
 #### 在应用中配置
 
 1. 设置页 →「云同步」→ 按需打开「云同步笔记 / 模型配置 / 访问令牌」。
@@ -142,6 +158,7 @@ python lingji_sync_server.py --port 8765 --token 你的访问令牌   # 推荐�
 - **不同步**：AI 设置与 API Key（避免密钥上传服务器）、撤销历史、页面本地索引状态。
 - **冲突处理**：按修改时间取最新（Last-Write-Wins）；删除操作以墓碑形式传播。
 - **失败处理**：网络不可用或服务器异常时静默跳过本次同步，不影响本地使用。
+- **协议版本**：两端各带一个同步协议版本，每轮同步前比对。服务器低于 App 时 **App 拒绝本轮同步**（不上传任何数据），设置页提示升级服务器 —— 旧服务器的同步表白名单会把不认识的新数据静默丢弃，宁可不传。服务器高于 App 时正常放行。
 
 ---
 

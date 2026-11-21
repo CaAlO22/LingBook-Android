@@ -62,6 +62,29 @@ class SyncApiPingTest {
         assertNull(api.pingFast("http://127.0.0.1:$closedPort", ""))
     }
 
+    @Test
+    fun serverInfo_readsSchemaVersion() {
+        val server = MiniHttpServer { _, _ -> 200 to """{"ok":true,"serverTime":1,"schemaVersion":3}""" }
+        try {
+            val info = api.serverInfo("http://127.0.0.1:${server.port}", "")
+            assertEquals(3, info.schemaVersion)
+            assertEquals(1L, info.serverTime)
+        } finally {
+            server.close()
+        }
+    }
+
+    @Test
+    fun serverInfo_legacyServerWithoutVersion_fallsBackToVersion1() {
+        // 加版本号之前的旧服务器：不能因此判定为「过旧」而断掉同步
+        val server = MiniHttpServer { _, _ -> 200 to """{"ok":true,"serverTime":1}""" }
+        try {
+            assertEquals(1, api.serverInfo("http://127.0.0.1:${server.port}", "").schemaVersion)
+        } finally {
+            server.close()
+        }
+    }
+
     /** 只回一个响应就关连接的最小 HTTP 桩。 */
     private class MiniHttpServer(
         private val respond: (path: String, authorization: String?) -> Pair<Int, String>
