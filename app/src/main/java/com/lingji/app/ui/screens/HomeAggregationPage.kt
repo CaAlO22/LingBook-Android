@@ -16,8 +16,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Inbox
-import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.StickyNote2
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -98,13 +98,14 @@ internal fun sortFragmentsNewestFirst(fragments: List<HomeFragmentData>): List<H
 /**
  * 首页聚合页：未完成待办与未收录碎片两个分区，待办按提醒时间由近到远，
  * 碎片按写入时间最新在前。
- * 点击待办跳转所属待办列表，点击碎片打开底部碎片输入面板。
+ * 点击待办跳转所属待办列表，勾选待办直接标记完成；点击碎片打开底部碎片输入面板。
  */
 @Composable
 fun HomeAggregationPage(
     subjects: List<Subject>,
     fragments: List<HomeFragmentData>,
     onTodoClick: (String) -> Unit,
+    onTodoComplete: (subjectId: String, itemId: String) -> Unit,
     onFragmentClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -153,11 +154,12 @@ fun HomeAggregationPage(
             items(todos, key = { "todo_${it.item.id}" }) { todo ->
                 AggregationCard(
                     icon = {
-                        Icon(
-                            imageVector = Icons.Default.RadioButtonUnchecked,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
+                        // 信息岛：聚合页可直接勾选完成待办；完成后条目随即从未完成分区移除。
+                        Checkbox(
+                            checked = false,
+                            onCheckedChange = { checked ->
+                                if (checked) onTodoComplete(todo.subjectId, todo.item.id)
+                            }
                         )
                     },
                     content = todo.item.content,

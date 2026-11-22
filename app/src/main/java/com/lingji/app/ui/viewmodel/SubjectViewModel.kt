@@ -313,6 +313,23 @@ class SubjectViewModel @Inject constructor(
         viewModelScope.launch { subjectRepository.setTodoItemDone(itemId, isDone) }
     }
 
+    /**
+     * 信息岛：聚合页直接勾选完成待办。
+     * 若所属列表已跨入新的重复周期，先按待办列表页相同的规则重置上一周期的勾选，
+     * 再写入本次完成，避免用户勾选后进入列表又被重置清掉。
+     */
+    fun completeTodoFromAggregation(subjectId: String, itemId: String) {
+        val subject = _uiState.value.subjects.find { it.id == subjectId } ?: return
+        viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            val periodStart = subject.todoRepeat.currentPeriodStart(now)
+            if (periodStart != null && subject.todoLastResetAt < periodStart) {
+                subjectRepository.resetTodoDone(subject.id, now)
+            }
+            subjectRepository.setTodoItemDone(itemId, true)
+        }
+    }
+
     fun updateTodoItemContent(itemId: String, content: String) {
         val trimmed = content.trim()
         if (trimmed.isEmpty()) return

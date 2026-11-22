@@ -66,6 +66,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -309,8 +310,16 @@ fun SubjectGalleryScreen(
                 pageCount = { 2 }
             )
             // 设置里的默认落地页变化时跳转；手动左右滑动不回写设置。
+            // 信息岛：只在设置值真正变化时跳转——pagerState 会随返回栈恢复当前页，
+            // 若每次重组都按设置强制跳页，从笔记返回时会被拽回默认页（例如聚合页进笔记却回到卡片页）。
+            var appliedHomePageMode by rememberSaveable {
+                mutableStateOf(uiState.settings.homePageMode)
+            }
             LaunchedEffect(uiState.settings.homePageMode) {
-                val target = if (uiState.settings.homePageMode == HomePageMode.AGGREGATION) 1 else 0
+                val mode = uiState.settings.homePageMode
+                if (mode == appliedHomePageMode) return@LaunchedEffect
+                appliedHomePageMode = mode
+                val target = if (mode == HomePageMode.AGGREGATION) 1 else 0
                 if (pagerState.currentPage != target) pagerState.animateScrollToPage(target)
             }
             HorizontalPager(
@@ -500,6 +509,9 @@ fun SubjectGalleryScreen(
                         subjects = uiState.subjects,
                         fragments = uiState.homeFragments,
                         onTodoClick = onSubjectClick,
+                        onTodoComplete = { subjectId, itemId ->
+                            viewModel.completeTodoFromAggregation(subjectId, itemId)
+                        },
                         onFragmentClick = {
                             viewModel.setHomeChatMode(ChatMode.FRAGMENT)
                             if (!uiState.homeChatExpanded) {
