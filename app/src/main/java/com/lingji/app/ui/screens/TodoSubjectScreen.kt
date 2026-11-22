@@ -841,6 +841,8 @@ private fun TodoItemRow(
                 modifier = Modifier
                     .weight(1f)
                     // 长按复制正文；点击留空，避免与内部控件争夺事件。
+                    // 先按圆角裁剪，长按产生的按压阴影才会跟着卡片圆角走，不再露出直角。
+                    .clip(MaterialTheme.shapes.small)
                     .combinedClickable(onClick = {}, onLongClick = onCopy)
             )
             IconButton(onClick = onEdit) {
