@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -44,6 +45,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.lingji.app.data.share.SharedPayload
 import com.lingji.app.ui.components.AiRunningIsland
 import com.lingji.app.ui.screens.FolderScreen
 import com.lingji.app.ui.screens.FragmentSubjectScreen
@@ -242,10 +244,22 @@ private fun DeviceRoundedPage(radius: Dp, content: @Composable () -> Unit) {
 }
 
 @Composable
-fun LingjiNavigation(updateViewModel: UpdateViewModel) {
+fun LingjiNavigation(
+    updateViewModel: UpdateViewModel,
+    sharedPayload: SharedPayload? = null,
+    onSharedPayloadConsumed: () -> Unit = {}
+) {
     val navController = rememberNavController()
     val viewModel: SubjectViewModel = hiltViewModel()
     val uiState by viewModel.uiState.collectAsState()
+
+    // 信息岛：系统分享——先回到首页（对话浮层只挂在首页），再交给 Agent 处理分享内容
+    LaunchedEffect(sharedPayload) {
+        val payload = sharedPayload ?: return@LaunchedEffect
+        onSharedPayloadConsumed()
+        navController.popBackStack("gallery", inclusive = false)
+        viewModel.importSharedContent(payload)
+    }
     // 信息岛：是否手势导航——手势返回没有应用内按下记录，用于决定返回终点
     val context = LocalContext.current
     val hasGestureNav = remember(context) {

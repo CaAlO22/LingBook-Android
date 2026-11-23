@@ -69,6 +69,10 @@ interface SubjectDao {
         updatedAt: Long
     )
 
+    /** 信息岛：开关待办自动排序（勾选完成的条目移到末尾）。 */
+    @Query("UPDATE subjects SET todoAutoSortDone = :enabled, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateTodoAutoSortDone(id: String, enabled: Boolean, updatedAt: Long)
+
     @Query("SELECT * FROM subjects WHERE folderId IS :folderId ORDER BY orderIndex DESC, createdAt DESC")
     suspend fun getSubjectsByFolderOnce(folderId: String?): List<SubjectEntity>
 
@@ -79,6 +83,9 @@ interface SubjectDao {
 
     @Query("SELECT * FROM subjects WHERE updatedAt > :since")
     suspend fun getUpdatedSince(since: Long): List<SubjectEntity>
+
+    @Query("DELETE FROM subjects")
+    suspend fun deleteAll()
 
     @Transaction
     suspend fun upsert(subject: SubjectEntity) = insert(subject)

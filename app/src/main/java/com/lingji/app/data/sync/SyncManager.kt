@@ -86,6 +86,22 @@ class SyncManager @Inject constructor(
         scope.launch { modelCatalogRepository.refresh(force = true) }
     }
 
+    // 信息岛：设置页数据管理入口（覆盖云端 / 从云端恢复）
+    /** 设置页「覆盖云端数据」：清空云端启用的同步表后把本机数据全量重推。 */
+    fun requestOverwriteCloud() {
+        scope.launch { doSync(SyncOperation.OVERWRITE_CLOUD) }
+    }
+
+    /** 设置页「从云端恢复」：mergeLocal=true 合并本地，false 覆盖本地。 */
+    fun requestRestoreFromCloud(mergeLocal: Boolean) {
+        scope.launch {
+            doSync(
+                if (mergeLocal) SyncOperation.RESTORE_MERGE_LOCAL
+                else SyncOperation.RESTORE_OVERWRITE_LOCAL
+            )
+        }
+    }
+
     private suspend fun syncIfEnabled() {
         val config = configStore.loadConfig()
         if (config.enabled && config.isValid) doSync()
@@ -99,14 +115,27 @@ class SyncManager @Inject constructor(
         }
     }
 
-    private suspend fun doSync() {
+    private suspend fun doSync(operation: SyncOperation = SyncOperation.NORMAL) {
         if (_status.value.inProgress) return
         _status.update { it.copy(inProgress = true) }
-        val result = syncRepository.syncNow()
+        val result = when (operation) {
+            SyncOperation.NORMAL -> syncRepository.syncNow()
+            SyncOperation.OVERWRITE_CLOUD -> syncRepository.overwriteCloud()
+            SyncOperation.RESTORE_OVERWRITE_LOCAL -> syncRepository.restoreFromCloud(mergeLocal = false)
+            SyncOperation.RESTORE_MERGE_LOCAL -> syncRepository.restoreFromCloud(mergeLocal = true)
+        }
         val now = System.currentTimeMillis()
         when (result) {
             is SyncResult.Success -> {
-                val msg = "同步成功（上传 ${result.pushed}，下载 ${result.pulled}，删除 ${result.deleted}）"
+                val msg = when (operation) {
+                    SyncOperation.NORMAL ->
+                        "同步成功（上传 ${result.pushed}，下载 ${result.pulled}，删除 ${result.deleted}）"
+                    SyncOperation.OVERWRITE_CLOUD -> "已覆盖云端数据（上传 ${result.pushed}）"
+                    SyncOperation.RESTORE_OVERWRITE_LOCAL ->
+                        "已从云端恢复并覆盖本地（下载 ${result.pulled}，删除 ${result.deleted}）"
+                    SyncOperation.RESTORE_MERGE_LOCAL ->
+                        "已从云端合并本地数据（下载 ${result.pulled}，删除 ${result.deleted}）"
+                }
                 configStore.lastSyncMessage = msg
                 _status.update {
                     it.copy(
@@ -151,6 +180,11 @@ class SyncManager @Inject constructor(
                 _status.update { it.copy(inProgress = false) }
             }
         }
+    }
+
+    /** 本轮触发的操作类型，仅用于选择结果文案（同步流程本身共用）。 */
+    private enum class SyncOperation {
+        NORMAL, OVERWRITE_CLOUD, RESTORE_OVERWRITE_LOCAL, RESTORE_MERGE_LOCAL
     }
 
     companion object {

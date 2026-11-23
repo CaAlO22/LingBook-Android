@@ -17,4 +17,7 @@ interface SyncTombstoneDao {
 
     @Query("DELETE FROM sync_tombstones WHERE deletedAt < :before")
     suspend fun deleteOlderThan(before: Long)
+
+    @Query("DELETE FROM sync_tombstones WHERE tbl IN (:tables)")
+    suspend fun deleteByTables(tables: List<String>)
 }

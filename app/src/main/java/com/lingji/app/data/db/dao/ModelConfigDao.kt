@@ -24,4 +24,10 @@ interface ModelConfigDao {
 
     @Query("DELETE FROM model_configs WHERE id = :id")
     suspend fun deleteById(id: String)
+
+    @Query("SELECT * FROM model_configs WHERE id = :id LIMIT 1")
+    suspend fun getById(id: String): ModelConfigEntity?
+
+    @Query("DELETE FROM model_configs")
+    suspend fun deleteAll()
 }

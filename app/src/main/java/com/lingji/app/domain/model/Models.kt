@@ -265,7 +265,9 @@ data class Subject(
     /** 重复列表的整体提醒时刻（当天 0 点起的分钟数）；一次性列表为 -1。 */
     val todoReminderMinutes: Int = -1,
     /** 一次性列表的整体提醒绝对时间戳；重复列表由调度器按规则计算。 */
-    val todoReminderAt: Long = 0
+    val todoReminderAt: Long = 0,
+    /** 信息岛：待办自动排序——开启后勾选完成的条目自动移到列表末尾。 */
+    val todoAutoSortDone: Boolean = false
 ) {
     companion object {
         fun create(title: String, type: SubjectType): Subject = Subject(

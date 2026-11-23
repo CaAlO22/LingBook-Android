@@ -50,4 +50,10 @@ interface FragmentDao {
 
     @Query("SELECT * FROM fragments WHERE updatedAt > :since")
     suspend fun getUpdatedSince(since: Long): List<FragmentEntity>
+
+    @Query("SELECT * FROM fragments WHERE id = :id LIMIT 1")
+    suspend fun getById(id: String): FragmentEntity?
+
+    @Query("DELETE FROM fragments")
+    suspend fun deleteAll()
 }

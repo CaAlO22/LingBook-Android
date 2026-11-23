@@ -130,6 +130,18 @@ class SyncViewModel @Inject constructor(
 
     fun syncNow() = syncManager.requestSync()
 
+    /** 用本机已启用的同步数据整体覆盖云端。 */
+    fun overwriteCloud() {
+        if (!_config.value.anyEnabled) return
+        syncManager.requestOverwriteCloud()
+    }
+
+    /** 从云端恢复：mergeLocal=true 合并本地，false 覆盖本地。 */
+    fun restoreFromCloud(mergeLocal: Boolean) {
+        if (!_config.value.anyEnabled) return
+        syncManager.requestRestoreFromCloud(mergeLocal)
+    }
+
     /** 手动强制刷新云端模型目录（不看本地版本，整份重拉）。 */
     fun refreshCatalog() = syncManager.requestCatalogRefresh()
 

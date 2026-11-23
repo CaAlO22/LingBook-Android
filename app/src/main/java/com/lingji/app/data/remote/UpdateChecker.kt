@@ -167,8 +167,13 @@ class UpdateChecker @Inject constructor(
      * 云同步：把远端令牌写入本机。仅在远端版本比本机新时生效，
      * 避免把本机刚改过的令牌冲掉。返回是否真的写入。
      */
-    fun applyRemoteTokens(githubToken: String, giteeToken: String, updatedAt: Long): Boolean {
-        if (updatedAt <= _tokens.value.updatedAt) return false
+    fun applyRemoteTokens(
+        githubToken: String,
+        giteeToken: String,
+        updatedAt: Long,
+        force: Boolean = false
+    ): Boolean {
+        if (!force && updatedAt <= _tokens.value.updatedAt) return false
         persistTokens(githubToken.trim(), giteeToken.trim(), updatedAt)
         return true
     }

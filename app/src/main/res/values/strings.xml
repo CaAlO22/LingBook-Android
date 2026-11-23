@@ -65,6 +65,9 @@
     <string name="todo_menu_reminder">列表提醒</string>
     <string name="todo_menu_repeat">重复规则</string>
     <string name="todo_menu_repeat_readonly">%1$s（创建后不可修改）</string>
+    <string name="todo_menu_auto_sort">自动排序</string>
+    <string name="todo_menu_auto_sort_on">已开启：完成项沉底，取消完成自动上浮</string>
+    <string name="todo_menu_auto_sort_off">已关闭：勾选完成的待办保持原位</string>
     <string name="todo_reminder_title_item">待办提醒</string>
     <string name="todo_reminder_title_list">列表提醒</string>
     <string name="todo_reminder_enable">开启提醒</string>
@@ -474,4 +477,20 @@
     <string name="sync_device_id_invalid">格式不正确：需 4–64 个字母、数字、短横线或下划线</string>
     <string name="sync_device_id_changed">设备 ID 已更新，正在重新拉取数据</string>
     <string name="sync_device_id_unchanged">与当前 ID 相同，未做修改</string>
+
+    <!-- 设置：云同步 · 数据管理 -->
+    <string name="sync_data_management">数据管理</string>
+    <string name="sync_data_management_hint">以下操作会直接改写本机或云端数据，仅影响已开启的同步类别，执行前请确认影响范围。</string>
+    <string name="sync_overwrite_cloud">覆盖云端数据</string>
+    <string name="sync_restore_from_cloud">从云端恢复数据</string>
+    <string name="sync_overwrite_cloud_title">覆盖云端数据</string>
+    <string name="sync_overwrite_cloud_confirm">将用本机当前已启用的同步内容整体替换云端数据。云端独有的记录会被删除，且无法撤销。</string>
+    <string name="sync_overwrite_cloud_action">覆盖云端</string>
+    <string name="sync_restore_title">从云端恢复数据</string>
+    <string name="sync_restore_mode_overwrite">覆盖本地数据</string>
+    <string name="sync_restore_mode_merge">合并本地数据</string>
+    <string name="sync_restore_mode_overwrite_hint">先清空本机已启用类别下的全部数据，再完整应用云端快照，云端没有的内容会被删除。</string>
+    <string name="sync_restore_mode_merge_hint">保留本机数据，仅当云端记录更新时间更新时覆盖；本机较新的记录会补传到云端。</string>
+    <string name="sync_restore_action">开始恢复</string>
+    <string name="sync_restore_failed_hint">拉取云端快照失败时本机数据不会改动，可稍后重试。</string>
 </resources>

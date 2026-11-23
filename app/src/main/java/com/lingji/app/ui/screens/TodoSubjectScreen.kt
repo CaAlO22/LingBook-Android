@@ -36,12 +36,14 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -241,6 +243,46 @@ fun TodoSubjectScreen(
                                 leadingIcon = {
                                     Icon(Icons.Default.Repeat, contentDescription = null)
                                 }
+                            )
+                            // 信息岛：自动排序——完成项沉底，取消完成项自动上浮
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(
+                                            text = stringResource(R.string.todo_menu_auto_sort),
+                                            style = MaterialTheme.typography.bodyLarge
+                                        )
+                                        Text(
+                                            text = stringResource(
+                                                if (liveSubject.todoAutoSortDone) {
+                                                    R.string.todo_menu_auto_sort_on
+                                                } else {
+                                                    R.string.todo_menu_auto_sort_off
+                                                }
+                                            ),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    viewModel.updateTodoAutoSortDone(
+                                        liveSubject.id,
+                                        !liveSubject.todoAutoSortDone
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Sort, contentDescription = null)
+                                },
+                                trailingIcon = if (liveSubject.todoAutoSortDone) {
+                                    {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                } else null
                             )
                         }
                     }

@@ -227,7 +227,34 @@ class SubjectRepository @Inject constructor(
 
     suspend fun setTodoItemDone(itemId: String, isDone: Boolean) {
         todoItemDao.updateDone(itemId, isDone, System.currentTimeMillis())
-        todoItemDao.getByIdOnce(itemId)?.let { reminderScheduler.refreshSubject(it.subjectId) }
+        val item = todoItemDao.getByIdOnce(itemId) ?: return
+        // 信息岛：自动排序开启时，勾选完成的条目移到末尾，取消完成的条目自动上浮
+        if (subjectDao.getSubjectById(item.subjectId)?.todoAutoSortDone == true) {
+            applyTodoAutoSort(item.subjectId, itemId, isDone)
+        }
+        reminderScheduler.refreshSubject(item.subjectId)
+    }
+
+    /**
+     * 信息岛：按完成状态重排——完成项沉到末尾；取消完成项浮到未完成区末尾（首个完成项之前）。
+     * 顺序重写位次，供云同步感知。
+     */
+    private suspend fun applyTodoAutoSort(subjectId: String, itemId: String, isDone: Boolean) {
+        val entities = todoItemDao.getTodoItemsBySubjectOnce(subjectId)
+        val originalIds = entities.map { it.id }
+        if (originalIds.size <= 1) return
+        val remaining = entities.filter { it.id != itemId }
+        if (remaining.size == entities.size) return
+        val orderedIds = remaining.map { it.id }.toMutableList()
+        val targetIndex = if (isDone) {
+            orderedIds.size
+        } else {
+            remaining.indexOfFirst { it.isDone }.let { if (it < 0) orderedIds.size else it }
+        }
+        orderedIds.add(targetIndex, itemId)
+        if (orderedIds == originalIds) return
+        val now = System.currentTimeMillis()
+        orderedIds.forEachIndexed { index, id -> todoItemDao.updateSortOrder(id, index, now) }
     }
 
     /** 信息岛：待办条目编辑——仅更新正文并刷新 updatedAt，供云同步感知修改。 */
@@ -305,6 +332,11 @@ class SubjectRepository @Inject constructor(
             updatedAt = System.currentTimeMillis()
         )
         reminderScheduler.refreshSubject(subjectId)
+    }
+
+    /** 信息岛：开关待办自动排序（勾选完成的条目移到末尾）。 */
+    suspend fun updateTodoAutoSortDone(subjectId: String, enabled: Boolean) {
+        subjectDao.updateTodoAutoSortDone(subjectId, enabled, System.currentTimeMillis())
     }
 
     /** 新周期开始时清除所有勾选，并记录本次重置时间。 */
@@ -500,7 +532,8 @@ class SubjectRepository @Inject constructor(
             // 信息岛：列表整体提醒必须回读，否则保存后 UI 仍显示未设置，且后续 insert 会用默认值覆盖
             todoReminderEnabled = entity.todoReminderEnabled,
             todoReminderMinutes = entity.todoReminderMinutes,
-            todoReminderAt = entity.todoReminderAt
+            todoReminderAt = entity.todoReminderAt,
+            todoAutoSortDone = entity.todoAutoSortDone
         )
     }
 
@@ -542,7 +575,8 @@ class SubjectRepository @Inject constructor(
         todoLastResetAt = todoLastResetAt,
         todoReminderEnabled = todoReminderEnabled,
         todoReminderMinutes = todoReminderMinutes,
-        todoReminderAt = todoReminderAt
+        todoReminderAt = todoReminderAt,
+        todoAutoSortDone = todoAutoSortDone
     )
 
     private fun TodoItem.toEntity(subjectId: String) = TodoItemEntity(

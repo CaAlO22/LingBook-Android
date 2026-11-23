@@ -80,6 +80,16 @@ interface HomeChatDao {
     @Query("SELECT EXISTS(SELECT 1 FROM home_messages WHERE conversation_id = :id LIMIT 1)")
     suspend fun conversationHasMessages(id: String): Boolean
 
+    @Query("SELECT * FROM home_messages WHERE id = :id LIMIT 1")
+    suspend fun getMessageById(id: String): HomeMessageEntity?
+
+    /** 覆盖本地恢复前清空会话数据；先删消息再删会话，避免外键级联与顺序依赖。 */
+    @Query("DELETE FROM home_messages")
+    suspend fun deleteAllMessages()
+
+    @Query("DELETE FROM home_conversations")
+    suspend fun deleteAllConversations()
+
     // ── Home fragments ──
 
     @Query("SELECT * FROM home_fragments ORDER BY position ASC")

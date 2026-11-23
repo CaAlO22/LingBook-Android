@@ -77,4 +77,10 @@ interface TodoItemDao {
 
     @Query("SELECT * FROM todo_items WHERE updatedAt > :since")
     suspend fun getUpdatedSince(since: Long): List<TodoItemEntity>
+
+    @Query("SELECT * FROM todo_items")
+    suspend fun getAllOnce(): List<TodoItemEntity>
+
+    @Query("DELETE FROM todo_items")
+    suspend fun deleteAll()
 }

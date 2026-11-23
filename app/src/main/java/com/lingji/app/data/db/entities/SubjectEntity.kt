@@ -27,5 +27,7 @@ data class SubjectEntity(
     @ColumnInfo(defaultValue = "0") val todoReminderEnabled: Boolean = false,
     @ColumnInfo(defaultValue = "-1") val todoReminderMinutes: Int = -1,
     @ColumnInfo(defaultValue = "0") val todoReminderAt: Long = 0,
+    // 信息岛：待办自动排序——开启后勾选完成的条目自动移到列表末尾
+    @ColumnInfo(defaultValue = "0") val todoAutoSortDone: Boolean = false,
     @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis()
 )

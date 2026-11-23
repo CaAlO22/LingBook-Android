@@ -50,4 +50,7 @@ interface NotebookPageDao {
 
     @Query("SELECT * FROM notebook_pages WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): NotebookPageEntity?
+
+    @Query("DELETE FROM notebook_pages")
+    suspend fun deleteAll()
 }

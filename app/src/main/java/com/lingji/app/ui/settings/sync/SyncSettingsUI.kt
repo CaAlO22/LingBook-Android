@@ -54,6 +54,8 @@ fun SyncSettingsContent(
     val testResult by viewModel.testResult.collectAsState()
     val testing by viewModel.testing.collectAsState()
     val scanState by viewModel.scanState.collectAsState()
+    var showOverwriteCloudDialog by remember { mutableStateOf(false) }
+    var showRestoreFromCloudDialog by remember { mutableStateOf(false) }
 
     Text(
         text = stringResource(R.string.sync_description),
@@ -214,6 +216,75 @@ fun SyncSettingsContent(
         status = catalogStatus,
         onRefresh = { viewModel.refreshCatalog() }
     )
+
+    SyncDataManagementSection(
+        enabled = config.anyEnabled && !status.inProgress,
+        onOverwriteCloud = { showOverwriteCloudDialog = true },
+        onRestore = { showRestoreFromCloudDialog = true }
+    )
+
+    if (showOverwriteCloudDialog) {
+        OverwriteCloudDialog(
+            onDismiss = { showOverwriteCloudDialog = false },
+            onConfirm = {
+                showOverwriteCloudDialog = false
+                viewModel.overwriteCloud()
+            }
+        )
+    }
+
+    if (showRestoreFromCloudDialog) {
+        RestoreFromCloudDialog(
+            onDismiss = { showRestoreFromCloudDialog = false },
+            onConfirm = { mergeLocal ->
+                showRestoreFromCloudDialog = false
+                viewModel.restoreFromCloud(mergeLocal)
+            }
+        )
+    }
+}
+
+// 信息岛：云同步数据管理（覆盖云端 / 从云端恢复），均为不可撤销的破坏性操作
+/** 数据管理：覆盖云端 / 从云端恢复，均为不可撤销的破坏性操作。 */
+@Composable
+private fun SyncDataManagementSection(
+    enabled: Boolean,
+    onOverwriteCloud: () -> Unit,
+    onRestore: () -> Unit
+) {
+    Column(modifier = Modifier.padding(top = 20.dp)) {
+        Text(
+            text = stringResource(R.string.sync_data_management),
+            style = MaterialTheme.typography.bodyMedium
+        )
+        Text(
+            text = stringResource(R.string.sync_data_management_hint),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            modifier = Modifier.padding(top = 2.dp)
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedButton(
+                onClick = onOverwriteCloud,
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.sync_overwrite_cloud))
+            }
+            OutlinedButton(
+                onClick = onRestore,
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.sync_restore_from_cloud))
+            }
+        }
+    }
 }
 
 /**

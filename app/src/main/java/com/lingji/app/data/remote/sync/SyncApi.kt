@@ -1,6 +1,7 @@
 package com.lingji.app.data.remote.sync
 
 import com.google.gson.Gson
+import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.lingji.app.data.sync.SyncProtocol
@@ -100,7 +101,8 @@ class SyncApi @Inject constructor() {
         }.getOrNull()
     }
 
-    /** 执行一轮增量同步，返回服务端响应 JSON（含 rev/changes/tombstones）。 */    fun sync(baseUrl: String, token: String, payload: JsonObject): JsonObject {
+    /** 执行一轮增量同步，返回服务端响应 JSON（含 rev/changes/tombstones）。 */
+    fun sync(baseUrl: String, token: String, payload: JsonObject): JsonObject {
         val request = buildRequest("$baseUrl/api/sync", token)
             .post(payload.toString().toRequestBody(jsonMediaType))
             .build()
@@ -116,6 +118,37 @@ class SyncApi @Inject constructor() {
                 throw SyncApiException(response.code, detail ?: "HTTP ${response.code}", serverVersion)
             }
             return JsonParser.parseString(body).asJsonObject
+        }
+    }
+
+    /**
+     * 清空云端指定同步表（「覆盖云端数据」的第一步），返回清空后的服务端游标。
+     *
+     * 该接口是后加的可选能力：旧服务器会返回 404，由上层提示用户升级服务端程序。
+     */
+    fun resetCloud(
+        baseUrl: String,
+        token: String,
+        deviceId: String,
+        tables: List<String>
+    ): Long {
+        val payload = JsonObject().apply {
+            addProperty("deviceId", deviceId)
+            addProperty("schemaVersion", SyncProtocol.SCHEMA_VERSION)
+            add("tables", JsonArray().apply { tables.forEach { add(it) } })
+        }
+        val request = buildRequest("$baseUrl/api/sync/reset", token)
+            .post(payload.toString().toRequestBody(jsonMediaType))
+            .build()
+        client.newCall(request).execute().use { response ->
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                val errorJson = runCatching { JsonParser.parseString(body).asJsonObject }.getOrNull()
+                val detail = errorJson?.get("error")?.takeIf { it.isJsonPrimitive }?.asString
+                throw SyncApiException(response.code, detail ?: "HTTP ${response.code}")
+            }
+            return JsonParser.parseString(body).asJsonObject
+                .get("rev")?.takeIf { it.isJsonPrimitive }?.asLong ?: 0L
         }
     }
 

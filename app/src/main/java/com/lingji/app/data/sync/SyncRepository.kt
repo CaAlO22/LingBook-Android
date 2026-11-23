@@ -87,9 +87,194 @@ class SyncRepository @Inject constructor(
     private val gson = Gson()
     private val syncMutex = Mutex()
 
-    suspend fun syncNow(): SyncResult = syncMutex.withLock {
+    suspend fun syncNow(): SyncResult = syncMutex.withLock { syncLocked() }
+
+    // 信息岛：云同步「覆盖云端数据」——清空云端启用表后全量回推本机数据
+    /**
+     * 用本机数据整体覆盖云端。
+     *
+     * 先清空云端启用的同步表（保留模型目录等非同步数据），再把本机数据全量重推；
+     * 水位线归零保证「本机有的全部上传」，云端独有的记录随之消失。
+     * 需要服务端支持 `/api/sync/reset`，旧服务器会回 404，此时提示升级服务端。
+     */
+    suspend fun overwriteCloud(): SyncResult = syncMutex.withLock {
         val config = configStore.loadConfig()
         if (!config.enabled || !config.isValid) return@withLock SyncResult.Disabled
+
+        try {
+            val serverInfo = api.serverInfo(config.baseUrl, config.token)
+            if (!SyncProtocol.isServerCompatible(serverInfo.schemaVersion)) {
+                return@withLock SyncResult.ServerOutdated(serverInfo.schemaVersion)
+            }
+            val resetRev = api.resetCloud(
+                baseUrl = config.baseUrl,
+                token = config.token,
+                deviceId = configStore.deviceId,
+                tables = enabledCloudTables(config)
+            )
+            // 云端已清空：把水位线压到 -1，下一轮会把所有本机记录（含 updatedAt=0 的旧数据）重新推上去
+            if (config.syncNotes) configStore.watermarkNotes = -1
+            if (config.syncModels) configStore.watermarkModels = -1
+            if (config.syncTokens) configStore.watermarkTokens = -1
+            configStore.lastRev = resetRev
+            syncLocked()
+        } catch (e: SyncApiException) {
+            when (e.statusCode) {
+                409 -> SyncResult.ServerOutdated(
+                    e.serverSchemaVersion ?: SyncProtocol.LEGACY_SCHEMA_VERSION
+                )
+                404 -> SyncResult.Error("服务器版本过旧，不支持覆盖云端数据，请更新服务端程序")
+                else -> SyncResult.Error(e.message ?: e.javaClass.simpleName)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "overwrite cloud failed: ${e.message}")
+            SyncResult.Error(e.message ?: e.javaClass.simpleName)
+        }
+    }
+
+    // 信息岛：云同步「从云端恢复」——先拉快照，再按「覆盖本地 / 合并本地」落地
+    /**
+     * 从云端恢复数据。
+     *
+     * @param mergeLocal true = 合并本地：保留本机数据，仅用云端较新的记录覆盖；
+     *   false = 覆盖本地：先清空本机启用的同步数据，再整体应用云端快照。
+     *
+     * 两者都先完整拉取快照再动本地，网络失败时本机数据保持原样。
+     */
+    suspend fun restoreFromCloud(mergeLocal: Boolean): SyncResult = syncMutex.withLock {
+        val config = configStore.loadConfig()
+        if (!config.enabled || !config.isValid) return@withLock SyncResult.Disabled
+
+        try {
+            val serverInfo = api.serverInfo(config.baseUrl, config.token)
+            if (!SyncProtocol.isServerCompatible(serverInfo.schemaVersion)) {
+                return@withLock SyncResult.ServerOutdated(serverInfo.schemaVersion)
+            }
+
+            // ── 1. 先拉全量快照（lastRev=0 即云端全部数据），此阶段不动本地 ──
+            val snapshot = api.sync(config.baseUrl, config.token, buildPullPayload())
+            val changes = snapshot.getAsJsonObject("changes") ?: JsonObject()
+            val snapshotTombstones = snapshot.getAsJsonArray("tombstones") ?: JsonArray()
+            val snapshotRev = snapshot.get("rev")?.takeIf { it.isJsonPrimitive }?.asLong ?: 0L
+
+            // ── 2. 覆盖模式：清空本机对应类别（含待推送墓碑），云端快照成为唯一真相 ──
+            if (!mergeLocal) wipeLocalData(config, changes)
+
+            // ── 3. 应用快照：合并模式只让「更新」的远端记录覆盖本地 ──
+            var pulled = 0
+            var deleted = 0
+            if (config.syncNotes) {
+                pulled += applyFolders(changes, onlyIfNewer = mergeLocal)
+                pulled += applySubjects(changes, onlyIfNewer = mergeLocal)
+                pulled += applyConversations(changes, onlyIfNewer = mergeLocal)
+                pulled += applyMessages(changes, onlyIfNewer = mergeLocal)
+                pulled += applyFragments(changes, onlyIfNewer = mergeLocal)
+                pulled += applyPages(changes, onlyIfNewer = mergeLocal)
+                pulled += applySummaries(changes, onlyIfNewer = mergeLocal)
+                pulled += applyTodoItems(changes, onlyIfNewer = mergeLocal)
+            }
+            if (config.syncModels) {
+                pulled += applyModelConfigs(changes, onlyIfNewer = mergeLocal)
+            }
+            if (config.syncTokens) {
+                pulled += applyAppSettings(changes, force = !mergeLocal)
+            }
+
+            for (element in snapshotTombstones) {
+                val ts = element.takeIf { it.isJsonObject }?.asJsonObject ?: continue
+                val tbl = ts.get("tbl")?.takeIf { it.isJsonPrimitive }?.asString ?: continue
+                val id = ts.get("id")?.takeIf { it.isJsonPrimitive }?.asString ?: continue
+                val deletedAt = ts.get("deletedAt")?.takeIf { it.isJsonPrimitive }?.asLong ?: continue
+                val categoryOn = if (tbl == TBL_MODEL_CONFIGS) config.syncModels else config.syncNotes
+                if (!categoryOn) continue
+                if (applyTombstone(tbl, id, deletedAt, onlyIfNewer = mergeLocal)) deleted++
+            }
+
+            // ── 4. 合并模式：本机独有的、或比云端更新的记录补推一次，避免因水位线推进而漏传 ──
+            var pushed = 0
+            var finalRev = snapshotRev
+            val localRows = if (mergeLocal) collectLocalRows(config) else emptyList()
+            val pendingTombstones = if (mergeLocal) buildLocalTombstones(config) else JsonArray()
+            if (mergeLocal) {
+                val pending = buildPendingChanges(changes, localRows)
+                if (pending.size() > 0 || pendingTombstones.size() > 0) {
+                    val pushedResponse = api.sync(
+                        config.baseUrl,
+                        config.token,
+                        buildPushPayload(snapshotRev, pending, pendingTombstones)
+                    )
+                    // 服务端串行处理，这一轮通常没有其他设备的新数据；有则按较新者合并
+                    val pushedChanges = pushedResponse.getAsJsonObject("changes") ?: JsonObject()
+                    if (config.syncNotes) {
+                        pulled += applyFolders(pushedChanges, onlyIfNewer = true)
+                        pulled += applySubjects(pushedChanges, onlyIfNewer = true)
+                        pulled += applyConversations(pushedChanges, onlyIfNewer = true)
+                        pulled += applyMessages(pushedChanges, onlyIfNewer = true)
+                        pulled += applyFragments(pushedChanges, onlyIfNewer = true)
+                        pulled += applyPages(pushedChanges, onlyIfNewer = true)
+                        pulled += applySummaries(pushedChanges, onlyIfNewer = true)
+                        pulled += applyTodoItems(pushedChanges, onlyIfNewer = true)
+                    }
+                    if (config.syncModels) {
+                        pulled += applyModelConfigs(pushedChanges, onlyIfNewer = true)
+                    }
+                    finalRev = pushedResponse.get("rev")?.takeIf { it.isJsonPrimitive }?.asLong
+                        ?: snapshotRev
+                }
+                pendingTombstones.forEach { pushed++ }
+                pushed += pending.entrySet().sumOf { it.value.asJsonArray.size() }
+            }
+
+            // ── 5. 游标与水位线：恢复到什么程度就记到什么程度，避免下一轮回声重推 ──
+            configStore.lastRev = finalRev
+            if (config.syncNotes) {
+                configStore.watermarkNotes = maxOf(
+                    configStore.watermarkNotes,
+                    snapshotMaxTimestamp(changes, snapshotTombstones, NOTES_TABLES),
+                    localRows.filter { it.tbl in NOTES_TABLES }.maxOfOrNull { it.updatedAt } ?: 0L,
+                    pendingTombstones.maxTimestamp(NOTES_TABLES)
+                )
+            }
+            if (config.syncModels) {
+                configStore.watermarkModels = maxOf(
+                    configStore.watermarkModels,
+                    snapshotMaxTimestamp(changes, snapshotTombstones, MODEL_TABLES),
+                    localRows.filter { it.tbl == TBL_MODEL_CONFIGS }.maxOfOrNull { it.updatedAt } ?: 0L,
+                    pendingTombstones.maxTimestamp(MODEL_TABLES)
+                )
+            }
+            if (config.syncTokens) {
+                configStore.watermarkTokens = maxOf(
+                    configStore.watermarkTokens,
+                    snapshotMaxTimestamp(changes, snapshotTombstones, TOKEN_TABLES)
+                )
+            }
+            configStore.lastSyncAt = System.currentTimeMillis()
+            if (config.syncNotes) reminderScheduler.refreshAll()
+
+            SyncResult.Success(
+                pushed = pushed,
+                pulled = pulled,
+                deleted = deleted,
+                serverSchemaVersion = serverInfo.schemaVersion
+            )
+        } catch (e: SyncApiException) {
+            if (e.statusCode == 409) {
+                return@withLock SyncResult.ServerOutdated(
+                    e.serverSchemaVersion ?: SyncProtocol.LEGACY_SCHEMA_VERSION
+                )
+            }
+            Log.w(TAG, "restore from cloud failed: ${e.message}")
+            SyncResult.Error(e.message ?: e.javaClass.simpleName)
+        } catch (e: Exception) {
+            Log.w(TAG, "restore from cloud failed: ${e.message}")
+            SyncResult.Error(e.message ?: e.javaClass.simpleName)
+        }
+    }
+
+    private suspend fun syncLocked(): SyncResult {
+        val config = configStore.loadConfig()
+        if (!config.enabled || !config.isValid) return SyncResult.Disabled
 
         try {
             // ── 0. 协议版本前置检查（主闸门）──
@@ -101,7 +286,7 @@ class SyncRepository @Inject constructor(
                     TAG,
                     "sync refused: server schema v${serverInfo.schemaVersion} < client v${SyncProtocol.SCHEMA_VERSION}"
                 )
-                return@withLock SyncResult.ServerOutdated(serverInfo.schemaVersion)
+                return SyncResult.ServerOutdated(serverInfo.schemaVersion)
             }
 
             val wmNotes = configStore.watermarkNotes
@@ -242,7 +427,7 @@ class SyncRepository @Inject constructor(
                 val deletedAt = ts.get("deletedAt")?.asLong ?: continue
                 val categoryOn = if (tbl == TBL_MODEL_CONFIGS) config.syncModels else notesOn
                 if (!categoryOn) continue
-                if (applyTombstone(tbl, id)) deleted++
+                if (applyTombstone(tbl, id, deletedAt)) deleted++
                 if (tbl == TBL_MODEL_CONFIGS) {
                     maxModels = maxOf(maxModels, deletedAt)
                 } else {
@@ -264,7 +449,7 @@ class SyncRepository @Inject constructor(
             val pushed = subjects.size + fragments.size + pages.size + folders.size +
                 conversations.size + messages.size + summaries.size + todoItems.size +
                 modelConfigs.size + tombstones.size + if (pushTokens) 1 else 0
-            SyncResult.Success(
+            return SyncResult.Success(
                 pushed = pushed,
                 pulled = pulled,
                 deleted = deleted,
@@ -275,13 +460,13 @@ class SyncRepository @Inject constructor(
             if (e.statusCode == 409) {
                 val serverVersion = e.serverSchemaVersion ?: SyncProtocol.LEGACY_SCHEMA_VERSION
                 Log.w(TAG, "sync refused by server: server v$serverVersion < client v${SyncProtocol.SCHEMA_VERSION}")
-                return@withLock SyncResult.ServerOutdated(serverVersion)
+                return SyncResult.ServerOutdated(serverVersion)
             }
             Log.w(TAG, "sync failed: ${e.message}")
-            SyncResult.Error(e.message ?: e.javaClass.simpleName)
+            return SyncResult.Error(e.message ?: e.javaClass.simpleName)
         } catch (e: Exception) {
             Log.w(TAG, "sync failed: ${e.message}")
-            SyncResult.Error(e.message ?: e.javaClass.simpleName)
+            return SyncResult.Error(e.message ?: e.javaClass.simpleName)
         }
     }
 
@@ -311,22 +496,29 @@ class SyncRepository @Inject constructor(
         changes.getAsJsonArray(tbl)?.mapNotNull { it.takeIf { e -> e.isJsonObject }?.asJsonObject }
             ?: emptyList()
 
-    private suspend fun applyFolders(changes: JsonObject): Int {
+    private suspend fun applyFolders(changes: JsonObject, onlyIfNewer: Boolean = false): Int {
         var count = 0
         for (json in entityRows(changes, TBL_FOLDERS)) {
             runCatching {
-                folderDao.insert(gson.fromJson(json, FolderEntity::class.java))
+                val entity = gson.fromJson(json, FolderEntity::class.java)
+                if (onlyIfNewer && (folderDao.getFolderById(entity.id)?.updatedAt ?: -1L) >= entity.updatedAt) {
+                    return@runCatching
+                }
+                folderDao.insert(entity)
                 count++
             }
         }
         return count
     }
 
-    private suspend fun applySubjects(changes: JsonObject): Int {
+    private suspend fun applySubjects(changes: JsonObject, onlyIfNewer: Boolean = false): Int {
         var count = 0
         for (json in entityRows(changes, TBL_SUBJECTS)) {
             runCatching {
                 val entity = gson.fromJson(json, SubjectEntity::class.java)
+                if (onlyIfNewer && (subjectDao.getSubjectById(entity.id)?.updatedAt ?: -1L) >= entity.updatedAt) {
+                    return@runCatching
+                }
                 subjectDao.insert(normalizeSubjectEntity(entity))
                 count++
             }
@@ -345,11 +537,15 @@ class SyncRepository @Inject constructor(
         todoIntervalDays = if (entity.todoIntervalDays >= 1) entity.todoIntervalDays else 2
     )
 
-    private suspend fun applyConversations(changes: JsonObject): Int {
+    private suspend fun applyConversations(changes: JsonObject, onlyIfNewer: Boolean = false): Int {
         var count = 0
         for (json in entityRows(changes, TBL_CONVERSATIONS)) {
             runCatching {
                 val entity = gson.fromJson(json, HomeConversationEntity::class.java)
+                val local = homeChatDao.getConversationById(entity.id)
+                if (onlyIfNewer && local != null && local.updated_at >= entity.updated_at) {
+                    return@runCatching
+                }
                 // REPLACE 会先删行触发 CASCADE 清掉本地消息，故存在时走纯 UPDATE
                 val updated = homeChatDao.updateConversationFull(
                     entity.id, entity.title, entity.created_at, entity.updated_at
@@ -361,11 +557,14 @@ class SyncRepository @Inject constructor(
         return count
     }
 
-    private suspend fun applyMessages(changes: JsonObject): Int {
+    private suspend fun applyMessages(changes: JsonObject, onlyIfNewer: Boolean = false): Int {
         var count = 0
         for (json in entityRows(changes, TBL_MESSAGES)) {
             runCatching {
                 val entity = gson.fromJson(json, HomeMessageEntity::class.java)
+                if (onlyIfNewer && (homeChatDao.getMessageById(entity.id)?.updatedAt ?: -1L) >= entity.updatedAt) {
+                    return@runCatching
+                }
                 // 外键约束：会话不存在（如已被删除）时跳过，避免崩溃
                 if (homeChatDao.getConversationById(entity.conversation_id) == null) return@runCatching
                 homeChatDao.insertMessage(entity)
@@ -375,24 +574,31 @@ class SyncRepository @Inject constructor(
         return count
     }
 
-    private suspend fun applyFragments(changes: JsonObject): Int {
+    private suspend fun applyFragments(changes: JsonObject, onlyIfNewer: Boolean = false): Int {
         var count = 0
         for (json in entityRows(changes, TBL_FRAGMENTS)) {
             runCatching {
-                fragmentDao.insert(gson.fromJson(json, FragmentEntity::class.java))
+                val entity = gson.fromJson(json, FragmentEntity::class.java)
+                if (onlyIfNewer && (fragmentDao.getById(entity.id)?.updatedAt ?: -1L) >= entity.updatedAt) {
+                    return@runCatching
+                }
+                fragmentDao.insert(entity)
                 count++
             }
         }
         return count
     }
 
-    private suspend fun applyPages(changes: JsonObject): Int {
+    private suspend fun applyPages(changes: JsonObject, onlyIfNewer: Boolean = false): Int {
         var count = 0
         for (json in entityRows(changes, TBL_PAGES)) {
             runCatching {
                 val entity = gson.fromJson(json, NotebookPageEntity::class.java)
                 // indexedAt 是本机索引状态，不随同步覆盖
                 val local = pageDao.getById(entity.id)
+                if (onlyIfNewer && local != null && local.updatedAt >= entity.updatedAt) {
+                    return@runCatching
+                }
                 pageDao.insert(if (local != null) entity.copy(indexedAt = local.indexedAt) else entity)
                 count++
             }
@@ -400,33 +606,45 @@ class SyncRepository @Inject constructor(
         return count
     }
 
-    private suspend fun applySummaries(changes: JsonObject): Int {
+    private suspend fun applySummaries(changes: JsonObject, onlyIfNewer: Boolean = false): Int {
         var count = 0
         for (json in entityRows(changes, TBL_SUMMARIES)) {
             runCatching {
-                summaryDao.upsert(gson.fromJson(json, SubjectSummaryEntity::class.java))
+                val entity = gson.fromJson(json, SubjectSummaryEntity::class.java)
+                if (onlyIfNewer && (summaryDao.getBySubjectId(entity.subjectId)?.updatedAt ?: -1L) >= entity.updatedAt) {
+                    return@runCatching
+                }
+                summaryDao.upsert(entity)
                 count++
             }
         }
         return count
     }
 
-    private suspend fun applyTodoItems(changes: JsonObject): Int {
+    private suspend fun applyTodoItems(changes: JsonObject, onlyIfNewer: Boolean = false): Int {
         var count = 0
         for (json in entityRows(changes, TBL_TODOS)) {
             runCatching {
-                todoItemDao.insert(gson.fromJson(json, TodoItemEntity::class.java))
+                val entity = gson.fromJson(json, TodoItemEntity::class.java)
+                if (onlyIfNewer && (todoItemDao.getByIdOnce(entity.id)?.updatedAt ?: -1L) >= entity.updatedAt) {
+                    return@runCatching
+                }
+                todoItemDao.insert(entity)
                 count++
             }
         }
         return count
     }
 
-    private suspend fun applyModelConfigs(changes: JsonObject): Int {
+    private suspend fun applyModelConfigs(changes: JsonObject, onlyIfNewer: Boolean = false): Int {
         var count = 0
         for (json in entityRows(changes, TBL_MODEL_CONFIGS)) {
             runCatching {
-                modelConfigDao.upsert(gson.fromJson(json, ModelConfigEntity::class.java))
+                val entity = gson.fromJson(json, ModelConfigEntity::class.java)
+                if (onlyIfNewer && (modelConfigDao.getById(entity.id)?.updatedAt ?: -1L) >= entity.updatedAt) {
+                    return@runCatching
+                }
+                modelConfigDao.upsert(entity)
                 count++
             }
         }
@@ -437,7 +655,7 @@ class SyncRepository @Inject constructor(
      * 应用远端「更新源令牌」（单行 app_settings#singleton）。
      * LWW 判定在 [UpdateChecker.applyRemoteTokens] 内完成，本机更新的修改不会被覆盖。
      */
-    private fun applyAppSettings(changes: JsonObject): Int {
+    private fun applyAppSettings(changes: JsonObject, force: Boolean = false): Int {
         for (obj in entityRows(changes, TBL_APP_SETTINGS)) {
             val id = obj.get("id")?.takeIf { it.isJsonPrimitive }?.asString
             if (id != APP_SETTINGS_ID) continue
@@ -445,12 +663,19 @@ class SyncRepository @Inject constructor(
                 ?: continue
             val github = obj.get("githubToken")?.takeIf { it.isJsonPrimitive }?.asString.orEmpty()
             val gitee = obj.get("giteeToken")?.takeIf { it.isJsonPrimitive }?.asString.orEmpty()
-            if (updateChecker.applyRemoteTokens(github, gitee, updatedAt)) return 1
+            if (updateChecker.applyRemoteTokens(github, gitee, updatedAt, force)) return 1
         }
         return 0
     }
 
-    private suspend fun applyTombstone(tbl: String, id: String): Boolean = runCatching {
+    private suspend fun applyTombstone(
+        tbl: String,
+        id: String,
+        deletedAt: Long,
+        onlyIfNewer: Boolean = false
+    ): Boolean = runCatching {
+        // 合并恢复时，本机更新过的记录不应被云端旧墓碑删掉
+        if (onlyIfNewer && (localUpdatedAt(tbl, id) ?: -1L) >= deletedAt) return@runCatching false
         when (tbl) {
             TBL_SUBJECTS -> {
                 // 信息岛：远端删除待办笔记时一并取消本机闹钟
@@ -482,6 +707,175 @@ class SyncRepository @Inject constructor(
     private fun JsonObject.addEntityArray(name: String, entities: List<Any>) {
         if (entities.isEmpty()) return
         add(name, JsonArray().apply { entities.forEach { add(gson.toJsonTree(it)) } })
+    }
+
+    // ── 覆盖云端 / 从云端恢复的辅助逻辑 ──
+
+    /** 记录一条可推送的本机实体，用于「合并本地」时与云端快照做逐条比较。 */
+    private data class SyncRow(
+        val tbl: String,
+        val id: String,
+        val updatedAt: Long,
+        val entity: Any
+    )
+
+    /** 当前启用的类别对应的云端表；「覆盖云端」只清空这些表。 */
+    private fun enabledCloudTables(config: SyncConfig): List<String> = buildList {
+        if (config.syncNotes) addAll(NOTES_TABLES)
+        if (config.syncModels) add(TBL_MODEL_CONFIGS)
+        if (config.syncTokens) add(TBL_APP_SETTINGS)
+    }
+
+    private fun buildPullPayload(): JsonObject = JsonObject().apply {
+        addProperty("deviceId", configStore.deviceId)
+        addProperty("schemaVersion", SyncProtocol.SCHEMA_VERSION)
+        addProperty("lastRev", 0)
+        add("changes", JsonObject())
+        add("tombstones", JsonArray())
+    }
+
+    private fun buildPushPayload(
+        lastRev: Long,
+        changes: JsonObject,
+        tombstones: JsonArray
+    ): JsonObject = JsonObject().apply {
+        addProperty("deviceId", configStore.deviceId)
+        addProperty("schemaVersion", SyncProtocol.SCHEMA_VERSION)
+        addProperty("lastRev", lastRev)
+        add("changes", changes)
+        add("tombstones", tombstones)
+    }
+
+    /**
+     * 覆盖本地前清空本机启用的同步数据。
+     * 云端快照中不存在的模型配置会被删除，因此其引用也要一并清理。
+     */
+    private suspend fun wipeLocalData(config: SyncConfig, cloudChanges: JsonObject) {
+        if (config.syncNotes) {
+            // 先删消息再删会话，避免外键级联顺序依赖
+            homeChatDao.deleteAllMessages()
+            homeChatDao.deleteAllConversations()
+            fragmentDao.deleteAll()
+            pageDao.deleteAll()
+            summaryDao.deleteAll()
+            todoItemDao.deleteAll()
+            subjectDao.deleteAll()
+            folderDao.deleteAll()
+            tombstoneDao.deleteByTables(NOTES_TABLES.toList())
+        }
+        if (config.syncModels) {
+            val cloudModelIds = entityRows(cloudChanges, TBL_MODEL_CONFIGS)
+                .mapNotNull { it.get("id")?.takeIf { id -> id.isJsonPrimitive }?.asString }
+                .toSet()
+            val localModelIds = modelConfigDao.getModelConfigsOnce().map { it.id }
+            modelConfigDao.deleteAll()
+            localModelIds.filterNot { it in cloudModelIds }.forEach {
+                settingsDao.clearModelReference(it)
+            }
+            tombstoneDao.deleteByTables(listOf(TBL_MODEL_CONFIGS))
+        }
+    }
+
+    /** 收集本机全部可同步实体（不做水位线过滤），供合并恢复的补推使用。 */
+    private suspend fun collectLocalRows(config: SyncConfig): List<SyncRow> {
+        val rows = mutableListOf<SyncRow>()
+        if (config.syncNotes) {
+            subjectDao.getAllOnce().forEach { rows += SyncRow(TBL_SUBJECTS, it.id, it.updatedAt, it) }
+            fragmentDao.getAllOnce().forEach { rows += SyncRow(TBL_FRAGMENTS, it.id, it.updatedAt, it) }
+            pageDao.getAllOnce().forEach { rows += SyncRow(TBL_PAGES, it.id, it.updatedAt, it) }
+            folderDao.getAllOnce().forEach { rows += SyncRow(TBL_FOLDERS, it.id, it.updatedAt, it) }
+            homeChatDao.getConversationsOnce().forEach {
+                rows += SyncRow(TBL_CONVERSATIONS, it.id, it.updated_at, it)
+            }
+            homeChatDao.getAllMessagesOnce().forEach {
+                rows += SyncRow(TBL_MESSAGES, it.id, it.updatedAt, it)
+            }
+            summaryDao.getAll().forEach {
+                rows += SyncRow(TBL_SUMMARIES, it.subjectId, it.updatedAt, it)
+            }
+            todoItemDao.getAllOnce().forEach { rows += SyncRow(TBL_TODOS, it.id, it.updatedAt, it) }
+        }
+        if (config.syncModels) {
+            modelConfigDao.getModelConfigsOnce().forEach {
+                rows += SyncRow(TBL_MODEL_CONFIGS, it.id, it.updatedAt, it)
+            }
+        }
+        return rows
+    }
+
+    /** 本机独有的、或比云端更新的记录（合并恢复补推用）。 */
+    private fun buildPendingChanges(remote: JsonObject, rows: List<SyncRow>): JsonObject {
+        val out = JsonObject()
+        val remoteVersions = HashMap<String, Map<String, Long>>()
+        for (row in rows) {
+            val versions = remoteVersions.getOrPut(row.tbl) { remoteVersionMap(remote, row.tbl) }
+            val remoteUpdatedAt = versions[row.id]
+            if (remoteUpdatedAt != null && remoteUpdatedAt >= row.updatedAt) continue
+            val array = out.getAsJsonArray(row.tbl) ?: JsonArray().also { out.add(row.tbl, it) }
+            array.add(gson.toJsonTree(row.entity))
+        }
+        return out
+    }
+
+    private fun remoteVersionMap(changes: JsonObject, tbl: String): Map<String, Long> {
+        val idField = if (tbl == TBL_SUMMARIES) "subjectId" else "id"
+        val result = HashMap<String, Long>()
+        for (json in entityRows(changes, tbl)) {
+            val id = json.get(idField)?.takeIf { it.isJsonPrimitive }?.asString ?: continue
+            val ts = json.get("updatedAt")?.takeIf { it.isJsonPrimitive }?.asLong
+                ?: json.get("updated_at")?.takeIf { it.isJsonPrimitive }?.asLong
+                ?: 0L
+            result[id] = ts
+        }
+        return result
+    }
+
+    /** 合并恢复时把本地待推送的墓碑一起带上，避免云端已删除的数据被本机旧数据复活。 */
+    private suspend fun buildLocalTombstones(config: SyncConfig): JsonArray {
+        val out = JsonArray()
+        for (ts in tombstoneDao.getSince(-1)) {
+            val categoryOn = if (ts.tbl == TBL_MODEL_CONFIGS) config.syncModels else config.syncNotes
+            if (!categoryOn) continue
+            out.add(JsonObject().apply {
+                addProperty("tbl", ts.tbl)
+                addProperty("id", ts.id)
+                addProperty("deletedAt", ts.deletedAt)
+            })
+        }
+        return out
+    }
+
+    /** 快照中指定表的实体与墓碑的最大时间戳。 */
+    private fun snapshotMaxTimestamp(
+        changes: JsonObject,
+        tombstones: JsonArray,
+        tables: Set<String>
+    ): Long = maxOf(maxUpdatedAtFor(changes, tables), tombstones.maxTimestamp(tables))
+
+    private fun JsonArray.maxTimestamp(tables: Set<String>): Long {
+        var max = 0L
+        for (element in this) {
+            val obj = element.takeIf { it.isJsonObject }?.asJsonObject ?: continue
+            val tbl = obj.get("tbl")?.takeIf { it.isJsonPrimitive }?.asString ?: continue
+            if (tbl !in tables) continue
+            val deletedAt = obj.get("deletedAt")?.takeIf { it.isJsonPrimitive }?.asLong ?: continue
+            if (deletedAt > max) max = deletedAt
+        }
+        return max
+    }
+
+    /** 本机指定实体的更新时间；不存在时返回 null。 */
+    private suspend fun localUpdatedAt(tbl: String, id: String): Long? = when (tbl) {
+        TBL_SUBJECTS -> subjectDao.getSubjectById(id)?.updatedAt
+        TBL_FRAGMENTS -> fragmentDao.getById(id)?.updatedAt
+        TBL_PAGES -> pageDao.getById(id)?.updatedAt
+        TBL_FOLDERS -> folderDao.getFolderById(id)?.updatedAt
+        TBL_CONVERSATIONS -> homeChatDao.getConversationById(id)?.updated_at
+        TBL_MESSAGES -> homeChatDao.getMessageById(id)?.updatedAt
+        TBL_SUMMARIES -> summaryDao.getBySubjectId(id)?.updatedAt
+        TBL_TODOS -> todoItemDao.getByIdOnce(id)?.updatedAt
+        TBL_MODEL_CONFIGS -> modelConfigDao.getById(id)?.updatedAt
+        else -> null
     }
 
     companion object {
