@@ -287,13 +287,27 @@ data class Folder(
     val id: String = generateId(),
     val name: String,
     val orderIndex: Int = 0,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    /** 父文件夹 id；null 表示位于首页顶层。 */
+    val parentId: String? = null
 )
 
 sealed interface HomeItem {
-    data class FolderItem(val folder: Folder, val noteCount: Int) : HomeItem
+    data class FolderItem(
+        val folder: Folder,
+        val noteCount: Int,
+        val subfolderCount: Int = 0
+    ) : HomeItem
+
     data class NoteItem(val subject: Subject) : HomeItem
 }
+
+/** 首页 / 文件夹内统一的排序值：文件夹与笔记共用一个展示顺序。 */
+val HomeItem.orderIndex: Int
+    get() = when (this) {
+        is HomeItem.FolderItem -> folder.orderIndex
+        is HomeItem.NoteItem -> subject.orderIndex
+    }
 
 fun Subject.defaultPages(): List<NotebookPage> = pages ?: emptyList()
 fun Subject.defaultPageIndex(): List<PageIndex> = pageIndex ?: emptyList()

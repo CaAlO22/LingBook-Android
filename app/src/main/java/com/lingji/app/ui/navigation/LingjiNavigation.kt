@@ -483,6 +483,8 @@ fun LingjiNavigation(
                             viewModel.setCurrentSubject(id)
                             navController.navigate("subject/$id")
                         },
+                        // 信息岛：文件夹嵌套——子文件夹沿用同一路由，逐级打开
+                        onFolderClick = { id -> navController.navigate("folder/$id") },
                         onBack = { navController.popBackStack() }
                     )
                 }

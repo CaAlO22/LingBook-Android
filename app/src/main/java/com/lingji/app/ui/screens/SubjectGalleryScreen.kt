@@ -109,8 +109,10 @@ import com.lingji.app.ui.components.ChatMode
 import com.lingji.app.ui.components.DeleteConfirmDialog
 import com.lingji.app.ui.components.DragResult
 import com.lingji.app.ui.components.DragState
+import com.lingji.app.ui.components.applyDragResult
 import com.lingji.app.ui.components.FolderCard
 import com.lingji.app.ui.components.GlassOutlinedTextField
+import com.lingji.app.ui.components.handleGridDragHitTest
 import com.lingji.app.ui.components.LingjiDialog
 import com.lingji.app.ui.components.LingjiDialogConfirmButton
 import com.lingji.app.ui.components.LingjiDialogDismissButton
@@ -158,7 +160,10 @@ fun SubjectGalleryScreen(
     var renameFolderId by remember { mutableStateOf<String?>(null) }
     var renameFolderDefault by remember { mutableStateOf("") }
     var deleteFolderId by remember { mutableStateOf<String?>(null) }
+    var dissolveFolderId by remember { mutableStateOf<String?>(null) }
     val gridState = rememberLazyGridState()
+    // 网格间距（像素），用于把插入标记画在两列 / 两行之间的间隙中央。
+    val dragGapPx = with(LocalDensity.current) { 16.dp.toPx() }
 
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -330,6 +335,9 @@ fun SubjectGalleryScreen(
                     if (uiState.subjects.isEmpty() && uiState.folders.isEmpty()) {
                         EmptySubjectState(onCreate = { showAddDialog = true })
                     } else {
+                        // 信息岛：网格与拖拽浮层必须放进同一个 Box，
+                        // 否则 Pager 页面只放置首个根节点，浮层/插入标记不会显示。
+                        Box(modifier = Modifier.fillMaxSize()) {
                         LazyVerticalGrid(
                             columns = GridCells.Adaptive(160.dp),
                             state = gridState,
@@ -371,6 +379,7 @@ fun SubjectGalleryScreen(
                                         FolderCard(
                                             folder = homeItem.folder,
                                             noteCount = homeItem.noteCount,
+                                            subfolderCount = homeItem.subfolderCount,
                                             onClick = { onFolderClick(homeItem.folder.id) },
                                             onLongClick = { },
                                             onRename = {
@@ -378,18 +387,47 @@ fun SubjectGalleryScreen(
                                                 renameFolderDefault = homeItem.folder.name
                                             },
                                             onDelete = { deleteFolderId = homeItem.folder.id },
+                                            onDissolve = { dissolveFolderId = homeItem.folder.id },
                                             isDropTarget = isDropTarget,
-                                            onDragStart = { offset -> dragState.startDrag(homeItem, offset) },
+                                            onDragStart = { offset, grab ->
+                                                dragState.startDrag(homeItem, offset, grab)
+                                            },
                                             onDrag = { dragAmount ->
                                                 dragState.updateDrag(dragAmount)
                                                 val containerPos = containerCoords?.positionInRoot() ?: Offset.Zero
                                                 val globalPos = dragState.dragStartPos + dragState.dragOffset - containerPos
-                                                handleDragHitTest(globalPos, gridState, uiState.homeItems, dragState)
+                                                handleGridDragHitTest(
+                                                    position = globalPos,
+                                                    gridState = gridState,
+                                                    itemCount = uiState.homeItems.size,
+                                                    dragState = dragState,
+                                                    canDropInto = { folderId ->
+                                                        when (val dragged = dragState.draggedItem) {
+                                                            is HomeItem.FolderItem -> uiState.canMoveFolderInto(
+                                                                dragged.folder.id,
+                                                                folderId
+                                                            )
+                                                            else -> true
+                                                        }
+                                                    },
+                                                    gapPx = dragGapPx
+                                                )
                                             },
                                             onDragEnd = {
                                                 val draggedItem = dragState.draggedItem
                                                 val result = dragState.endDrag()
-                                                handleDragEnd(result, draggedItem, viewModel, uiState.homeItems)
+                                                applyDragResult(
+                                                    result = result,
+                                                    draggedItem = draggedItem,
+                                                    items = uiState.homeItems,
+                                                    onMoveToFolder = { item, folderId ->
+                                                        when (item) {
+                                                            is HomeItem.NoteItem -> viewModel.moveSubjectToFolder(item.subject.id, folderId)
+                                                            is HomeItem.FolderItem -> viewModel.moveFolderToFolder(item.folder.id, folderId)
+                                                        }
+                                                    },
+                                                    onReorder = { viewModel.reorderHomeItems(it) }
+                                                )
                                             },
                                             onDragCancel = { dragState.cancelDrag() },
                                             isDragging = isDragging,
@@ -434,17 +472,45 @@ fun SubjectGalleryScreen(
                                             onMoveDown = { viewModel.moveSubjectDown(subject.id) },
                                             canMoveUp = true,
                                             canMoveDown = true,
-                                            onDragStart = { offset -> dragState.startDrag(homeItem, offset) },
+                                            onDragStart = { offset, grab ->
+                                                dragState.startDrag(homeItem, offset, grab)
+                                            },
                                             onDrag = { dragAmount ->
                                                 dragState.updateDrag(dragAmount)
                                                 val containerPos = containerCoords?.positionInRoot() ?: Offset.Zero
                                                 val globalPos = dragState.dragStartPos + dragState.dragOffset - containerPos
-                                                handleDragHitTest(globalPos, gridState, uiState.homeItems, dragState)
+                                                handleGridDragHitTest(
+                                                    position = globalPos,
+                                                    gridState = gridState,
+                                                    itemCount = uiState.homeItems.size,
+                                                    dragState = dragState,
+                                                    canDropInto = { folderId ->
+                                                        when (val dragged = dragState.draggedItem) {
+                                                            is HomeItem.FolderItem -> uiState.canMoveFolderInto(
+                                                                dragged.folder.id,
+                                                                folderId
+                                                            )
+                                                            else -> true
+                                                        }
+                                                    },
+                                                    gapPx = dragGapPx
+                                                )
                                             },
                                             onDragEnd = {
                                                 val draggedItem = dragState.draggedItem
                                                 val result = dragState.endDrag()
-                                                handleDragEnd(result, draggedItem, viewModel, uiState.homeItems)
+                                                applyDragResult(
+                                                    result = result,
+                                                    draggedItem = draggedItem,
+                                                    items = uiState.homeItems,
+                                                    onMoveToFolder = { item, folderId ->
+                                                        when (item) {
+                                                            is HomeItem.NoteItem -> viewModel.moveSubjectToFolder(item.subject.id, folderId)
+                                                            is HomeItem.FolderItem -> viewModel.moveFolderToFolder(item.folder.id, folderId)
+                                                        }
+                                                    },
+                                                    onReorder = { viewModel.reorderHomeItems(it) }
+                                                )
                                             },
                                             onDragCancel = { dragState.cancelDrag() },
                                             isDragging = isDragging,
@@ -473,13 +539,29 @@ fun SubjectGalleryScreen(
                                         )
                                     }
                             ) {
+                                // 信息岛：插入位置标记——首尾位置同样有标记，横竖屏都可见
+                                dragState.insertionRect?.let { rect ->
+                                    Box(
+                                        modifier = Modifier
+                                            .offset {
+                                                IntOffset(rect.left.toInt(), rect.top.toInt())
+                                            }
+                                            .size(
+                                                width = with(LocalDensity.current) { rect.width.toDp() },
+                                                height = with(LocalDensity.current) { rect.height.toDp() }
+                                            )
+                                            .clip(RoundedCornerShape(50))
+                                            .background(MaterialTheme.colorScheme.primary)
+                                    )
+                                }
                                 Card(
                                     modifier = Modifier
                                         .offset {
                                             val containerPos = containerCoords?.positionInRoot() ?: Offset.Zero
+                                            val grab = dragState.dragGrabOffset
                                             IntOffset(
-                                                (dragState.dragStartPos.x + dragState.dragOffset.x - containerPos.x).toInt(),
-                                                (dragState.dragStartPos.y + dragState.dragOffset.y - containerPos.y).toInt()
+                                                (dragState.dragStartPos.x + dragState.dragOffset.x - grab.x - containerPos.x).toInt(),
+                                                (dragState.dragStartPos.y + dragState.dragOffset.y - grab.y - containerPos.y).toInt()
                                             )
                                         }
                                         .width(160.dp),
@@ -502,6 +584,7 @@ fun SubjectGalleryScreen(
                                     }
                                 }
                             }
+                        }
                         }
                     }
                 } else {
@@ -653,6 +736,20 @@ fun SubjectGalleryScreen(
                 deleteFolderId = null
             },
             onDismiss = { deleteFolderId = null }
+        )
+    }
+
+    dissolveFolderId?.let { id ->
+        val folder = uiState.folders.find { it.id == id }
+        DeleteConfirmDialog(
+            title = stringResource(R.string.dissolve),
+            text = stringResource(R.string.dissolve_folder_confirm, folder?.name ?: ""),
+            confirmText = stringResource(R.string.dissolve),
+            onConfirm = {
+                viewModel.dissolveFolder(id)
+                dissolveFolderId = null
+            },
+            onDismiss = { dissolveFolderId = null }
         )
     }
 
@@ -1166,98 +1263,4 @@ private fun AddSubjectDialog(
     )
 }
 
-private fun handleDragHitTest(
-    globalPos: Offset,
-    gridState: androidx.compose.foundation.lazy.grid.LazyGridState,
-    homeItems: List<HomeItem>,
-    dragState: DragState
-) {
-    val visibleItems = gridState.layoutInfo.visibleItemsInfo
-    val isDraggingFolder = dragState.draggedItem is HomeItem.FolderItem
 
-    // Only check folder drop-target when dragging a NOTE (folders can't nest)
-    if (!isDraggingFolder) {
-        val folderTarget = visibleItems.firstOrNull { itemInfo ->
-            val key = itemInfo.key
-            key is String && key.startsWith("folder_") &&
-                globalPos.x >= itemInfo.offset.x &&
-                globalPos.x <= itemInfo.offset.x + itemInfo.size.width &&
-                globalPos.y >= itemInfo.offset.y &&
-                globalPos.y <= itemInfo.offset.y + itemInfo.size.height
-        }
-        if (folderTarget != null) {
-            val folderId = (folderTarget.key as String).removePrefix("folder_")
-            dragState.setDropTarget(folderId)
-            dragState.setReorderTarget(-1)
-            dragState.setReorderHover(null)
-            return
-        }
-    }
-
-    dragState.setDropTarget(null)
-    // Reorder among ALL visible items (folders + notes) when dragging a folder,
-    // or among notes only when dragging a note.
-    val reorderItems = if (isDraggingFolder) {
-        visibleItems.filter {
-            it.key is String && ((it.key as String).startsWith("folder_") || (it.key as String).startsWith("note_"))
-        }
-    } else {
-        visibleItems.filter { it.key is String && (it.key as String).startsWith("note_") }
-    }
-    // Find the closest item by center distance
-    val closest = reorderItems.minByOrNull { itemInfo ->
-        val cx = itemInfo.offset.x + itemInfo.size.width / 2
-        val cy = itemInfo.offset.y + itemInfo.size.height / 2
-        val dx = globalPos.x - cx
-        val dy = globalPos.y - cy
-        dx * dx + dy * dy
-    }
-    if (closest != null) {
-        val rawKey = closest.key as String
-        val hoverId = rawKey.removePrefix("folder_").removePrefix("note_")
-        dragState.setReorderHover(hoverId)
-        val insertIndex = reorderItems.indexOfFirst { itemInfo ->
-            globalPos.y < itemInfo.offset.y + itemInfo.size.height / 2
-        }
-        dragState.setReorderTarget(if (insertIndex >= 0) insertIndex else reorderItems.size)
-    } else {
-        dragState.setReorderHover(null)
-        dragState.setReorderTarget(-1)
-    }
-}
-
-private fun handleDragEnd(
-    result: DragResult,
-    draggedItem: HomeItem?,
-    viewModel: SubjectViewModel,
-    homeItems: List<HomeItem>
-) {
-    val item = draggedItem ?: return
-    when (result) {
-        is DragResult.MoveToFolder -> {
-            if (item is HomeItem.NoteItem) {
-                viewModel.moveSubjectToFolder(item.subject.id, result.folderId)
-            }
-        }
-        is DragResult.Reorder -> {
-            val hoverId = result.hoverId ?: return
-            val mutableList = homeItems.toMutableList()
-            val draggedIndex = mutableList.indexOf(item)
-            if (draggedIndex < 0) return
-            // Find the hovered item's position — could be a folder or a note
-            val hoverIndex = mutableList.indexOfFirst { homeItem ->
-                when (homeItem) {
-                    is HomeItem.FolderItem -> homeItem.folder.id == hoverId
-                    is HomeItem.NoteItem -> homeItem.subject.id == hoverId
-                }
-            }
-            if (hoverIndex < 0 || hoverIndex == draggedIndex) return
-            // Remove dragged item, then insert at the hovered position
-            mutableList.removeAt(draggedIndex)
-            val adjustedHover = if (hoverIndex > draggedIndex) hoverIndex - 1 else hoverIndex
-            mutableList.add(adjustedHover.coerceIn(0, mutableList.size), item)
-            viewModel.reorderHomeItems(mutableList)
-        }
-        is DragResult.None -> { }
-    }
-}

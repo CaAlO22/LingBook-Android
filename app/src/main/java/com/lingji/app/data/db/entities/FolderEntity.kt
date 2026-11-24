@@ -10,5 +10,7 @@ data class FolderEntity(
     val name: String,
     val orderIndex: Int = 0,
     val createdAt: Long = System.currentTimeMillis(),
-    @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis()
+    @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
+    /** 父文件夹 id；null 表示位于首页顶层。 */
+    val parentId: String? = null
 )

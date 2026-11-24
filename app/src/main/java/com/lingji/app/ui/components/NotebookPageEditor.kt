@@ -440,8 +440,7 @@ fun NotebookPageEditor(
                     ) {
                         MarkdownView(
                             markdown = content,
-                            modifier = Modifier.fillMaxWidth(),
-                            compact = true
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
                 } else {

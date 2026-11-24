@@ -34,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,7 +72,7 @@ fun SubjectCard(
     onMoveDown: () -> Unit,
     canMoveUp: Boolean,
     canMoveDown: Boolean,
-    onDragStart: (Offset) -> Unit = {},
+    onDragStart: (Offset, Offset) -> Unit = { _, _ -> },
     onDrag: (Offset) -> Unit = {},
     onDragEnd: () -> Unit = {},
     onDragCancel: () -> Unit = {},
@@ -84,6 +85,11 @@ fun SubjectCard(
     var menuExpanded by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var cardCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    // 指针手势会长期持有首次组合时的 lambda，必须用最新值，避免拖拽时用到旧列表快照。
+    val currentOnDragStart by rememberUpdatedState(onDragStart)
+    val currentOnDrag by rememberUpdatedState(onDrag)
+    val currentOnDragEnd by rememberUpdatedState(onDragEnd)
+    val currentOnDragCancel by rememberUpdatedState(onDragCancel)
 
     Card(
         modifier = modifier
@@ -96,14 +102,14 @@ fun SubjectCard(
                 detectDragGesturesAfterLongPress(
                     onDragStart = { offset ->
                         val rootPos = cardCoords?.let { it.positionInRoot() + offset } ?: offset
-                        onDragStart(rootPos)
+                        currentOnDragStart(rootPos, offset)
                     },
                     onDrag = { change, dragAmount ->
                         change.consume()
-                        onDrag(dragAmount)
+                        currentOnDrag(dragAmount)
                     },
-                    onDragEnd = { onDragEnd() },
-                    onDragCancel = { onDragCancel() }
+                    onDragEnd = { currentOnDragEnd() },
+                    onDragCancel = { currentOnDragCancel() }
                 )
             }
             .alpha(if (isDragging) 0.3f else 1f),
@@ -113,21 +119,11 @@ fun SubjectCard(
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         border = BorderStroke(
-            if (isDropTarget) 2.dp else 1.dp,
-            if (isDropTarget) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+            if (isDropTarget || isReorderTarget) 2.dp else 1.dp,
+            if (isDropTarget || isReorderTarget) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
         )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            if (isReorderTarget) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(3.dp)
-                        .clip(MaterialTheme.shapes.small)
-                        .background(MaterialTheme.colorScheme.primary)
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-            }
             Text(
                 text = subject.title,
                 style = MaterialTheme.typography.titleMedium,

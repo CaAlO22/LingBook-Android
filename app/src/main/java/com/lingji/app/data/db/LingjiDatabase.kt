@@ -49,7 +49,7 @@ import org.json.JSONObject
         TodoItemEntity::class,
         ModelConfigEntity::class
     ],
-    version = 24,
+    version = 25,
     exportSchema = false
 )
 abstract class LingjiDatabase : RoomDatabase() {
@@ -464,6 +464,13 @@ abstract class LingjiDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // 信息岛：待办自动排序——开启后勾选完成的条目自动移到列表末尾
                 db.execSQL("ALTER TABLE subjects ADD COLUMN todoAutoSortDone INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        val MIGRATION_24_25 = object : Migration(24, 25) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 信息岛：文件夹嵌套——parentId 指向父文件夹，null 表示位于首页顶层
+                db.execSQL("ALTER TABLE folders ADD COLUMN parentId TEXT")
             }
         }
     }

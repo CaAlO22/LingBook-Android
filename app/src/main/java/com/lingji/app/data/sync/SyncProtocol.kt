@@ -15,14 +15,14 @@ package com.lingji.app.data.sync
  */
 object SyncProtocol {
 
-    /** 本端同步数据结构版本。 */
-    const val SCHEMA_VERSION = 1
+    /** 本端同步数据结构版本。v2：文件夹支持嵌套（folders.parentId）。 */
+    const val SCHEMA_VERSION = 2
 
     /**
-     * 加版本号之前的协议按 1 处理。
+     * 加版本号之前的客户端 / 服务器协议按 1 处理。
      *
-     * 这样本次升级不会让已在运行的旧服务器立刻失联；只有将来真正改了数据结构、
-     * 客户端把 [SCHEMA_VERSION] 提到 2 时，才会拒绝这些旧服务器。
+     * v1 客户端不认识文件夹嵌套（folders.parentId）：v2 服务器给它们的
+     * 同步数据里会去掉该字段，并在这些客户端上传文件夹时保留云端已存的归属。
      */
     const val LEGACY_SCHEMA_VERSION = 1
 

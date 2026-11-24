@@ -560,7 +560,6 @@ fun NoteEditor(
                 ) {
                     MarkdownView(
                         markdown = undoManager.value,
-                        compact = true,
                         onTextViewReady = { textView ->
                             previewTextView = textView
                             val renderedText = textView.text.toString()

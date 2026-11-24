@@ -152,8 +152,15 @@ class SubjectViewModel @Inject constructor(
     ) {
         viewModelScope.launch {
             val base = Subject.create(title, type)
+            // 新笔记放到所属容器（首页 / 文件夹）最前，避免与已排序内容并列时落到末尾。
+            val siblings = _uiState.value
+            val order = maxOf(
+                siblings.subjects.filter { it.folderId == folderId }.maxOfOrNull { it.orderIndex } ?: -1,
+                siblings.folders.filter { it.parentId == folderId }.maxOfOrNull { it.orderIndex } ?: -1
+            ) + 1
             val subject = base.copy(
                 folderId = folderId,
+                orderIndex = order,
                 todoRepeat = if (type == SubjectType.TODO && todoRepeat != null) todoRepeat else base.todoRepeat,
                 todoLastResetAt = System.currentTimeMillis()
             )
@@ -175,7 +182,10 @@ class SubjectViewModel @Inject constructor(
      */
     fun importSubject(subject: Subject) {
         viewModelScope.launch {
-            val topOrder = (_uiState.value.subjects.maxOfOrNull { it.orderIndex } ?: -1) + 1
+            val topOrder = maxOf(
+                _uiState.value.subjects.maxOfOrNull { it.orderIndex } ?: -1,
+                _uiState.value.folders.filter { it.parentId == null }.maxOfOrNull { it.orderIndex } ?: -1
+            ) + 1
             val imported = subject.copy(
                 id = generateId(),
                 folderId = null,
@@ -246,12 +256,18 @@ class SubjectViewModel @Inject constructor(
         viewModelScope.launch { subjectRepository.moveSubject(id, minOrder - 1) }
     }
 
-    fun createFolder(name: String) {
-        viewModelScope.launch { subjectRepository.createFolder(name) }
+    fun createFolder(name: String, parentId: String? = null) {
+        viewModelScope.launch { subjectRepository.createFolder(name, parentId) }
     }
 
+    /** 删除文件夹：递归删除内部所有笔记与子文件夹。 */
     fun deleteFolder(id: String) {
         viewModelScope.launch { subjectRepository.deleteFolder(id) }
+    }
+
+    /** 解散文件夹：内容上移一级，仅删除文件夹本身。 */
+    fun dissolveFolder(id: String) {
+        viewModelScope.launch { subjectRepository.dissolveFolder(id) }
     }
 
     fun renameFolder(id: String, name: String) {
@@ -266,12 +282,18 @@ class SubjectViewModel @Inject constructor(
         viewModelScope.launch { subjectRepository.removeSubjectFromFolder(subjectId) }
     }
 
+    /** 信息岛：文件夹嵌套——移动到另一个文件夹下，或传 null 移回首页。 */
+    fun moveFolderToFolder(folderId: String, parentId: String?) {
+        viewModelScope.launch { subjectRepository.moveFolderToFolder(folderId, parentId) }
+    }
+
     fun reorderHomeItems(orderedItems: List<HomeItem>) {
         viewModelScope.launch { subjectRepository.reorderHomeItems(orderedItems) }
     }
 
-    fun reorderFolderItems(folderId: String, orderedSubjectIds: List<String>) {
-        viewModelScope.launch { subjectRepository.reorderFolderItems(folderId, orderedSubjectIds) }
+    /** 信息岛：文件夹内笔记与子文件夹的拖拽排序。 */
+    fun reorderFolderContents(orderedItems: List<HomeItem>) {
+        viewModelScope.launch { subjectRepository.reorderFolderContents(orderedItems) }
     }
 
     fun renameSubject(id: String, title: String) {

@@ -191,7 +191,9 @@ private fun FragmentBubble(
                     MarkdownView(
                         markdown = fragment.content,
                         textColor = contentColor,
-                        textSizeSp = 14f
+                        textSizeSp = 14f,
+                        // Markwon 表格要求 TextView 有确定宽度，否则纯表格碎片会被测成 0 宽
+                        modifier = Modifier.fillMaxWidth()
                     )
                     Row(
                         modifier = Modifier

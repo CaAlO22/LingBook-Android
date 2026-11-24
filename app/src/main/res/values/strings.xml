@@ -90,9 +90,12 @@
     <string name="new_folder">新建文件夹</string>
     <string name="new_folder_hint">输入文件夹名称…</string>
     <string name="folder_count">%1$d 篇笔记</string>
+    <string name="folder_count_with_subfolders">%1$d 篇笔记 · %2$d 个文件夹</string>
     <string name="remove_from_folder">从文件夹中移出</string>
     <string name="cd_more_actions">更多操作</string>
-    <string name="delete_folder_confirm">确定要删除文件夹"%1$s"吗？文件夹内的笔记将移回首页。</string>
+    <string name="dissolve">解散</string>
+    <string name="delete_folder_confirm">确定要删除文件夹"%1$s"吗？文件夹内的所有笔记和子文件夹都会被删除，此操作不可恢复。</string>
+    <string name="dissolve_folder_confirm">确定要解散文件夹"%1$s"吗？文件夹内的笔记将移回首页，子文件夹将移到上一级。</string>
 
     <!-- 首页：聚合页与首页设置 -->
     <string name="home_settings_title">首页设置</string>

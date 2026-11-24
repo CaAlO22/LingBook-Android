@@ -6,6 +6,7 @@ import com.lingji.app.domain.model.Folder
 import com.lingji.app.domain.model.HomeItem
 import com.lingji.app.domain.model.ModelConfig
 import com.lingji.app.domain.model.Subject
+import com.lingji.app.domain.model.orderIndex
 import com.lingji.app.ui.components.ChatMode
 
 data class HomeChatMessage(
@@ -55,27 +56,57 @@ data class SubjectUiState(
     val currentSubject: Subject? get() = subjects.find { it.id == currentSubjectId }
 
     /**
-     * 首页展示项：合并文件夹与无文件夹归属的碎片笔记，按 orderIndex 降序排列。
+     * 首页展示项：合并顶层文件夹与无文件夹归属的碎片笔记，按 orderIndex 降序排列。
      *
-     * 注意：`folderId` 指向的文件夹若已不存在（跨设备导入的笔记、文件夹被异常删除等），
-     * 该笔记会回落到首页展示，避免"笔记既不在任何文件夹里、也不在首页"而彻底不可见。
+     * 注意：`parentId` / `folderId` 指向的文件夹若已不存在（跨设备导入的笔记、文件夹被异常删除等），
+     * 该内容会回落到首页展示，避免"既不在任何文件夹里、也不在首页"而彻底不可见。
      */
     val homeItems: List<HomeItem>
         get() {
             val folderIds = folders.mapTo(mutableSetOf()) { it.id }
-            val folderItems = folders.map { folder ->
-                HomeItem.FolderItem(folder, subjects.count { it.folderId == folder.id })
-            }
+            val folderItems = folders
+                .filter { it.parentId == null || it.parentId !in folderIds }
+                .map { folder ->
+                    HomeItem.FolderItem(
+                        folder = folder,
+                        noteCount = subjects.count { it.folderId == folder.id },
+                        subfolderCount = folders.count { it.parentId == folder.id }
+                    )
+                }
             val noteItems = subjects
                 .filter { it.folderId == null || it.folderId !in folderIds }
                 .map { HomeItem.NoteItem(it) }
-            return (folderItems + noteItems).sortedByDescending { item ->
-                when (item) {
-                    is HomeItem.FolderItem -> item.folder.orderIndex
-                    is HomeItem.NoteItem -> item.subject.orderIndex
-                }
-            }
+            return (folderItems + noteItems).sortedByDescending { it.orderIndex }
         }
+
+    /** 信息岛：文件夹内容——直接子文件夹与直接笔记共用一套展示顺序。 */
+    fun folderContents(folderId: String): List<HomeItem> {
+        val childFolders = folders.filter { it.parentId == folderId }
+        val folderItems = childFolders.map { folder ->
+            HomeItem.FolderItem(
+                folder = folder,
+                noteCount = subjects.count { it.folderId == folder.id },
+                subfolderCount = folders.count { it.parentId == folder.id }
+            )
+        }
+        val noteItems = subjects.filter { it.folderId == folderId }.map { HomeItem.NoteItem(it) }
+        return (folderItems + noteItems).sortedByDescending { it.orderIndex }
+    }
+
+    /**
+     * 信息岛：文件夹嵌套防环——目标不能是自身，也不能是自身的子孙。
+     */
+    fun canMoveFolderInto(folderId: String, targetFolderId: String): Boolean {
+        if (folderId == targetFolderId) return false
+        val byId = folders.associateBy { it.id }
+        var cursor: String? = targetFolderId
+        var guard = folders.size + 1
+        while (cursor != null && guard-- > 0) {
+            if (cursor == folderId) return false
+            cursor = byId[cursor]?.parentId
+        }
+        return true
+    }
 }
 
 /**

@@ -112,7 +112,7 @@ def main() -> int:
         print("[1] ping / 协议版本")
         ready = wait_ready(base, proc, "t0ken")
         check("ping 返回 serverTime", isinstance(ready.get("serverTime"), int) and ready["serverTime"] > 0)
-        check("ping 返回 schemaVersion=1", ready.get("schemaVersion") == 1, str(ready))
+        check("ping 返回 schemaVersion=2", ready.get("schemaVersion") == 2, str(ready))
         code, payload = request("GET", base + "/api/ping", token="wrong")
         check("错误令牌被拒", code == 401, str(code))
 
@@ -123,7 +123,7 @@ def main() -> int:
         }, token="t0ken")
         check("返回 409", code == 409, str(code))
         check("error=server_outdated", payload.get("error") == "server_outdated", str(payload))
-        check("回带 serverSchemaVersion=1", payload.get("serverSchemaVersion") == 1, str(payload))
+        check("回带 serverSchemaVersion=2", payload.get("serverSchemaVersion") == 2, str(payload))
         # 被拒后不应写入任何数据：用正常请求拉一次全量，应为空
         code, payload = request("POST", base + "/api/sync", {
             "deviceId": "LJ-TEST-0001", "schemaVersion": 1, "lastRev": 0, "changes": {},
@@ -133,15 +133,15 @@ def main() -> int:
 
         print("[3] 正常同步")
         code, payload = request("POST", base + "/api/sync", {
-            "deviceId": "LJ-TEST-0001", "schemaVersion": 1, "lastRev": 0,
+            "deviceId": "LJ-TEST-0001", "schemaVersion": 2, "lastRev": 0,
             "changes": {"subjects": [{"id": "s1", "updatedAt": 1000, "title": "第一篇"}]},
             "tombstones": [],
         }, token="t0ken")
         check("同步成功", code == 200, str(code))
-        check("响应带 schemaVersion=1", payload.get("schemaVersion") == 1, str(payload))
+        check("响应带 schemaVersion=2", payload.get("schemaVersion") == 2, str(payload))
         check("rev 已推进", payload.get("rev", 0) >= 1, str(payload))
         code, payload = request("POST", base + "/api/sync", {
-            "deviceId": "LJ-TEST-0002", "schemaVersion": 1, "lastRev": 0, "changes": {},
+            "deviceId": "LJ-TEST-0002", "schemaVersion": 2, "lastRev": 0, "changes": {},
         }, token="t0ken")
         rows = (payload.get("changes") or {}).get("subjects") or []
         check("另一台设备能拉到", len(rows) == 1 and rows[0]["title"] == "第一篇", str(payload))
@@ -150,6 +150,38 @@ def main() -> int:
             "deviceId": "LJ-LEGACY", "lastRev": 0, "changes": {},
         }, token="t0ken")
         check("旧客户端（无版本号）放行", code == 200 and "schemaVersion" in payload, str(code))
+
+        print("[3.5] v1 客户端兼容（文件夹嵌套）")
+        _, payload = request("POST", base + "/api/sync", {
+            "deviceId": "LJ-TEST-0002", "schemaVersion": 2, "lastRev": 0,
+            "changes": {"folders": [
+                {"id": "fParent", "name": "父", "orderIndex": 1, "updatedAt": 1000},
+                {"id": "fChild", "name": "子", "orderIndex": 1, "updatedAt": 2000, "parentId": "fParent"},
+            ]},
+        }, token="t0ken")
+        rev_after_push = payload.get("rev", 0)
+        _, payload = request("POST", base + "/api/sync", {
+            "deviceId": "LJ-LEGACY", "schemaVersion": 1, "lastRev": 0, "changes": {},
+        }, token="t0ken")
+        child = {f["id"]: f for f in (payload.get("changes") or {}).get("folders") or []}["fChild"]
+        check("v1 客户端拉到的文件夹不带 parentId", "parentId" not in child, str(child))
+        # v1 客户端改名（不带 parentId），服务端应保留云端归属
+        request("POST", base + "/api/sync", {
+            "deviceId": "LJ-LEGACY", "schemaVersion": 1, "lastRev": rev_after_push,
+            "changes": {"folders": [{"id": "fChild", "name": "子改名", "orderIndex": 1, "updatedAt": 3000}]},
+        }, token="t0ken")
+        _, payload = request("POST", base + "/api/sync", {
+            "deviceId": "LJ-TEST-0002", "schemaVersion": 2, "lastRev": rev_after_push, "changes": {},
+        }, token="t0ken")
+        child = {f["id"]: f for f in (payload.get("changes") or {}).get("folders") or []}["fChild"]
+        check("v1 改名后嵌套关系保留", child.get("parentId") == "fParent", str(child))
+
+        print("[3.6] 管理台变更日志")
+        code, payload = request("GET", base + "/api/admin/changes?limit=10", token="t0ken")
+        labels = [r.get("label", "") for r in payload.get("rows") or []]
+        check("变更日志可读名称", any("文件夹「子改名」" in x for x in labels), str(labels))
+        check("变更日志区分新增/更新",
+              {r.get("action") for r in payload.get("rows") or []} >= {"add", "update"}, str(labels))
 
         print("[4] 模型目录下发")
         code, catalog = request("GET", base + "/api/model_catalog", token="t0ken")

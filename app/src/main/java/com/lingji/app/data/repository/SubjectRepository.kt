@@ -427,38 +427,121 @@ class SubjectRepository @Inject constructor(
         entities.map { it.toDomain() }
     }
 
-    suspend fun createFolder(name: String) {
-        val count = folderDao.getAllFolders().first().size
-        val folder = Folder(name = name, orderIndex = count)
+    suspend fun createFolder(name: String, parentId: String? = null) {
+        val folder = Folder(
+            name = name,
+            orderIndex = nextOrderIndex(parentId),
+            parentId = parentId
+        )
         folderDao.insert(folder.toEntity())
     }
 
+    /** 删除文件夹：递归删除其内部所有笔记与子文件夹（不可恢复）。 */
     suspend fun deleteFolder(id: String) {
-        // Unlink all subjects in this folder (move them back to home)
-        subjectDao.clearFolderAssociation(id, System.currentTimeMillis())
+        val folders = folderDao.getAllOnce()
+        if (folders.none { it.id == id }) return
+        // 收集子树上的全部文件夹 id
+        val subtreeIds = mutableSetOf(id)
+        var expanded = true
+        while (expanded) {
+            expanded = false
+            folders.forEach { folder ->
+                val parentId = folder.parentId
+                if (parentId != null && parentId in subtreeIds && subtreeIds.add(folder.id)) {
+                    expanded = true
+                }
+            }
+        }
+        // 先删除子树中的全部笔记（含级联内容与墓碑）
+        subjectDao.getAllOnce()
+            .filter { entity -> entity.folderId?.let { it in subtreeIds } == true }
+            .forEach { delete(it.id) }
+        // 再删除子树中的文件夹
+        subtreeIds.forEach { folderId ->
+            folderDao.deleteById(folderId)
+            recordTombstones("folders" to folderId)
+        }
+    }
+
+    /** 解散文件夹：子文件夹上移一级，笔记移回首页，然后删除文件夹本身。 */
+    suspend fun dissolveFolder(id: String) {
         val folder = folderDao.getFolderById(id) ?: return
+        val now = System.currentTimeMillis()
+        // 子文件夹上移一级，保持可见；笔记按原有行为移回首页。
+        val folders = folderDao.getAllOnce()
+        val parentId = folder.parentId?.takeIf { pid -> folders.any { it.id == pid } }
+        val remainingFolders = folders.filter { it.id != id }
+        val childFolders = remainingFolders.filter { it.parentId == id }
+        // 子文件夹上移一级，保持相对顺序排到目标容器最前
+        val destinationNotes = subjectDao.getSubjectsByFolderOnce(parentId)
+        val siblingMax = maxOf(
+            remainingFolders.filter { it.parentId == parentId }.maxOfOrNull { it.orderIndex } ?: -1,
+            destinationNotes.maxOfOrNull { it.orderIndex } ?: -1
+        )
+        var childOrder = siblingMax + childFolders.size
+        childFolders.sortedByDescending { it.orderIndex }.forEach { child ->
+            folderDao.updateParent(child.id, parentId, childOrder, now)
+            childOrder--
+        }
+        val notes = subjectDao.getSubjectsByFolderOnce(id)
+        subjectDao.clearFolderAssociation(id, now)
+        // 笔记按原有相对顺序排到首页最前
+        val movedNoteIds = notes.mapTo(mutableSetOf()) { it.id }
+        val homeOthersMax = maxOf(
+            remainingFolders.filter { it.parentId == null }.maxOfOrNull { it.orderIndex } ?: -1,
+            subjectDao.getSubjectsByFolderOnce(null)
+                .filter { it.id !in movedNoteIds }
+                .maxOfOrNull { it.orderIndex } ?: -1
+        )
+        var noteOrder = homeOthersMax + notes.size
+        notes.sortedByDescending { it.orderIndex }.forEach { entity ->
+            subjectDao.updateOrderIndex(entity.id, noteOrder, now)
+            noteOrder--
+        }
         folderDao.delete(folder)
         recordTombstones("folders" to id)
     }
 
     suspend fun renameFolder(id: String, name: String) = folderDao.rename(id, name, System.currentTimeMillis())
 
+    /** 信息岛：文件夹嵌套——把文件夹（连带内部内容）移动到另一个文件夹下。 */
+    suspend fun moveFolderToFolder(folderId: String, parentId: String?) {
+        if (folderId == parentId) return
+        val folders = folderDao.getAllOnce()
+        val byId = folders.associateBy { it.id }
+        // 禁止把文件夹移动到自身或自身的子孙里，避免形成环。
+        var cursor = parentId
+        while (cursor != null) {
+            if (cursor == folderId) return
+            cursor = byId[cursor]?.parentId
+        }
+        folderDao.updateParent(
+            folderId,
+            parentId,
+            nextOrderIndex(parentId),
+            System.currentTimeMillis()
+        )
+    }
+
     suspend fun moveSubjectToFolder(subjectId: String, folderId: String) {
         val now = System.currentTimeMillis()
         subjectDao.updateFolderId(subjectId, folderId, now)
-        // Assign orderIndex at top of folder's note list
-        val count = subjectDao.getSubjectsByFolderOnce(folderId).size
-        subjectDao.updateOrderIndex(subjectId, count, System.currentTimeMillis())
+        // 放入目标容器最前
+        subjectDao.updateOrderIndex(subjectId, nextOrderIndex(folderId), System.currentTimeMillis())
     }
 
     suspend fun removeSubjectFromFolder(subjectId: String) {
         subjectDao.updateFolderId(subjectId, null, System.currentTimeMillis())
-        // Assign orderIndex at top of home page list
-        val homeSubjects = subjectDao.getSubjectsByFolderOnce(null)
-        subjectDao.updateOrderIndex(subjectId, homeSubjects.size, System.currentTimeMillis())
+        // 放到首页最前
+        subjectDao.updateOrderIndex(subjectId, nextOrderIndex(null), System.currentTimeMillis())
     }
 
-    suspend fun reorderHomeItems(orderedItems: List<HomeItem>) {
+    suspend fun reorderHomeItems(orderedItems: List<HomeItem>) = reorderItems(orderedItems)
+
+    /** 信息岛：文件夹内排序——笔记与子文件夹共用一套展示顺序。 */
+    suspend fun reorderFolderContents(orderedItems: List<HomeItem>) = reorderItems(orderedItems)
+
+    private suspend fun reorderItems(orderedItems: List<HomeItem>) {
         val size = orderedItems.size
         orderedItems.forEachIndexed { index, item ->
             // Assign descending orderIndex: first item (index 0) gets highest value
@@ -471,12 +554,20 @@ class SubjectRepository @Inject constructor(
         }
     }
 
-    @Suppress("UNUSED_PARAMETER")
-    suspend fun reorderFolderItems(folderId: String, orderedSubjectIds: List<String>) {
-        val size = orderedSubjectIds.size
-        orderedSubjectIds.forEachIndexed { index, id ->
-            subjectDao.updateOrderIndex(id, size - 1 - index, System.currentTimeMillis())
-        }
+    /**
+     * 信息岛：某个容器（首页或指定文件夹）末尾的下一个排序值。
+     * 文件夹与笔记共用一个展示顺序，所以取两边最大值。
+     */
+    private suspend fun nextOrderIndex(parentFolderId: String?): Int {
+        val folders = folderDao.getAllOnce()
+        val folderIds = folders.mapTo(HashSet()) { it.id }
+        val maxFolder = folders
+            .filter { it.parentId?.takeIf { pid -> pid in folderIds } == parentFolderId }
+            .maxOfOrNull { it.orderIndex } ?: -1
+        val maxNote = subjectDao.getAllOnce()
+            .filter { it.folderId?.takeIf { fid -> fid in folderIds } == parentFolderId }
+            .maxOfOrNull { it.orderIndex } ?: -1
+        return maxOf(maxFolder, maxNote) + 1
     }
 
     private suspend fun loadSubject(entity: SubjectEntity): Subject {
@@ -625,6 +716,6 @@ class SubjectRepository @Inject constructor(
 
     private fun NotebookPageEntity.toDomain() = NotebookPage(id, title, content, createdAt, updatedAt, indexedAt)
 
-    private fun FolderEntity.toDomain() = Folder(id = id, name = name, orderIndex = orderIndex, createdAt = createdAt)
-    private fun Folder.toEntity() = FolderEntity(id = id, name = name, orderIndex = orderIndex, createdAt = createdAt)
+    private fun FolderEntity.toDomain() = Folder(id = id, name = name, orderIndex = orderIndex, createdAt = createdAt, parentId = parentId)
+    private fun Folder.toEntity() = FolderEntity(id = id, name = name, orderIndex = orderIndex, createdAt = createdAt, parentId = parentId)
 }

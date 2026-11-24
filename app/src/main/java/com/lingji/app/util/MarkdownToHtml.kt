@@ -11,8 +11,7 @@ package com.lingji.app.util
 object MarkdownToHtml {
 
     fun convert(markdown: String): String {
-        val collapsed = collapseBlankLines(markdown)
-        val lines = collapsed.split('\n')
+        val lines = markdown.split('\n')
         val out = StringBuilder()
         var i = 0
         var inUl = false
@@ -132,26 +131,11 @@ object MarkdownToHtml {
                 i++
             }
             out.append("<p>")
-                .append(paragraphLines.joinToString("<br/>") { inlineMd(it) })
+                .append(paragraphLines.joinToString("\n") { inlineMd(it) })
                 .append("</p>\n")
         }
         closeLists()
         return out.toString()
-    }
-
-    private fun collapseBlankLines(src: String): String {
-        // 与 MarkdownView 一致：编辑里双换行（空一行）折叠为单换行；保护代码块。
-        val placeholders = mutableListOf<String>()
-        val fenceRegex = Regex("```[\\s\\S]*?```|~~~[\\s\\S]*?~~~")
-        var protectedText = src.replace(fenceRegex) { match ->
-            placeholders += match.value
-            "\u0001${placeholders.lastIndex}\u0001"
-        }
-        protectedText = protectedText.replace(Regex("\\n[ \\t]*\\n+"), "\n")
-        placeholders.forEachIndexed { i, v ->
-            protectedText = protectedText.replace("\u0001${i}\u0001", v)
-        }
-        return protectedText
     }
 
     private fun splitRow(line: String): List<String> {

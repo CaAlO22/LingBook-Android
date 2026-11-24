@@ -31,6 +31,10 @@ interface FolderDao {
     @Query("UPDATE folders SET orderIndex = :orderIndex, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateOrderIndex(id: String, orderIndex: Int, updatedAt: Long)
 
+    /** 信息岛：文件夹嵌套——同时更新父级与在新容器中的排序值。 */
+    @Query("UPDATE folders SET parentId = :parentId, orderIndex = :orderIndex, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateParent(id: String, parentId: String?, orderIndex: Int, updatedAt: Long)
+
     // ── 云同步 ──
 
     @Query("SELECT * FROM folders")

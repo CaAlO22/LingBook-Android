@@ -19,7 +19,7 @@
         {
           "deviceId": "LJ-7K3M-9Q2X-P4TN",    # 设备标识，仅用于标记变更来源；
                                                # 多台设备填同一个值即可共用同一份数据
-          "schemaVersion": 1,                  # 客户端同步协议版本（缺省按 1 处理）
+          "schemaVersion": 2,                  # 客户端同步协议版本（缺省按 1 处理）
           "lastRev": 0,                        # 客户端已同步到的服务端游标
           "changes":  {"<table>": [ {<实体完整 JSON>}, ... ], ...},
           "tombstones": [ {"tbl": "<table>", "id": "...", "deletedAt": <ms>} ]
@@ -27,7 +27,7 @@
         响应:
         {
           "rev": 42,                           # 客户端应保存为新的 lastRev
-          "schemaVersion": 1,                  # 服务端协议版本
+          "schemaVersion": 2,                  # 服务端协议版本
           "changes":  {"<table>": [ {...} ]},  # rev > lastRev 且非本设备产生的变更
           "tombstones": [ {"tbl": "...", "id": "...", "deletedAt": <ms>} ]
         }
@@ -36,14 +36,14 @@
         请求:
         {
           "deviceId": "LJ-...",               # 设备标识，仅用于日志
-          "schemaVersion": 1,
+          "schemaVersion": 2,
           "tables": ["subjects", ...]          # 要清空的表；缺省清空 TABLES 全部
         }
         响应:
         {
           "rev": 43,                           # 清空后新的服务端游标
           "tables": [...],                     # 实际清空的表
-          "schemaVersion": 1
+          "schemaVersion": 2
         }
         说明：只删除 entities / tombstones 中指定表的记录，模型目录等其它数据不受影响。
         该接口属于可选能力：旧服务器返回 404 时，App 会提示升级服务端程序。
@@ -53,6 +53,7 @@
     GET  /api/admin/overview        -> 全局 rev、各表实体/墓碑计数、数据库体积
     GET  /api/admin/entities        -> 实体列表，支持 ?tbl=&q=&limit=&offset=
     GET  /api/admin/tombstones      -> 墓碑列表，参数同上
+    GET  /api/admin/changes         -> 变更日志（新增/更新/删除），支持 ?tbl=&action=&q=&limit=&offset=
     POST /api/admin/delete_entity   -> {"tbl","id"} 删除单条实体（写墓碑并推进 rev）
     POST /api/admin/clear_table     -> {"tbl"} 清空该表实体与墓碑并推进 rev
   /api/admin/* 与其它接口一样受 --token 保护；/admin 页面本身不鉴权，
@@ -71,6 +72,11 @@
   - 本服务器再兜一层：请求里的 schemaVersion 高于本服务器时返回 409 server_outdated，
     响应体带 serverSchemaVersion，供客户端展示。
   - 没有 schemaVersion 字段的旧客户端按 1 处理（加版本号之前的协议就是 1）。
+  - v2 起文件夹支持嵌套（FolderEntity.parentId）。本服务器兼容仍在运行的 v1 客户端：
+      * 推送给 v1 客户端的 folders 会去掉 parentId（旧版本不认识该字段）；
+      * v1 客户端上传 folders 时如果没带 parentId，沿用云端已存的归属，
+        避免旧设备改名/重排时把文件夹的嵌套关系抹掉。
+    v2 客户端新建在顶层的文件夹 parentId 为空（JSON 中该字段缺省），按缺省值 null 处理。
 
 模型目录：
   模型列表不再随 App 发版，而是从本服务器的 model_catalog 表下发。
@@ -108,7 +114,8 @@ MAX_BODY_BYTES = 64 * 1024 * 1024  # 64 MB
 
 # 同步数据结构版本。新增/删除下面 TABLES 里的表、或改变字段语义时必须 +1；
 # 客户端同步前会读 /api/ping 的 schemaVersion，低于自己就拒绝同步。
-SCHEMA_VERSION = 1
+# v2：文件夹支持嵌套（folders.parentId）；服务器按客户端版本做兼容处理。
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS entities (
@@ -132,6 +139,18 @@ CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value INTEGER NOT NULL
 );
+-- 变更日志：只用于管理台展示，记录每次新增/更新/删除，不参与同步
+CREATE TABLE IF NOT EXISTS change_log (
+    seq    INTEGER PRIMARY KEY AUTOINCREMENT,
+    rev    INTEGER NOT NULL,
+    tbl    TEXT NOT NULL,
+    id     TEXT NOT NULL,
+    action TEXT NOT NULL,               -- add / update / delete
+    device TEXT NOT NULL DEFAULT '',
+    at     INTEGER NOT NULL,
+    label  TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_change_log_rev ON change_log(rev);
 CREATE TABLE IF NOT EXISTS model_catalog (
     provider        TEXT NOT NULL,
     model_id        TEXT NOT NULL,
@@ -522,8 +541,67 @@ class SyncStore:
         cur.execute("SELECT value FROM meta WHERE key = 'rev'")
         return int(cur.fetchone()[0])
 
+    # ---- 管理台：实体解析与变更日志 ----
+
+    def _folder_path(self, cur, folder_id) -> str:
+        """把文件夹 id 解析成「父 / 子」形式的路径，供管理台可读展示。"""
+        fid = str(folder_id or "")
+        names = []
+        seen = set()
+        # 最多回溯 32 层，避免脏数据造成死循环
+        for _ in range(32):
+            if not fid or fid in seen:
+                break
+            seen.add(fid)
+            cur.execute("SELECT data FROM entities WHERE tbl='folders' AND id=?", (fid,))
+            row = cur.fetchone()
+            if not row:
+                break
+            try:
+                obj = json.loads(row[0])
+            except ValueError:
+                break
+            names.append(str(obj.get("name") or ""))
+            fid = obj.get("parentId") or ""
+        return " / ".join(reversed(names))
+
+    def _entity_label(self, cur, tbl: str, data) -> str:
+        """把实体 JSON 转成一行可读描述，例如 笔记「周报」（位于 工作）。"""
+        if not isinstance(data, dict):
+            return ""
+        if tbl == "folders":
+            name = str(data.get("name") or "")
+            path = self._folder_path(cur, data.get("parentId"))
+            return "文件夹「%s」%s" % (name, ("（位于 %s）" % path) if path else "（顶层）")
+        if tbl == "subjects":
+            title = str(data.get("title") or "")
+            path = self._folder_path(cur, data.get("folderId"))
+            return "笔记「%s」%s" % (title, ("（位于 %s）" % path) if path else "")
+        if tbl == "fragments":
+            content = str(data.get("content") or "").replace("\n", " ").strip()
+            return "碎片「%s」" % content[:30]
+        if tbl == "notebook_pages":
+            return "页面「%s」" % str(data.get("title") or "")
+        if tbl == "todo_items":
+            return "待办「%s」" % str(data.get("content") or "")
+        if tbl == "subject_summaries":
+            return "摘要（笔记 %s）" % str(data.get("subjectId") or "")
+        return ""
+
+    def _log_change(self, cur, rev: int, tbl: str, rid: str, action: str,
+                    device: str, label: str):
+        cur.execute(
+            "INSERT INTO change_log(rev, tbl, id, action, device, at, label) "
+            "VALUES(?,?,?,?,?,?,?)",
+            (rev, tbl, str(rid), action, device or "", now_ms(), label or ""),
+        )
+        # 日志只用于调试，保留最近 5000 条即可，避免长期运行无限增长
+        cur.execute(
+            "DELETE FROM change_log WHERE seq <= (SELECT MAX(seq) FROM change_log) - 5000"
+        )
+
     # 信息岛：App「覆盖云端数据」——清空指定同步表的实体与墓碑，再推进一次 rev
-    def reset(self, tables: list) -> dict:
+    def reset(self, tables: list, device: str = "") -> dict:
         """清空指定同步表在云端的实体与墓碑，并推进一次 rev（覆盖云端数据用）。
 
         tables 为空表示清空全部同步表；非空时只接受已知表名，
@@ -538,10 +616,20 @@ class SyncStore:
                         raise ValueError("no known tables to reset")
                 else:
                     allowed = list(TABLES.keys())
-                placeholders = ",".join("?" * len(allowed))
-                cur.execute("DELETE FROM entities WHERE tbl IN (%s)" % placeholders, allowed)
-                cur.execute("DELETE FROM tombstones WHERE tbl IN (%s)" % placeholders, allowed)
                 rev = self._next_rev(cur)
+                for tbl in allowed:
+                    cur.execute("SELECT id, data FROM entities WHERE tbl=?", (tbl,))
+                    for rid, data in cur.fetchall():
+                        try:
+                            parsed = json.loads(data)
+                        except ValueError:
+                            parsed = {}
+                        self._log_change(
+                            cur, rev, tbl, rid, "delete", device,
+                            (self._entity_label(cur, tbl, parsed) + " · 覆盖云端")
+                        )
+                    cur.execute("DELETE FROM entities WHERE tbl=?", (tbl,))
+                    cur.execute("DELETE FROM tombstones WHERE tbl=?", (tbl,))
                 self._conn.commit()
                 return {"rev": rev, "tables": allowed}
             except Exception:
@@ -613,6 +701,7 @@ class SyncStore:
                     "updatedAt": int(updated_at),
                     "device": device,
                     "rev": int(rev),
+                    "label": self._entity_label(cur, tbl_name, parsed),
                     "data": parsed,
                 })
             return {"ok": True, "total": total, "limit": limit, "offset": offset, "rows": rows}
@@ -649,6 +738,45 @@ class SyncStore:
             } for tbl_name, rid, deleted_at, device, rev in cur.fetchall()]
             return {"ok": True, "total": total, "limit": limit, "offset": offset, "rows": rows}
 
+    def admin_changes(self, tbl=None, action="", q="", limit=50, offset=0) -> dict:
+        """分页列出变更日志（按发生顺序倒序）；方便调试哪个笔记/文件夹被改或被删。"""
+        limit = max(1, min(int(limit or 50), 200))
+        offset = max(0, int(offset or 0))
+        where, args = [], []
+        if tbl:
+            if tbl not in TABLES:
+                raise ValueError("unknown table")
+            where.append("tbl=?")
+            args.append(tbl)
+        if action:
+            where.append("action=?")
+            args.append(action)
+        if q:
+            where.append("(label LIKE ? OR id LIKE ?)")
+            like = "%" + q + "%"
+            args.extend([like, like])
+        clause = ("WHERE " + " AND ".join(where)) if where else ""
+        with self._lock:
+            cur = self._conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM change_log " + clause, args)
+            total = int(cur.fetchone()[0])
+            cur.execute(
+                "SELECT seq, rev, tbl, id, action, device, at, label FROM change_log "
+                + clause + " ORDER BY seq DESC LIMIT ? OFFSET ?",
+                args + [limit, offset],
+            )
+            rows = [{
+                "seq": int(seq),
+                "rev": int(rev),
+                "tbl": tbl_name,
+                "id": rid,
+                "action": act,
+                "device": device,
+                "at": int(at),
+                "label": label,
+            } for seq, rev, tbl_name, rid, act, device, at, label in cur.fetchall()]
+            return {"ok": True, "total": total, "limit": limit, "offset": offset, "rows": rows}
+
     def admin_delete_entity(self, tbl: str, rid: str) -> dict:
         """管理台删除单条实体：写墓碑并推进 rev，让客户端同步时收到删除。"""
         if tbl not in TABLES:
@@ -661,6 +789,14 @@ class SyncStore:
             try:
                 rev = self._next_rev(cur)
                 deleted_at = now_ms()
+                cur.execute("SELECT data FROM entities WHERE tbl=? AND id=?", (tbl, rid))
+                row = cur.fetchone()
+                label = ""
+                if row:
+                    try:
+                        label = self._entity_label(cur, tbl, json.loads(row[0]))
+                    except ValueError:
+                        label = ""
                 cur.execute(
                     "INSERT INTO tombstones(tbl, id, deleted_at, device, rev) VALUES(?,?,?,?,?) "
                     "ON CONFLICT(tbl, id) DO UPDATE SET deleted_at=excluded.deleted_at, "
@@ -668,6 +804,7 @@ class SyncStore:
                     (tbl, rid, deleted_at, "admin", rev),
                 )
                 cur.execute("DELETE FROM entities WHERE tbl=? AND id=?", (tbl, rid))
+                self._log_change(cur, rev, tbl, rid, "delete", "admin", label)
                 self._conn.commit()
                 return {"ok": True, "rev": rev, "tbl": tbl, "id": rid}
             except Exception:
@@ -681,11 +818,21 @@ class SyncStore:
         with self._lock:
             cur = self._conn.cursor()
             try:
+                rev = self._next_rev(cur)
+                cur.execute("SELECT id, data FROM entities WHERE tbl=?", (tbl,))
+                for rid, data in cur.fetchall():
+                    try:
+                        parsed = json.loads(data)
+                    except ValueError:
+                        parsed = {}
+                    self._log_change(
+                        cur, rev, tbl, rid, "delete", "admin",
+                        (self._entity_label(cur, tbl, parsed) + " · 清空表")
+                    )
                 cur.execute("DELETE FROM entities WHERE tbl=?", (tbl,))
                 deleted_entities = cur.rowcount
                 cur.execute("DELETE FROM tombstones WHERE tbl=?", (tbl,))
                 deleted_tombstones = cur.rowcount
-                rev = self._next_rev(cur)
                 self._conn.commit()
                 return {
                     "ok": True,
@@ -698,7 +845,8 @@ class SyncStore:
                 self._conn.rollback()
                 raise
 
-    def sync(self, device_id: str, last_rev: int, changes: dict, tombstones: list) -> dict:
+    def sync(self, device_id: str, last_rev: int, changes: dict, tombstones: list,
+             client_schema: int = SCHEMA_VERSION) -> dict:
         with self._lock:
             cur = self._conn.cursor()
             try:
@@ -735,12 +883,23 @@ class SyncStore:
                             continue
 
                         cur.execute(
-                            "SELECT updated_at FROM entities WHERE tbl=? AND id=?",
+                            "SELECT updated_at, data FROM entities WHERE tbl=? AND id=?",
                             (tbl, rid),
                         )
                         e = cur.fetchone()
                         if e and int(e[0]) > updated_at:
                             continue  # 服务端数据更新，拒绝旧写入
+
+                        row = dict(row)
+                        if client_schema < 2 and tbl == "folders" and e:
+                            # 旧版（v1）客户端不认识 parentId：沿用云端已存的归属，
+                            # 避免旧设备改名/重排时把文件夹的嵌套关系抹掉。
+                            try:
+                                prev = json.loads(e[1])
+                            except ValueError:
+                                prev = {}
+                            if isinstance(prev, dict) and prev.get("parentId"):
+                                row["parentId"] = prev["parentId"]
 
                         rev = self._next_rev(cur)
                         cur.execute(
@@ -750,6 +909,10 @@ class SyncStore:
                             "updated_at=excluded.updated_at, device=excluded.device, "
                             "rev=excluded.rev, data=excluded.data",
                             (tbl, rid, updated_at, device_id, rev, json.dumps(row, ensure_ascii=False)),
+                        )
+                        self._log_change(
+                            cur, rev, tbl, rid, "update" if e else "add", device_id,
+                            self._entity_label(cur, tbl, row),
                         )
 
                 # ---- 2. 合并客户端推送的墓碑 ----
@@ -766,12 +929,19 @@ class SyncStore:
 
                     # 实体更新于删除之后 -> 实体胜出，忽略墓碑
                     cur.execute(
-                        "SELECT updated_at FROM entities WHERE tbl=? AND id=?",
+                        "SELECT updated_at, data FROM entities WHERE tbl=? AND id=?",
                         (tbl, rid),
                     )
                     e = cur.fetchone()
                     if e and int(e[0]) > deleted_at:
                         continue
+
+                    label = ""
+                    if e:
+                        try:
+                            label = self._entity_label(cur, tbl, json.loads(e[1]))
+                        except ValueError:
+                            label = ""
 
                     rev = self._next_rev(cur)
                     cur.execute(
@@ -783,6 +953,7 @@ class SyncStore:
                         (tbl, rid, deleted_at, device_id, rev),
                     )
                     cur.execute("DELETE FROM entities WHERE tbl=? AND id=?", (tbl, rid))
+                    self._log_change(cur, rev, tbl, rid, "delete", device_id, label)
 
                 # ---- 3. 取出 lastRev 之后、本轮推送之前的变更 ----
                 # 只按 rev 窗口筛选，不再按 device 排除本机：
@@ -795,7 +966,14 @@ class SyncStore:
                     (last_rev, base_rev),
                 )
                 for tbl, data in cur.fetchall():
-                    out_changes.setdefault(tbl, []).append(json.loads(data))
+                    try:
+                        obj = json.loads(data)
+                    except ValueError:
+                        continue
+                    if client_schema < 2 and tbl == "folders" and isinstance(obj, dict):
+                        # 旧版（v1）客户端不认识嵌套字段，不下发 parentId
+                        obj.pop("parentId", None)
+                    out_changes.setdefault(tbl, []).append(obj)
 
                 out_tombstones = []
                 cur.execute(
@@ -878,6 +1056,12 @@ section h2{margin:0 0 8px;font-size:13px;color:var(--muted);font-weight:600}
 .item pre{margin:0;padding:10px 12px;border-top:1px solid var(--border);overflow:auto;max-height:340px;font-family:ui-monospace,Consolas,monospace;font-size:12px}
 .item .actions{padding:0 12px 10px}
 .item .actions button{padding:5px 10px;font-size:12px}
+.item .parsed{padding:8px 12px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);word-break:break-all}
+.act{font-size:12px;font-weight:600;border-radius:6px;padding:2px 8px;flex:none}
+.act.add{background:#e6f7ed;color:#1a7f45}
+.act.update{background:var(--accent-soft);color:var(--accent)}
+.act.delete{background:var(--danger-soft);color:var(--danger)}
+@media (prefers-color-scheme: dark){.act.add{background:#173326;color:#4ade80}}
 .empty{padding:28px;text-align:center;color:var(--muted);background:var(--panel);border:1px dashed var(--border);border-radius:10px}
 .pager{display:flex;gap:10px;align-items:center;justify-content:flex-end;margin-top:12px;color:var(--muted);font-size:12px}
 #status{font-size:12px;color:var(--muted);min-height:18px}
@@ -909,8 +1093,9 @@ section h2{margin:0 0 8px;font-size:13px;color:var(--muted);font-weight:600}
       <div class="tabs">
         <button id="tabEntities" class="on">实体</button>
         <button id="tabTombstones">墓碑</button>
+        <button id="tabChanges">变更日志</button>
       </div>
-      <input id="q" placeholder="搜索 id / 内容" style="width:220px">
+      <input id="q" placeholder="搜索 id / 名称" style="width:220px">
       <button id="search">搜索</button>
       <button id="clearSearch">清除筛选</button>
       <div class="spacer"></div>
@@ -993,7 +1178,7 @@ function renderChips() {
     b.addEventListener('click', () => {
       state.tbl = state.tbl === t.tbl ? '' : t.tbl;
       state.offset = 0;
-      $('#clearTable').disabled = !state.tbl;
+      $('#clearTable').disabled = state.tab === 'changes' || !state.tbl;
       renderChips();
       loadList();
     });
@@ -1024,6 +1209,10 @@ async function loadOverview() {
   $('#conn').textContent = '已连接 · ' + location.host + ' · ' + new Date().toLocaleTimeString('zh-CN', { hour12: false });
 }
 
+function actionLabel(a) {
+  return a === 'add' ? '新增' : a === 'update' ? '更新' : a === 'delete' ? '删除' : a;
+}
+
 function renderList(rows) {
   const list = $('#list');
   list.textContent = '';
@@ -1035,14 +1224,26 @@ function renderList(rows) {
     const item = el('details', 'item');
     const summary = el('summary');
     summary.appendChild(el('span', 'tag', row.tbl));
-    summary.appendChild(el('span', 'mono grow', row.id));
-    const meta = state.tab === 'entities'
-      ? 'rev ' + row.rev + ' · ' + fmtTime(row.updatedAt)
-      : 'rev ' + row.rev + ' · 删除于 ' + fmtTime(row.deletedAt);
-    summary.appendChild(el('span', 'meta', meta));
-    item.appendChild(summary);
+
+    if (state.tab === 'changes') {
+      summary.appendChild(el('span', 'act ' + row.action, actionLabel(row.action)));
+      summary.appendChild(el('span', 'grow', row.label || row.id));
+      summary.appendChild(el('span', 'meta',
+        'rev ' + row.rev + ' · ' + fmtTime(row.at) + (row.device ? ' · ' + row.device : '')));
+      item.appendChild(summary);
+      item.appendChild(el('pre', 'mono',
+        '实体 id: ' + row.id + '\\n类型: ' + row.tbl + '\\n操作: ' + actionLabel(row.action) +
+        '\\n设备: ' + (row.device || '-') + '\\n时间: ' + fmtTime(row.at) + '\\nrev: ' + row.rev));
+      list.appendChild(item);
+      continue;
+    }
 
     if (state.tab === 'entities') {
+      summary.appendChild(el('span', 'grow', row.label || row.id));
+      summary.appendChild(el('span', 'meta', 'rev ' + row.rev + ' · ' + fmtTime(row.updatedAt)));
+      item.appendChild(summary);
+      item.appendChild(el('div', 'parsed',
+        'id ' + row.id + ' · 设备 ' + (row.device || '-')));
       item.appendChild(el('pre', 'mono', JSON.stringify(row.data, null, 2)));
       const actions = el('div', 'actions');
       const del = el('button', 'danger', '删除此实体');
@@ -1061,6 +1262,9 @@ function renderList(rows) {
       actions.appendChild(del);
       item.appendChild(actions);
     } else {
+      summary.appendChild(el('span', 'mono grow', row.id));
+      summary.appendChild(el('span', 'meta', 'rev ' + row.rev + ' · 删除于 ' + fmtTime(row.deletedAt)));
+      item.appendChild(summary);
       item.appendChild(el('pre', 'mono',
         '设备: ' + (row.device || '-') + '\\n删除时间: ' + fmtTime(row.deletedAt) + '\\nrev: ' + row.rev));
     }
@@ -1071,7 +1275,11 @@ function renderList(rows) {
 async function loadList() {
   if (state.busy) return;
   state.busy = true;
-  const path = state.tab === 'entities' ? '/api/admin/entities' : '/api/admin/tombstones';
+  const path = state.tab === 'entities'
+    ? '/api/admin/entities'
+    : state.tab === 'tombstones'
+      ? '/api/admin/tombstones'
+      : '/api/admin/changes';
   const params = new URLSearchParams();
   if (state.tbl) params.set('tbl', state.tbl);
   if (state.q) params.set('q', state.q);
@@ -1104,6 +1312,8 @@ function switchTab(tab) {
   state.offset = 0;
   $('#tabEntities').classList.toggle('on', tab === 'entities');
   $('#tabTombstones').classList.toggle('on', tab === 'tombstones');
+  $('#tabChanges').classList.toggle('on', tab === 'changes');
+  $('#clearTable').disabled = tab === 'changes' || !state.tbl;
   loadList();
 }
 
@@ -1115,6 +1325,7 @@ $('#saveToken').addEventListener('click', () => {
 $('#refresh').addEventListener('click', refreshAll);
 $('#tabEntities').addEventListener('click', () => switchTab('entities'));
 $('#tabTombstones').addEventListener('click', () => switchTab('tombstones'));
+$('#tabChanges').addEventListener('click', () => switchTab('changes'));
 $('#search').addEventListener('click', () => {
   state.q = $('#q').value.trim();
   state.offset = 0;
@@ -1243,6 +1454,9 @@ class SyncHandler(BaseHTTPRequestHandler):
                     return self._send_json(200, self.store.admin_entities(tbl, q, limit, offset))
                 if path == "/api/admin/tombstones":
                     return self._send_json(200, self.store.admin_tombstones(tbl, q, limit, offset))
+                if path == "/api/admin/changes":
+                    action = query.get("action", [""])[0]
+                    return self._send_json(200, self.store.admin_changes(tbl, action, q, limit, offset))
             except ValueError as exc:
                 return self._send_json(400, {"ok": False, "error": str(exc)})
             except Exception as exc:  # noqa: BLE001
@@ -1322,7 +1536,7 @@ class SyncHandler(BaseHTTPRequestHandler):
             if tables is not None and not isinstance(tables, list):
                 return self._send_json(400, {"ok": False, "error": "tables must be an array"})
             try:
-                result = self.store.reset(tables or [])
+                result = self.store.reset(tables or [], device=device_id)
             except Exception as exc:  # noqa: BLE001 - 服务器不应因单请求崩溃
                 return self._send_json(500, {"ok": False, "error": str(exc)})
             print("[%s] reset cloud tables=%s by %s"
@@ -1339,6 +1553,7 @@ class SyncHandler(BaseHTTPRequestHandler):
                 last_rev=int(last_rev),
                 changes=payload.get("changes") or {},
                 tombstones=payload.get("tombstones") or [],
+                client_schema=client_schema,
             )
         except Exception as exc:  # noqa: BLE001 - 服务器不应因单请求崩溃
             return self._send_json(500, {"ok": False, "error": str(exc)})

@@ -24,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,12 +47,15 @@ import com.lingji.app.domain.model.Folder
 fun FolderCard(
     folder: Folder,
     noteCount: Int,
+    subfolderCount: Int = 0,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
+    onDissolve: (() -> Unit)? = null,
+    onMoveOut: (() -> Unit)? = null,
     isDropTarget: Boolean = false,
-    onDragStart: (Offset) -> Unit = {},
+    onDragStart: (Offset, Offset) -> Unit = { _, _ -> },
     onDrag: (Offset) -> Unit = {},
     onDragEnd: () -> Unit = {},
     onDragCancel: () -> Unit = {},
@@ -62,6 +66,11 @@ fun FolderCard(
     var menuExpanded by remember { mutableStateOf(false) }
     var cardCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val containerColor = if (isDropTarget) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+    // 指针手势会长期持有首次组合时的 lambda，必须用最新值，避免拖拽时用到旧列表快照。
+    val currentOnDragStart by rememberUpdatedState(onDragStart)
+    val currentOnDrag by rememberUpdatedState(onDrag)
+    val currentOnDragEnd by rememberUpdatedState(onDragEnd)
+    val currentOnDragCancel by rememberUpdatedState(onDragCancel)
 
     Card(
         modifier = modifier
@@ -74,14 +83,14 @@ fun FolderCard(
                 detectDragGesturesAfterLongPress(
                     onDragStart = { offset ->
                         val rootPos = cardCoords?.let { it.positionInRoot() + offset } ?: offset
-                        onDragStart(rootPos)
+                        currentOnDragStart(rootPos, offset)
                     },
                     onDrag = { change, dragAmount ->
                         change.consume()
-                        onDrag(dragAmount)
+                        currentOnDrag(dragAmount)
                     },
-                    onDragEnd = { onDragEnd() },
-                    onDragCancel = { onDragCancel() }
+                    onDragEnd = { currentOnDragEnd() },
+                    onDragCancel = { currentOnDragCancel() }
                 )
             }
             .alpha(if (isDragging) 0.3f else 1f),
@@ -125,7 +134,11 @@ fun FolderCard(
                 modifier = Modifier.padding(top = 8.dp)
             )
             Text(
-                text = stringResource(R.string.folder_count, noteCount),
+                text = if (subfolderCount > 0) {
+                    stringResource(R.string.folder_count_with_subfolders, noteCount, subfolderCount)
+                } else {
+                    stringResource(R.string.folder_count, noteCount)
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp)
@@ -138,6 +151,18 @@ fun FolderCard(
                     text = { Text(stringResource(R.string.rename)) },
                     onClick = { onRename(); menuExpanded = false }
                 )
+                if (onMoveOut != null) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.remove_from_folder)) },
+                        onClick = { onMoveOut(); menuExpanded = false }
+                    )
+                }
+                if (onDissolve != null) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.dissolve)) },
+                        onClick = { onDissolve(); menuExpanded = false }
+                    )
+                }
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.delete)) },
                     onClick = { onDelete(); menuExpanded = false }
