@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.CircularProgressIndicator
 import com.lingji.app.ui.components.DropdownMenu
@@ -75,7 +76,11 @@ import com.lingji.app.R
 import com.lingji.app.data.db.entities.HomeConversationEntity
 import com.lingji.app.ui.components.ChatMode
 import com.lingji.app.ui.components.DeleteConfirmDialog
+import com.lingji.app.ui.components.GlassOutlinedTextField
 import com.lingji.app.ui.components.GlassSurface
+import com.lingji.app.ui.components.LingjiDialog
+import com.lingji.app.ui.components.LingjiDialogConfirmButton
+import com.lingji.app.ui.components.LingjiDialogDismissButton
 import com.lingji.app.ui.components.MarkdownView
 import com.lingji.app.ui.components.arrowKeyCursorBehavior
 import com.lingji.app.ui.components.enterSendBehavior
@@ -104,6 +109,7 @@ fun HomeChatSheet(
     onLoadConversation: (String) -> Unit,
     onDeleteConversation: (String) -> Unit,
     onDeleteFragment: (Int) -> Unit,
+    onEditFragment: (Int, String) -> Unit,
     onOrganizeFragments: () -> Unit,
     onDismiss: () -> Unit,
     supportsVision: Boolean = false
@@ -135,6 +141,7 @@ fun HomeChatSheet(
     var showHistory by remember { mutableStateOf(false) }
     var pendingDeleteConversation by remember { mutableStateOf<HomeConversationEntity?>(null) }
     var pendingDeleteFragmentIndex by remember { mutableStateOf<Int?>(null) }
+    var editingFragmentIndex by remember { mutableStateOf<Int?>(null) }
     var showNewConversationConfirm by remember { mutableStateOf(false) }
     var showOrganizeConfirm by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
@@ -422,6 +429,17 @@ fun HomeChatSheet(
                                                 modifier = Modifier.padding(top = 2.dp)
                                             )
                                         }
+                                    }
+                                    IconButton(
+                                        onClick = { editingFragmentIndex = index },
+                                        modifier = Modifier.size(20.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Edit,
+                                            contentDescription = stringResource(R.string.cd_edit),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                            modifier = Modifier.size(14.dp)
+                                        )
                                     }
                                     IconButton(
                                         onClick = { pendingDeleteFragmentIndex = index },
@@ -726,6 +744,45 @@ fun HomeChatSheet(
             },
             onDismiss = { pendingDeleteFragmentIndex = null }
         )
+    }
+
+    editingFragmentIndex?.let { index ->
+        val fragment = fragments.getOrNull(index)
+        if (fragment == null) {
+            // 碎片已在编辑期间被移除（如被整理），关闭编辑弹窗。
+            LaunchedEffect(Unit) { editingFragmentIndex = null }
+        } else {
+            var editContent by remember(index, fragment.content) { mutableStateOf(fragment.content) }
+            LingjiDialog(
+                onDismissRequest = { editingFragmentIndex = null },
+                title = { Text(stringResource(R.string.edit_fragment)) },
+                text = {
+                    GlassOutlinedTextField(
+                        value = editContent,
+                        onValueChange = { editContent = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 4,
+                        maxLines = 8
+                    )
+                },
+                confirmButton = {
+                    LingjiDialogConfirmButton(
+                        text = stringResource(R.string.save),
+                        enabled = editContent.isNotBlank(),
+                        onClick = {
+                            onEditFragment(index, editContent)
+                            editingFragmentIndex = null
+                        }
+                    )
+                },
+                dismissButton = {
+                    LingjiDialogDismissButton(
+                        text = stringResource(R.string.cancel),
+                        onClick = { editingFragmentIndex = null }
+                    )
+                }
+            )
+        }
     }
 
     if (showNewConversationConfirm) {

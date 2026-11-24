@@ -757,6 +757,7 @@ fun SubjectGalleryScreen(
             onLoadConversation = { viewModel.loadConversation(it) },
             onDeleteConversation = { viewModel.deleteConversation(it) },
             onDeleteFragment = { viewModel.removeHomeFragment(it) },
+            onEditFragment = { index, content -> viewModel.updateHomeFragment(index, content) },
             onOrganizeFragments = { viewModel.organizeHomeFragments() },
             onDismiss = { viewModel.toggleHomeChat() },
             supportsVision = ProviderRegistry.supportsVision(uiState.settings.provider, uiState.settings.modelName)

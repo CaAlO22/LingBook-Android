@@ -1179,6 +1179,18 @@ class SubjectViewModel @Inject constructor(
         viewModelScope.launch { persistHomeFragments(updated) }
     }
 
+    /** 编辑首页碎片内容，保留原始记录时间。 */
+    fun updateHomeFragment(index: Int, content: String) {
+        val current = _uiState.value.homeFragments
+        val trimmed = content.trim()
+        if (index !in current.indices || trimmed.isEmpty() || trimmed == current[index].content) return
+        val updated = current.toMutableList().apply {
+            this[index] = this[index].copy(content = trimmed)
+        }
+        Log.d("Fragment", "updateHomeFragment | index=$index | newContent='${trimmed.take(40)}'")
+        viewModelScope.launch { persistHomeFragments(updated) }
+    }
+
     fun organizeHomeFragments() {
         val fragments = _uiState.value.homeFragments
         Log.d("Fragment", "========== organizeHomeFragments | count=${fragments.size} ==========")
