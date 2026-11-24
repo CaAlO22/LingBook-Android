@@ -41,6 +41,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -152,13 +153,17 @@ private fun FragmentBubble(
         MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
     }
 
+    // 宽屏适配：气泡宽度不低于当前屏宽的 70%；原本已更宽的气泡保持原状。
+    val minBubbleWidth = (LocalConfiguration.current.screenWidthDp * 0.7f).dp
+    val maxBubbleWidth = maxOf(320.dp, minBubbleWidth)
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End
     ) {
         Column(
             horizontalAlignment = Alignment.End,
-            modifier = Modifier.widthIn(max = 320.dp)
+            modifier = Modifier.widthIn(max = maxBubbleWidth)
         ) {
             Text(
                 text = "#$index",
@@ -168,7 +173,9 @@ private fun FragmentBubble(
             )
             Card(
                 // 长按复制碎片正文
-                modifier = Modifier.combinedClickable(onClick = {}, onLongClick = onCopy),
+                modifier = Modifier
+                    .widthIn(min = minBubbleWidth)
+                    .combinedClickable(onClick = {}, onLongClick = onCopy),
                 shape = RoundedCornerShape(
                     topStart = 16.dp,
                     topEnd = 16.dp,
